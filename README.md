@@ -13,28 +13,45 @@
   <a href="#english-summary">English</a>
 </p>
 
-> 🚧 **预发布开发中**：`v0.1.0` 已包含可运行的桌面开发版本与核心服务回归，但尚未完成 Python 3.11 依赖、真实模型、X-AnyLabeling 和安装包的隔离环境验收。请不要将它用于唯一的数据副本。
+> 🎨 **步骤一已完成**：DatumDock 全量 UI 原型已准备好供视觉审核。普通模式是无副作用空主页，`--ui-preview` 使用关闭即丢弃的内存演示数据。真实数据集、模型、导入、导出和删除逻辑尚未接入，请不要把原型当作数据管理成品。
 
 DatumDock 用于把分散在本地文件夹中的视觉数据，集中到安全、可追踪的数据集池中进行管理、标注、复核与导出。它的重点不只是“画框”，而是让多个独立数据集、标签体系、模型和训练导出在一个清晰的桌面工作流内协作。
 
-> **已确认、待实现的入口调整（2026-07-19）**：DatumDock 将取消用户可见的工作区 / 项目层级，改为类似游戏存档的内部数据集主页。软件启动后展示已有数据集和“新建数据集”，点击或创建后直接进入标注工作台；数据自动保存到软件管理的 Windows 用户数据目录。完整方案与未完成项见 [内部数据集主页与存档式管理方案](docs/DATASET_LIBRARY.md)。本段是产品计划，不表示当前 GUI 已完成重构。
+> **入口已完成视觉重构（2026-07-19）**：新 GUI 不再显示工作区、项目树或打开目录。首页以类似游戏存档的方式展示受管数据集，点击卡片直接进入标注工作台。当前仅完成界面和内存交互，软件内部持久化将在后续阶段接入。完整边界见 [内部数据集主页与存档式管理方案](docs/DATASET_LIBRARY.md)。
 
 ## 当前状态
 
-项目已进入可运行的 Windows GUI 实现阶段；现有预发布代码仍采用旧的工作区 / 项目 / 数据集入口，并已包含受管 PNG 导入、标签管理、矩形绘制与自动保存、YOLO 导出、X-AnyLabeling 目录互操作和备份等开发切片。下一轮代码任务是把入口与存储重构为内部数据集主页。在该重构及 Python 3.11、真实模型和隔离安装验证完成前，不应把当前版本视为可交付成品。
+正式启动入口已切换到现代 PySide6 应用外壳。界面包含数据集主页、学习中心、四区标注工作台、标签/模型/相似图/回收站/统计管理页、设置页、16 个稳定路由和 28 个集中注册弹窗。工作台支持纯内存矩形选择、创建、移动、八点缩放、缩放/适配、撤销/重做和列表同步；快捷键录入、冲突检查与恢复默认同样只作用于当前预览会话。
 
-当前已验证的开发机检查为 Ruff、格式检查、服务层 pytest 与 Qt 离屏 GUI 冒烟。由于当前环境访问 PyPI 出现 TLS 错误，Python 3.11 的完整依赖与 `pytest-qt` 尚未安装；详情见 [路线图的外部阻塞记录](docs/ROADMAP.md#当前外部阻塞记录)。
+`python -m datumdock` 显示安全空主页，未接入操作只提示“功能待接入”；`python -m datumdock --ui-preview` 显示完整演示状态，并持续标记“界面预览”。新外壳不会调用旧工作区、文件、SQLite、模型或导出服务。仓库中的旧服务和旧界面代码仍保留，供后续业务迁移与既有回归使用。
+
+当前已验证 Ruff、格式检查、31 项 pytest、普通/预览 CLI 启动、16 个路由、28 个弹窗、中英文切换，以及 100%/125%/150% DPI 核心截图。由于当前环境访问 PyPI 出现 TLS 错误，新的 Python 3.11 虚拟环境尚未完成依赖安装；本轮使用已具备 PySide6 的开发环境验证，详情见 [路线图的外部阻塞记录](docs/ROADMAP.md#当前外部阻塞记录)。
 
 ## 本地运行
 
-首选 Python 3.11 独立虚拟环境。安装依赖后，使用下列命令启动：
+首选 Python 3.11 独立虚拟环境。安装 UI 与开发依赖后，使用下列命令启动：
 
 ```powershell
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -e ".[dev,inference]"
+python -m pip install -e ".[dev]"
 python -m datumdock
 ```
+
+打开完整 UI 演示：
+
+```powershell
+python -m datumdock --ui-preview
+```
+
+如果当前环境已经安装依赖但尚未执行可编辑安装，可在仓库根目录临时运行：
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m datumdock --ui-preview
+```
+
+推理依赖不属于本轮 UI 原型的启动前提；后续接入 ONNX/PT 时再执行 `python -m pip install -e ".[dev,inference]"`。
 
 如果只需要一次性安装完整开发、推理和构建依赖，也可使用：
 
@@ -90,6 +107,8 @@ DatumDock 将与 X-AnyLabeling 共用 LabelMe JSON 工作流：
 | [架构说明](docs/ARCHITECTURE.md) | 分层、核心对象、受管存储、任务与视觉系统。 |
 | [交互与界面规范](docs/UX.md) | 标注工作台四区布局、画布与页面交互。 |
 | [现代视觉设计规范 v2](docs/VISUAL_DESIGN.md) | Scratch/X-AnyLabeling 参考边界、现代主题、组件、图标、动效与截图验收。 |
+| [UI 原型页面清单](docs/UI_INVENTORY.md) | 16 个路由、28 个弹窗、组件、运行边界与本轮验证结果。 |
+| [UI 交付与自检报告](docs/UI_REVIEW.md) | 截图矩阵、验证命令、已知边界与 94 分自评。 |
 | [路线图](docs/ROADMAP.md) | 按阶段拆分的开发任务与优先级。 |
 | [验收标准](docs/ACCEPTANCE.md) | 每项功能可操作或可自动验证的完成条件。 |
 | [对标基线](docs/X_ANYLABELING_BASELINE.md) | 与 X-AnyLabeling 核心工作流的分级质量目标。 |
@@ -143,10 +162,10 @@ DatumDock/
 
 DatumDock is a local-first desktop application for managing and annotating computer-vision datasets. Its confirmed target experience uses a game-save-like home page backed by an app-managed dataset library: users create or open a dataset directly, without selecting a workspace or project directory, and each dataset independently owns its images, annotations, labels, models, review states, and indexes.
 
-The repository is in an executable pre-release implementation stage. The current GUI still uses the legacy workspace/project/dataset entry and legacy visual styling. The managed dataset home and Scratch-inspired-friendly/X-AnyLabeling-inspired-efficient visual design v2 are documented in `docs/DATASET_LIBRARY.md` and `docs/VISUAL_DESIGN.md` but have not been implemented. Existing development slices cover managed-pool, rectangle annotation, YOLO export, LabelMe/X-AnyLabeling exchange, backup, and a bilingual shell; this is not a release-ready installer.
+The step-one UI prototype is ready for visual review. The official entry point now uses a modern PySide6 shell with a save-game-like dataset home, a compact four-zone annotation workspace, management pages, settings, 16 registered routes, and 28 registered dialogs. `python -m datumdock` opens a safe empty home; `python -m datumdock --ui-preview` uses disposable in-memory demo data. No real dataset, model, import, export, or deletion operation is connected to the new shell yet.
 
 Planned MVP capabilities include an offline bilingual quick-start and tutorial center for DatumDock and YOLO; managed PNG ingestion; duplicate and similarity-group handling; rectangle annotation; image-level review states; dataset-level bilingual label management; local ONNX and supported Ultralytics YOLO model assistance; deterministic YOLO Detection export; validated dataset backups; and configurable shortcuts. DatumDock also imports X-AnyLabeling/LabelMe directories and exports directly reopenable directories while preserving unsupported shapes as compatibility payloads.
 
 The repository uses the MIT license. Before public release, complete the checks recorded in [docs/ROADMAP.md](docs/ROADMAP.md), especially the Python 3.11 and isolated installer verification. See [CONTRIBUTING.md](CONTRIBUTING.md) for development rules and [SECURITY.md](SECURITY.md) for responsible vulnerability reporting.
 
-For a non-editable local setup with the complete development, inference, and build dependency set, run `python -m pip install -r requirements.txt`.
+The UI prototype has passed Ruff, format checks, 31 pytest cases, CLI launch smoke tests, bilingual checks, and 100%/125%/150% DPI screenshot review. Python 3.11 dependency installation remains externally blocked by a PyPI TLS error and is recorded in the roadmap. For the complete development, inference, and build dependency set, run `python -m pip install -r requirements.txt` after package access is restored.

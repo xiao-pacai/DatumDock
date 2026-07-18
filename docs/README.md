@@ -10,10 +10,11 @@
 4. [架构说明](ARCHITECTURE.md)：领域对象、服务边界、受管存储、并发任务和数据安全规则。
 5. [交互与界面规范](UX.md)：页面结构、标注操作、控件位置和交互反馈。
 6. [现代视觉设计规范 v2](VISUAL_DESIGN.md)：Scratch/X-AnyLabeling 参考边界、颜色、组件、图标、动效和视觉验收。
-7. [代码规范](CODE_STYLE.md)：Ruff、测试、中文注释和 Python 编码约定。
-8. [路线图](ROADMAP.md)：当前应执行的最小可验证任务。
-9. [验收标准](ACCEPTANCE.md)：功能完成前必须满足的可操作或可自动验证条件。
-10. [X-AnyLabeling 对标基线](X_ANYLABELING_BASELINE.md) 与 [互操作规范](X_ANYLABELING_INTEROP.md)：对外宣称兼容/对标前必须满足的质量与格式边界。
+7. [UI 原型页面清单](UI_INVENTORY.md) 与 [UI 交付报告](UI_REVIEW.md)：步骤一的路由、弹窗、组件、安全边界、截图和评分。
+8. [代码规范](CODE_STYLE.md)：Ruff、测试、中文注释和 Python 编码约定。
+9. [路线图](ROADMAP.md)：当前应执行的最小可验证任务。
+10. [验收标准](ACCEPTANCE.md)：功能完成前必须满足的可操作或可自动验证条件。
+11. [X-AnyLabeling 对标基线](X_ANYLABELING_BASELINE.md) 与 [互操作规范](X_ANYLABELING_INTEROP.md)：对外宣称兼容/对标前必须满足的质量与格式边界。
 
 ## 文档职责
 
@@ -24,6 +25,8 @@
 | `ARCHITECTURE.md` | 定义数据模型、存储、服务边界和一致性规则。 | 页面视觉和逐项验收。 |
 | `UX.md` | 定义用户操作、布局、控件位置与反馈。 | 数据格式、持久化细节和完整视觉系统。 |
 | `VISUAL_DESIGN.md` | 定义现代视觉方向、主题 token、组件语言、参考边界和截图验收。 | 业务交互与已实现状态。 |
+| `UI_INVENTORY.md` | 登记 UI 原型路由、弹窗、组件和本轮验证结果。 | 真实业务功能完成状态。 |
+| `UI_REVIEW.md` | 记录步骤一截图矩阵、验证、评分和已知边界。 | 后续真实功能验收。 |
 | `CODE_STYLE.md` | 定义代码格式、中文注释和测试执行方式。 | 业务需求和产品优先级。 |
 | `ROADMAP.md` | 定义开发顺序与进行状态。 | 完成质量的唯一证明。 |
 | `ACCEPTANCE.md` | 定义完成的可验证条件。 | 功能设计或实现计划。 |
@@ -45,4 +48,4 @@
 
 ## English Summary
 
-This directory is DatumDock's product and engineering source of truth. Read the root README, managed dataset library plan, PRD, architecture, UX, visual design v2, code style, roadmap, acceptance criteria, and X-AnyLabeling documents in the listed order. `DATASET_LIBRARY.md` defines the game-save-like managed library, while `VISUAL_DESIGN.md` supersedes the old warm-gray/gray-green appearance with a Scratch-inspired friendly shell and an X-AnyLabeling-inspired professional workspace using DatumDock's own assets. Never describe planned or unverified behavior as implemented or supported.
+This directory is DatumDock's product and engineering source of truth. Read the root README, managed dataset library plan, PRD, architecture, UX, visual design v2, UI inventory, code style, roadmap, acceptance criteria, and X-AnyLabeling documents in the listed order. `UI_INVENTORY.md` records the completed UI-only prototype without claiming that real business services are connected. Never describe planned or unverified behavior as implemented or supported.
