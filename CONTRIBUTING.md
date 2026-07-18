@@ -4,7 +4,7 @@
 
 ## 开始前
 
-1. 阅读 `AGENTS.md`、`docs/PRD.md`、`docs/ARCHITECTURE.md`、`docs/UX.md` 与 `docs/ACCEPTANCE.md`。
+1. 阅读 `AGENTS.md`、`docs/PRD.md`、`docs/ARCHITECTURE.md`、`docs/UX.md`、`docs/VISUAL_DESIGN.md` 与 `docs/ACCEPTANCE.md`。
 2. 从 `docs/ROADMAP.md` 中选择未完成且边界明确的任务；一个提交尽量只解决一个主题。
 3. 遇到会改变文件格式、样本删除范围、标签映射或导出语义的设计问题，先提出讨论，不要自行假定。
 
@@ -16,7 +16,7 @@
 - 不提交真实数据集、项目工作区、导出训练集、模型权重、个人路径、密钥或大体积缓存。
 - 受管数据、标签迁移、删除、导入、备份和导出必须有明确错误处理，不能静默丢数据。
 - 涉及标注、LabelMe/X-AnyLabeling 互操作、数据划分或 YOLO 导出的变更必须增加或更新自动化测试。
-- UI 必须复用设计令牌和自有图标语义名，遵循莫兰迪小清新视觉系统；不得复制第三方品牌资产。
+- UI 必须复用现代视觉 v2 的设计令牌、组件层和自有图标语义名；主页可借鉴 Scratch 的友好引导，标注页可借鉴 X-AnyLabeling 的高效工作流，但不得复制第三方品牌、图标、代码或像素布局。
 
 ## 拉取请求
 
@@ -26,4 +26,4 @@
 
 ## English Summary
 
-Thanks for contributing to DatumDock. Read the product, architecture, UX, and acceptance documents before coding. Keep commits focused; use Chinese code comments and bilingual Markdown summaries; never commit datasets, workspaces, model weights, secrets, or caches. Changes affecting managed data, annotation interchange, splits, or YOLO export require clear failure handling and relevant tests. UI work must use the shared design tokens and DatumDock-owned icon assets.
+Thanks for contributing to DatumDock. Read the product, architecture, UX, visual design v2, and acceptance documents before coding. Keep commits focused; use Chinese code comments and bilingual Markdown summaries; never commit datasets, internal libraries, model weights, secrets, or caches. Managed-data changes require clear failure handling and tests. UI work must use shared modern components and DatumDock-owned assets; Scratch and X-AnyLabeling are principle references, not sources for copied branding or pixel layouts.

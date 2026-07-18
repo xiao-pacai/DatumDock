@@ -219,9 +219,9 @@ export-name/
 - 操作结果可预测，重要错误应以可读提示展示。
 - 核心标注读写逻辑应有自动化测试。
 - 默认离线运行，不上传图片或标注数据。
-- 整体界面采用明亮、小清新的低饱和莫兰迪色系；通过统一设计令牌、8px 间距基准、克制圆角/阴影和清晰层级保证页面舒适，不以高饱和颜色或密集控件制造“专业感”。
+- 整体界面遵守 `docs/VISUAL_DESIGN.md` 的现代视觉 v2：冷白/浅蓝灰表面、清晰品牌蓝、Logo 浅橙/浅蓝、现代圆角组件和深色画布取代暖灰/灰绿旧式 Qt 观感。
 - 数据集主页和标注工作台顶部标题栏展示完整 DatumDock 字标；工作台左侧窄工具栏及窄窗口模式展示 `DD` 标记并提供 tooltip。首次启动空主页、新建数据集向导首屏与“关于”页展示完整字标，其他内容页保持克制，不重复占用数据操作空间。
-- UI 可参考 X-AnyLabeling 的高效标注工作流、直接操作和信息密度，但不复制其品牌、图标或代码；标签颜色与应用主题和系统语义颜色严格分离。
+- 首页可参考 Scratch 的友好、圆润、图标化和引导体验；标注工作台可参考 X-AnyLabeling 的画布优先、直接操作和信息密度。两者均不得复制第三方品牌、图标、代码或像素布局；标签颜色与应用主题和系统语义颜色严格分离。
 - 文字、选中、键盘焦点、错误、禁用、加载和复核状态必须有足够对比度，并使用图标/文字等非颜色线索；应尊重系统缩放与“减少动态效果”偏好。
 - 模型导入、探测和推理默认在本机执行；不自动上传模型、图片或标签信息。
 
@@ -231,6 +231,7 @@ export-name/
 - YOLO Detection 默认导出已标注样本；导出向导可明确把未标注图片作为负样本加入。
 - 矩形框编辑、标签切换和撤销/重做采用立即自动保存。写入使用原子替换；只有保存失败时才保留待处理状态并要求用户决定重试、放弃或取消。
 - 当前发布目标为 MVP + X-AnyLabeling L2 核心标注工作流。ONNX 与受支持 Ultralytics YOLO 检测预标注属于已支持的本地能力，但未实现 COCO/VOC 等格式矩阵前不得声明达到 L3。
+- 视觉方向采用“友好外壳 + 专业工作台”：主页更接近 Scratch 式清晰亲和，标注页更接近 X-AnyLabeling 式紧凑高效；最终必须呈现 DatumDock 自有设计，不是任一参考产品的换色复制。
 
 ## 11. 应用语言
 
@@ -334,4 +335,4 @@ export-name/
 
 ## English Summary
 
-DatumDock is a local-first dataset management and annotation desktop application. Its target home page combines game-save-like dataset management with a dismissible five-step quick start and offline bilingual tutorials for DatumDock, YOLO Detection, splitting and leakage prevention, export preparation, interoperability, backup, and common errors. The annotation workspace uses a top action bar, left rectangle and AI tools, a central canvas, and a right annotation/image panel with explicit image-level statuses. Completed means the whole image was reviewed, including confirmed empty negatives. These directions are documented but not yet claimed as implemented; MVP exports training-ready data but does not train models inside DatumDock.
+DatumDock is a local-first dataset management and annotation desktop application. Its visual design v2 pairs a Scratch-inspired friendly, rounded, icon-led home shell with an X-AnyLabeling-inspired canvas-focused, compact professional workspace, using only DatumDock's own brand and assets. Cool light surfaces, a clear brand blue, the light-orange/light-blue DD, modern controls, and a dark canvas replace the previous warm-gray/gray-green Qt-like appearance. The home page includes managed datasets, quick start, and offline tutorials; the annotation workspace uses top actions, left tools, a central canvas, and a right annotation/image panel. These directions are documented but not yet implemented.

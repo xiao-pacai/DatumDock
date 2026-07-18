@@ -66,7 +66,7 @@ python -m pip install -r requirements.txt
 - **本地优先**：图片、标注和模型默认只在本机处理，不自动上传。
 - **数据集先于标注**：从导入、重命名、筛选、重复图、复核、标签到训练导出形成完整闭环。
 - **标签对人友好、对训练稳定**：中文别名与描述帮助快速识别，英文训练名和类别 ID 保持稳定。
-- **长期使用舒适**：明亮小清新的莫兰迪 UI、充足留白、统一图标与直接的画布反馈。
+- **长期使用舒适**：主页参考 Scratch 的现代友好感，标注工作台参考 X-AnyLabeling 的紧凑效率，统一使用 DatumDock 自有冷白/浅蓝灰表面、品牌蓝、圆角图标和直接反馈。
 - **可审阅的 AI**：自动标注是待人工确认的建议，不会静默覆盖人工标注。
 
 ## X-AnyLabeling 互操作
@@ -88,7 +88,8 @@ DatumDock 将与 X-AnyLabeling 共用 LabelMe JSON 工作流：
 | [内部数据集主页与存档式管理方案](docs/DATASET_LIBRARY.md) | 最新入口、软件内部存储、数据集边界、旧结构迁移与验收清单。 |
 | [产品需求文档](docs/PRD.md) | MVP 范围、数据池、标签、模型、导出与性能要求。 |
 | [架构说明](docs/ARCHITECTURE.md) | 分层、核心对象、受管存储、任务与视觉系统。 |
-| [交互与界面规范](docs/UX.md) | 标注工作台四区布局、莫兰迪设计令牌、画布与页面交互。 |
+| [交互与界面规范](docs/UX.md) | 标注工作台四区布局、画布与页面交互。 |
+| [现代视觉设计规范 v2](docs/VISUAL_DESIGN.md) | Scratch/X-AnyLabeling 参考边界、现代主题、组件、图标、动效与截图验收。 |
 | [路线图](docs/ROADMAP.md) | 按阶段拆分的开发任务与优先级。 |
 | [验收标准](docs/ACCEPTANCE.md) | 每项功能可操作或可自动验证的完成条件。 |
 | [对标基线](docs/X_ANYLABELING_BASELINE.md) | 与 X-AnyLabeling 核心工作流的分级质量目标。 |
@@ -142,7 +143,7 @@ DatumDock/
 
 DatumDock is a local-first desktop application for managing and annotating computer-vision datasets. Its confirmed target experience uses a game-save-like home page backed by an app-managed dataset library: users create or open a dataset directly, without selecting a workspace or project directory, and each dataset independently owns its images, annotations, labels, models, review states, and indexes.
 
-The repository is in an executable pre-release implementation stage. The current GUI still uses the legacy workspace/project/dataset entry; the dataset-home and internal-library migration is documented in `docs/DATASET_LIBRARY.md` but has not been implemented. Existing development slices cover managed-pool, rectangle-annotation, YOLO-export, LabelMe/X-AnyLabeling exchange, backup, and a bilingual shell. It is not a release-ready installer yet.
+The repository is in an executable pre-release implementation stage. The current GUI still uses the legacy workspace/project/dataset entry and legacy visual styling. The managed dataset home and Scratch-inspired-friendly/X-AnyLabeling-inspired-efficient visual design v2 are documented in `docs/DATASET_LIBRARY.md` and `docs/VISUAL_DESIGN.md` but have not been implemented. Existing development slices cover managed-pool, rectangle annotation, YOLO export, LabelMe/X-AnyLabeling exchange, backup, and a bilingual shell; this is not a release-ready installer.
 
 Planned MVP capabilities include an offline bilingual quick-start and tutorial center for DatumDock and YOLO; managed PNG ingestion; duplicate and similarity-group handling; rectangle annotation; image-level review states; dataset-level bilingual label management; local ONNX and supported Ultralytics YOLO model assistance; deterministic YOLO Detection export; validated dataset backups; and configurable shortcuts. DatumDock also imports X-AnyLabeling/LabelMe directories and exports directly reopenable directories while preserving unsupported shapes as compatibility payloads.
 

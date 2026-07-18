@@ -38,7 +38,7 @@ DatumDock 的差异化重点是多项目/多数据集池、项目级标签知识
 - 命名规则预览与安全批量重命名；删除样本时清理受管关联信息且不删除外部源文件。
 - 数据集级标签管理、中文别名/描述/同义词、当前数据集标签检查集合和历史标签迁移。
 - YOLO Detection 训练目录、类别 ID、归一化坐标、数据划分和 `data.yaml` 通过自动化验证。
-- 简体中文/英文界面切换、莫兰迪主题、未保存保护和可恢复错误提示。
+- 简体中文/英文界面切换、现代视觉 v2、未保存保护和可恢复错误提示；主页亲和但标注工作台保持画布优先和高效信息密度。
 
 ## 5. L2：核心标注工作流对标
 
@@ -88,4 +88,4 @@ DatumDock 的差异化重点是多项目/多数据集池、项目级标签知识
 
 ## English Summary
 
-DatumDock uses X-AnyLabeling as a workflow and quality benchmark, not as a promise to clone every upstream feature. L1 requires the managed dataset home experience and YOLO Detection. L2 requires a reliable annotation workspace with top dataset/import/export actions, left annotation and AI tools, a central canvas, a synchronized right annotation/image panel, and reopenable X-AnyLabeling/LabelMe exchange without silent payload loss. L3 covers reviewed AI assistance and common interchange formats, while L4 covers separately accepted advanced tasks such as segmentation, pose, OBB, video, tracking, and OCR.
+DatumDock uses X-AnyLabeling as a workflow benchmark, not as a promise to clone every upstream feature or visual asset. L1 requires the managed dataset home, modern visual v2, and YOLO Detection. L2 requires a reliable canvas-focused annotation workspace with direct tools, synchronized right panels, and lossless X-AnyLabeling/LabelMe exchange. The friendly home may draw general inspiration from Scratch, while all shipped branding, icons, components, and layouts remain DatumDock's own. L3 and L4 cover reviewed AI, common formats, and separately accepted advanced tasks.

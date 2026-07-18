@@ -8,11 +8,12 @@
 2. [内部数据集主页与存档式管理方案](DATASET_LIBRARY.md)：最新且优先的入口、术语、内部存储和旧结构迁移决定。
 3. [产品需求文档](PRD.md)：用户需求、MVP 范围、数据格式、非功能性要求与待确认决策。
 4. [架构说明](ARCHITECTURE.md)：领域对象、服务边界、受管存储、并发任务和数据安全规则。
-5. [交互与界面规范](UX.md)：页面结构、标注操作、莫兰迪视觉系统、图标和交互反馈。
-6. [代码规范](CODE_STYLE.md)：Ruff、测试、中文注释和 Python 编码约定。
-7. [路线图](ROADMAP.md)：当前应执行的最小可验证任务。
-8. [验收标准](ACCEPTANCE.md)：功能完成前必须满足的可操作或可自动验证条件。
-9. [X-AnyLabeling 对标基线](X_ANYLABELING_BASELINE.md) 与 [互操作规范](X_ANYLABELING_INTEROP.md)：对外宣称兼容/对标前必须满足的质量与格式边界。
+5. [交互与界面规范](UX.md)：页面结构、标注操作、控件位置和交互反馈。
+6. [现代视觉设计规范 v2](VISUAL_DESIGN.md)：Scratch/X-AnyLabeling 参考边界、颜色、组件、图标、动效和视觉验收。
+7. [代码规范](CODE_STYLE.md)：Ruff、测试、中文注释和 Python 编码约定。
+8. [路线图](ROADMAP.md)：当前应执行的最小可验证任务。
+9. [验收标准](ACCEPTANCE.md)：功能完成前必须满足的可操作或可自动验证条件。
+10. [X-AnyLabeling 对标基线](X_ANYLABELING_BASELINE.md) 与 [互操作规范](X_ANYLABELING_INTEROP.md)：对外宣称兼容/对标前必须满足的质量与格式边界。
 
 ## 文档职责
 
@@ -21,7 +22,8 @@
 | `DATASET_LIBRARY.md` | 定义存档式主页、用户可见层级、软件内部资料库与旧结构迁移方向。 | 已实现状态与底层模块细节。 |
 | `PRD.md` | 定义用户真正需要什么、MVP 边界和待确认产品选择。 | 架构实现细节与任务状态。 |
 | `ARCHITECTURE.md` | 定义数据模型、存储、服务边界和一致性规则。 | 页面视觉和逐项验收。 |
-| `UX.md` | 定义用户操作、布局、视觉令牌与反馈。 | 数据格式和持久化细节。 |
+| `UX.md` | 定义用户操作、布局、控件位置与反馈。 | 数据格式、持久化细节和完整视觉系统。 |
+| `VISUAL_DESIGN.md` | 定义现代视觉方向、主题 token、组件语言、参考边界和截图验收。 | 业务交互与已实现状态。 |
 | `CODE_STYLE.md` | 定义代码格式、中文注释和测试执行方式。 | 业务需求和产品优先级。 |
 | `ROADMAP.md` | 定义开发顺序与进行状态。 | 完成质量的唯一证明。 |
 | `ACCEPTANCE.md` | 定义完成的可验证条件。 | 功能设计或实现计划。 |
@@ -43,4 +45,4 @@
 
 ## English Summary
 
-This directory is DatumDock's product and engineering source of truth. Read the root README, managed dataset library plan, PRD, architecture, UX, code style, roadmap, acceptance criteria, and X-AnyLabeling documents in the listed order before starting a feature. `DATASET_LIBRARY.md` is the latest authority for replacing the visible workspace/project hierarchy with a game-save-like dataset home page and app-managed storage. Each document has a distinct responsibility: requirements define scope, architecture defines safe implementation boundaries, UX defines interaction and visual rules, code style defines formatting and Chinese comments, the roadmap defines order, and acceptance proves completion. Update the relevant document before changing a boundary, and never describe planned or unverified behavior as implemented or supported.
+This directory is DatumDock's product and engineering source of truth. Read the root README, managed dataset library plan, PRD, architecture, UX, visual design v2, code style, roadmap, acceptance criteria, and X-AnyLabeling documents in the listed order. `DATASET_LIBRARY.md` defines the game-save-like managed library, while `VISUAL_DESIGN.md` supersedes the old warm-gray/gray-green appearance with a Scratch-inspired friendly shell and an X-AnyLabeling-inspired professional workspace using DatumDock's own assets. Never describe planned or unverified behavior as implemented or supported.

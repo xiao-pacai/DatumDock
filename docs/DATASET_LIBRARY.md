@@ -57,6 +57,7 @@ flowchart LR
 
 - 自动创建内部应用数据目录和空资料库索引，不弹出目录选择器。
 - 展示完整 DatumDock Logo、简短产品说明、“新建数据集”主按钮、五步快速开始和学习中心；即使没有数据集，用户也可以先阅读 DatumDock 或 YOLO 教程。
+- 首页视觉遵守 `docs/VISUAL_DESIGN.md`：使用现代冷白/浅蓝灰表面、品牌蓝和宽松圆角卡片，借鉴 Scratch 的亲和感但不复制其品牌。
 - 设置、语言切换、关于与备份导入入口仍可从主页访问。
 
 ### 4.2 非首次启动
@@ -89,6 +90,8 @@ flowchart LR
 ## 5. 标注与数据管理工作台
 
 工作台保留 DatumDock 的数据集管理核心和 X-AnyLabeling 风格的高效标注体验，但不显示工作区树或项目树。
+
+工作台视觉比主页更紧凑，使用深色画布、清晰白色信息面板和现代圆角工具按钮；不得退回默认 Qt 灰色工具栏，也不得像儿童化编辑器。
 
 - 顶部为标题与主操作栏：DatumDock 品牌/返回主页、当前数据集下拉、导入图片、导出、标签管理、模型管理、设置与更多操作。当前数据集下拉支持搜索和快速切换，但不会打开外部目录。
 - “导出”必须区分训练数据集、X-AnyLabeling 交换目录和数据集备份，不能把不同数据边界隐藏在含糊的单一“导出图片”行为里。
@@ -210,4 +213,4 @@ flowchart LR
 
 ## English Summary
 
-DatumDock will replace its user-facing workspace/project hierarchy with a game-save-like managed dataset library. The home page combines dataset cards with a dismissible quick start and offline bilingual tutorials for DatumDock, YOLO Detection, splitting and leakage, export preparation, interoperability, and backup. Opening a dataset goes directly to an annotation workspace with top-level import/export and dataset switching, left drawing and AI tools, a central canvas, and a split right annotation/image panel. Each managed dataset independently owns its content under the per-user Windows application-data directory, while tutorial progress remains a global preference. This is a confirmed plan only; no application code is claimed to have been migrated yet.
+DatumDock will replace its user-facing workspace/project hierarchy with a game-save-like managed dataset library. The home page combines dataset cards, quick start, and offline tutorials in the friendly modern visual language defined by `VISUAL_DESIGN.md`; the annotation workspace is denser and canvas-focused. Each managed dataset independently owns its content under the per-user Windows application-data directory, while tutorial progress remains global. This is a confirmed plan only; neither the data migration nor the visual redesign is claimed as implemented.

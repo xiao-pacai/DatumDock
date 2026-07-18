@@ -42,8 +42,11 @@
 - [ ] 左侧工具栏至少可到达选择/编辑、矩形框、AI 标注、平移、适配窗口、撤销和重做；激活、悬停和键盘焦点状态清晰。
 - [ ] 右侧上半区显示当前图片标注，下半区显示图片列表/网格，两区可调整高度和折叠；右侧刷新不会造成画布明显跳动。
 - [ ] 首次启动主页及空数据集工作台均有明确的引导式空状态提示。
-- [ ] 界面使用一致的莫兰迪主题，且选中、错误和禁用状态可清晰区分。
-- [ ] 默认浅色界面具有小清新、安静且专业的视觉层级：暖灰背景、低饱和面板、克制圆角和轻微分隔；页面不使用大面积高饱和色、厚重阴影、强渐变或密集常驻操作按钮。
+- [ ] 界面遵守 `docs/VISUAL_DESIGN.md` 的现代视觉 v2，不再出现默认 Qt 灰色、暖灰/灰绿旧式管理软件、立体按钮、凹陷输入框或密集工具栏分隔线。
+- [ ] 主页使用冷白/浅蓝灰背景、清晰品牌蓝、宽松卡片和友好图标；标注页使用紧凑工具、白色信息面板和深色画布，两者组件语言一致但密度不同。
+- [ ] 首次打开 5 秒内能识别数据集、新建和学习入口；进入标注页 5 秒内能识别当前数据集、导入/导出、矩形框、AI、画布、当前标注和图片状态列表。
+- [ ] 主页参考 Scratch 的亲和与引导、标注页参考 X-AnyLabeling 的效率与信息密度，但发布包不包含其品牌、图标、截图、代码或像素级复制布局。
+- [ ] 主按钮、次按钮、工具按钮、危险按钮、hover、active、disabled 和键盘焦点使用一致组件规则；页面不靠高饱和彩虹色或厚阴影制造现代感。
 - [ ] 主窗口、数据集网格/列表、标签表、表单、导出向导和确认对话框均复用同一组设计令牌、间距和文字层级；数据集标签颜色不替代系统成功、警告、错误或选中状态。
 - [ ] 在默认系统缩放与常用高 DPI 缩放下，文字、图标、状态角标和点击目标不重叠、不被裁切；键盘焦点、加载、未保存、错误和禁用状态均不只依赖颜色表达。
 - [ ] 核心导航、导入导出、标注画布、模型、设置、删除/回收站和状态图标均使用项目自有且风格统一的资产；仅图标按钮具有 tooltip 和可访问名称，发布包中的应用图标在开始菜单和安装目录显示正常。
@@ -172,4 +175,4 @@
 
 ## English Summary
 
-The highest-priority acceptance gate covers a game-save-like dataset home page, an internal managed library, and a non-blocking offline bilingual tutorial center. First-time users receive a dismissible five-step quick start plus accurate DatumDock, YOLO Detection, splitting/leakage, export-preparation, interoperability, backup, and FAQ content; progress is global and survives upgrades without entering datasets. The annotation workspace must provide top actions, left drawing and AI tools, a central canvas, and a resizable right annotation/image panel with explicit image-level statuses. These planned items must pass before the new experience is claimed as implemented.
+The acceptance gate now includes visual design v2: a Scratch-inspired friendly and spacious home shell plus an X-AnyLabeling-inspired compact, canvas-focused annotation workspace, implemented with DatumDock's own cool light surfaces, brand blue, DD colors, rounded components, consistent icons, and a dark canvas. Default Qt gray, warm-gray/gray-green legacy styling, poor DPI behavior, and third-party pixel copying fail acceptance. The managed home, offline tutorials, annotation layout, and explicit image statuses remain planned and must pass before being claimed as implemented.

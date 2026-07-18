@@ -14,9 +14,11 @@
 > 2026-07-19 状态：只完成方案整理，应用代码尚未执行本阶段。完整边界见 `docs/DATASET_LIBRARY.md`；本阶段优先于后续所有仍依赖旧工作区 / 项目层级的任务。
 
 - [x] 记录“主页 + 受管数据集存档”的产品心智、内部目录、迁移原则、UX 和验收标准。
+- [x] 建立现代视觉设计规范 v2：主页借鉴 Scratch 的友好引导，标注页借鉴 X-AnyLabeling 的紧凑效率，明确自有品牌、组件和禁止项。
 - [ ] 冻结 `AppLibrary`、`ManagedDataset`、`DatasetLibraryService` 和内部路径解析接口，并补齐领域单元测试。
 - [ ] 将默认数据根目录设为 `%LOCALAPPDATA%\DatumDock`，首次启动自动创建资料库，不显示目录选择器。
 - [ ] 实现资料库登记、数据集事务创建、异常数据集隔离和资料库索引安全重建。
+- [ ] 在实现主页前完成现代视觉 v2 组件样例页和中英文/DPI 截图基线，确认不再呈现旧式 Qt 管理软件观感。
 - [ ] 实现带完整 Logo、数据集卡片、搜索、排序、设置、“新建数据集”、可折叠快速开始和学习中心的主页。
 - [ ] 实现 `HelpContentService`、`TutorialProgressRepository` 和应用内教程阅读器；核心中英文内容随安装包离线提供，进度不进入数据集。
 - [ ] 编写并校验 DatumDock 全流程、YOLO Detection、数据划分/泄露、导出训练准备、X-AnyLabeling、备份恢复和常见问题教程，标注第三方内容适用版本。
@@ -34,7 +36,7 @@
 
 - [-] 初始化 Python 项目、依赖和质量检查配置：已建立 `pyproject.toml`、Ruff 与 pre-commit 规则；应用依赖和可启动包结构待随首个 GUI 模块加入。
 - [ ] 实现应用入口及可启动的 PySide6 主窗口。
-- [ ] 建立 `ThemeService`、莫兰迪设计令牌、可缩放 QSS/图标状态和组件样式基线；完成主窗口、表格、网格、表单、对话框与画布的视觉回归样例。
+- [ ] 按 `docs/VISUAL_DESIGN.md` 重建 `ThemeService`、现代视觉 v2 token、可缩放 QSS、图标状态和组件样式基线；移除默认 Qt 灰色与旧暖灰/灰绿样式。
 - [ ] 生成并登记首批自有图标资产：应用/安装包、导航、数据管理、画布、状态与空状态插图；提供 SVG 源文件及 Windows 发布所需 ICO/PNG 派生尺寸。
 - [ ] 在阶段 0.5 的内部资料库上实现数据集重命名、归档和快速切换；不实现工作区创建或打开。
 - [ ] 实现空数据集与源数据集模板创建，复用兼容标签集和数据集配置。
@@ -44,7 +46,8 @@
 - [ ] 实现数据集级标签集与独立标签管理页面：表格、搜索、筛选、增删改查、归档和稳定类别 ID 分配。
 - [-] 实现标签集签名比较、差异报告与无冲突标签集合并：旧代码已提供严格信息比较、稳定 ID 映射和无冲突合并入口；迁移到数据集级边界、差异报告与数据集合并向导仍待完成。
 - [ ] 实现活动标签唯一颜色的自动分配、手动颜色选择、冲突校验和跨画布/列表一致渲染。
-- [ ] 实现莫兰迪主题 token、标注工作台四区布局、可调整右侧分区与基础状态栏。
+- [ ] 实现 Scratch 式友好主页外壳、X-AnyLabeling 式紧凑标注工作台、可调整右侧分区、深色画布与基础状态栏，并保持 DatumDock 自有视觉。
+- [ ] 建立中文/英文、空/有数据、100%/150% DPI、hover/selected/disabled 的主页和标注工作台固定截图回归，逐项排除视觉规范禁止项。
 - [ ] 为领域模型和服务层建立测试框架。
 
 ## 阶段 2：数据集池与图片浏览
@@ -121,6 +124,11 @@
 
 ## 当前外部阻塞记录
 
+- [-] GitHub `main` 推送：2026-07-19 连续三次推送均因连接重置或无法连接 `github.com:443` 失败，TCP 连接检测结果为 `False`。
+  - 原因：当前环境到 GitHub HTTPS 服务的外部网络不可用；本地 Git、提交内容和远端地址未发现配置错误。
+  - 影响范围：现代视觉设计规范 v2 的本地提交尚未同步到远端 `main`；本地文件和提交对象完整，不影响继续阅读与编辑。
+  - 恢复条件：当前设备恢复到 GitHub 443 端口的可用网络。
+  - 下一步：网络恢复后执行 `git push origin main`，确认远端包含最新提交，再将本条更新为已恢复。
 - [-] Python 3.11 独立环境的依赖安装：当前网络环境在访问 PyPI 时出现 TLS `SSLEOFError`，因此尚未能在该环境安装 PySide6、pytest-qt、ONNX Runtime、Ultralytics、PyInstaller 与其 CPU 推理依赖。
   - 最近复测：2026-07-18 执行 `python -m pip install -e ".[dev,inference]"` 仍在隔离构建依赖阶段失败，错误为访问 PyPI 的 TLS `SSLEOFError`。
   - 影响范围：Python 3.11 运行验证、pytest-qt 回归、ONNX/PT 真模型导入、自动标注和正式 PyInstaller 打包验证。
@@ -130,4 +138,4 @@
 
 ## English Summary
 
-The next implementation stage replaces the visible workspace/project hierarchy with a game-save-like home page and an internal `AppLibrary -> ManagedDataset` model. The home page must include a dismissible quick start and a versioned offline bilingual tutorial center, while the annotation workspace uses top actions, left annotation and AI tools, a central canvas, and a split right annotation/image panel. Only the documentation direction is complete; the content service, progress storage, tutorial authoring, code migration, UI implementation, and regression tests remain unchecked and must score at least 90.
+The next implementation stage includes visual design v2: a Scratch-inspired friendly home shell and an X-AnyLabeling-inspired compact professional annotation workspace, built with DatumDock's own cool surfaces, brand blue, DD colors, rounded components, icons, and dark canvas. The old Qt-like warm-gray/gray-green styling must be removed and fixed screenshot regressions added across languages and DPI settings. Only documentation is complete; implementation and visual verification remain unchecked and must score at least 90.

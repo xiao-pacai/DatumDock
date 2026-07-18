@@ -36,7 +36,7 @@
 
 ### 1.1 顶部标题与主操作栏
 
-- 顶部区域参考 X-AnyLabeling 的高频操作组织方式，但使用 DatumDock 自有品牌、图标和莫兰迪视觉，不复制其品牌资产。
+- 顶部区域参考 X-AnyLabeling 的高频操作组织方式，但使用 DatumDock 自有品牌、图标和现代视觉 v2，不复制其品牌资产。
 - 左侧显示 DatumDock 品牌/返回主页入口；中部突出当前数据集名称。点击数据集名称或下拉箭头，打开支持搜索的快速切换菜单，列出最近数据集并提供“查看全部数据集”。
 - 快速切换数据集不得弹出外部目录选择器。切换前等待当前图片自动保存；保存失败时阻止切换并提供重试、放弃内存修改或取消。
 - 常驻高频操作至少包含“导入图片”和“导出”。“导入图片”把外部图片复制到当前受管池；“导出”打开菜单或向导，区分训练数据集导出、X-AnyLabeling 交换目录和数据集备份，避免把不同含义都写成模糊的“导出图片”。
@@ -128,10 +128,14 @@
 - 教程完成进度属于全局应用偏好，不写入数据集、备份或 X-AnyLabeling 交换目录。应用升级时保留进度；教程版本变化时只把新增章节标记为未读，不清空旧进度。
 - 首页可显示当前应用版本对应的“新功能”入口，但不得请求账号、展示广告、加载未经用户同意的远程资讯或影响离线启动速度。
 
-## 4. 视觉风格：莫兰迪色系
+## 4. 视觉风格：现代、轻快、友好且专业
 
-- 视觉目标是“轻盈、安静、专业”：默认使用明亮小清新的浅色主题、充足留白和低饱和莫兰迪色，而非高饱和科技风、厚重阴影或大面积深色界面。画布专注于图片和标注，管理界面专注于信息层级。
-- 参考 X-AnyLabeling 以画布为中心的高效标注工作流、直接反馈和紧凑但不拥挤的信息密度；按 DatumDock 的顶部、左侧、中央、右侧四区需求重新组织，不得复制其品牌、图标、源代码或让用户误以为这是 X-AnyLabeling。
+完整设计令牌、组件语言、禁止项和截图验收以 [现代视觉设计规范 v2](VISUAL_DESIGN.md) 为准。v2 覆盖旧的暖灰/灰绿莫兰迪主视觉，目标不是传统 Qt 管理软件，也不是儿童化界面：
+
+- 首页借鉴 Scratch 的友好、圆润、明亮、图标化和新手可理解性，用更宽松的卡片与引导降低使用门槛。
+- 标注工作台借鉴 X-AnyLabeling 的画布优先、工具紧凑、右侧信息密度和直接反馈，保持生产力工具效率。
+- 统一使用 DatumDock 自有冷白/浅蓝灰表面、品牌蓝、浅橙/浅蓝 `DD`、深色画布和现代圆角组件，不复制任何第三方品牌、图标、代码或像素布局。
+- 首页可以更活泼，标注页必须更克制；两者共享字体、间距、组件、状态和图标系统，不能像两个拼接的软件。
 
 ### 品牌使用
 
@@ -141,34 +145,14 @@
 - 所有应用内展示统一使用 `assets/brand/datumdock-wordmark-v3.png`；在 GUI 资源打包阶段将它纳入 Qt 资源。后续的小尺寸窗口图标、托盘图标和安装包图标从同一 `DD` 标记派生，不以文字截图替代。
 - 品牌字标仅用于产品身份，不可作为危险操作、状态颜色、标签类别颜色或可点击的主要操作按钮；始终提供文字标题和无障碍名称，不让 Logo 成为唯一的导航线索。
 
-### 设计令牌
+### 页面密度与反馈
 
-| 用途 | Token | MVP 建议值 | 使用规则 |
-| --- | --- | --- | --- |
-| 应用背景 | `appBackground` | `#F7F6F2` | 窗口边缘与大面积留白，避免纯白刺眼。 |
-| 基础表面 | `surface` | `#FFFFFF` | 卡片、表格、对话框和输入区。 |
-| 弱表面 | `surfaceSubtle` | `#EEF1EE` | 侧栏分组、悬停和次级区域。 |
-| 面板表面 | `panel` | `#DFE7E4` | 左右栏标题、工具栏和信息分组。 |
-| 主强调 | `accent` | `#78978C` | 主按钮、焦点、选中边线和进度；只用于关键操作。 |
-| 次强调 | `accentSoft` | `#DDE9E1` | 选中项填充、成功背景和弱提示。 |
-| 次要点缀 | `roseSoft` | `#D8B5AE` | 次级提醒或图表点缀，不承担错误语义。 |
-| 主文字 | `textPrimary` | `#35403C` | 正文与标题，禁止使用生硬纯黑。 |
-| 次文字 | `textSecondary` | `#68736E` | 辅助说明、统计和禁用前说明。 |
-| 错误 | `danger` | `#B36F68` | 永久删除、错误和阻断提示；必须同时配图标和文字。 |
-
-- 标签颜色是数据集内容的一部分，独立于上述应用主题 token；不能为了统一主题而降低标签之间的可区分度，也不能将标签颜色错误地用作“保存成功/删除失败”等系统语义。
-- 选中项采用“浅色填充 + 2px 主强调边线/焦点环”；悬停只改变弱表面或边线，不做跳动、闪烁和明显位移。
-- 界面仅使用轻微 1px 分隔线与小幅阴影区分层级。卡片圆角建议 10px，按钮与输入框圆角建议 8px；禁止玻璃拟态、强渐变和悬浮夸张阴影。
-
-### 版式、文字与反馈
-
-- 采用 8px 间距基准：控件内边距 8–12px、相邻表单字段 12–16px、独立信息分组 24px。不要把每个区域都塞满控件；低频设置放入折叠区或二级页面。
-- 默认正文 14px、辅助文字 12px、页面标题 20–24px、分组标题 16px；表格行高和工具栏高度应保证鼠标操作舒适，并随系统缩放比例正确放大。
-- 缩略图卡片保持统一比例、圆角裁切和清晰状态角标；只有鼠标悬停或键盘焦点时显示低频操作，避免网格长期堆满按钮。
-- 图片画布使用中性暖灰底，不干扰原图颜色；未选中框使用标签色轮廓和低透明填充，选中框额外显示更粗边线、控制点和标签浮层。画布的拖拽、缩放、框选反馈必须即时，不能等待动画结束。
-- 主操作在每个页面最多保留一个明显的实心强调按钮；危险操作永远不与普通操作同等突出，必须经过确认对话框。空状态应有简洁图标、下一步说明和一个主入口。
-- 键盘焦点、加载、成功、错误、禁用、未保存和复核状态都必须有文字或图标补充。悬停帮助使用圆形问号图标，不用大段常驻说明破坏页面呼吸感。
-- 动画仅用于界面状态过渡，时长建议 120–180ms，并尊重系统“减少动态效果”偏好；不得延迟绘制、缩放、拖拽、切图或快捷键反馈。
+- 首页使用 24–32px 外边距、14–16px 卡片圆角和较大标题；数据集卡片、快速开始与学习中心主次明确。
+- 标注工作台使用 6–12px 紧凑间距、8px 工具圆角和深色画布；左侧工具与右侧列表信息密度高，但常驻正文不小于 13px。
+- 主操作使用品牌蓝实心按钮；次操作使用白色边框或幽灵按钮；危险操作只在确认区域使用红色。
+- 选中、hover、键盘焦点、待审核、已完成、有问题和异常同时使用背景/边框、图标和文字，不只依赖颜色。
+- 动画时长以 120–180ms 为主，并尊重系统“减少动态效果”；画框、拖动、缩放、切图和快捷键反馈不得等待动画。
+- 默认 Qt 灰色立体按钮、凹陷输入框、大面积米黄灰绿、密集分隔线和传统菜单堆叠视为视觉缺陷。
 
 ### 图标资产
 
@@ -280,4 +264,4 @@
 
 ## English Summary
 
-The target GUI starts on a game-save-like dataset home page with the full DatumDock wordmark, dataset cards, a dismissible five-step quick start, and an offline bilingual learning center. Tutorials cover the full DatumDock workflow, YOLO Detection, dataset splitting and leakage, export preparation, X-AnyLabeling exchange, backup, and common problems without blocking experienced users or implying that MVP trains models. Opening a dataset enters an X-AnyLabeling-inspired workspace with a top action bar, left annotation and AI tools, a central canvas, and a split right annotation/image panel with explicit image-level statuses. This layout is documented but not yet claimed as implemented and uses DatumDock's own Morandi design and brand assets.
+The target GUI uses visual design v2: a Scratch-inspired friendly, spacious, rounded home shell and an X-AnyLabeling-inspired compact, canvas-focused annotation workspace. Cool light surfaces, a clear DatumDock blue, the light-orange/light-blue DD identity, modern typography, consistent rounded icons, and a dark canvas replace the old warm-gray/gray-green Qt-like appearance. The home page contains dataset cards, quick start, and offline tutorials; the annotation workspace contains top actions, left tools, a central canvas, and a split right annotation/image panel. No third-party brand assets or pixel-level layouts may be copied, and this redesign is documented but not yet implemented.

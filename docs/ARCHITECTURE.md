@@ -228,11 +228,14 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 
 ## 14. 视觉系统
 
-- 主题以明亮、小清新的低饱和莫兰迪色为基础：暖灰背景、雾绿灰面板、灰豆绿主强调和雾玫瑰次点缀。设计令牌集中定义，例如 `appBackground`、`surface`、`surfaceSubtle`、`panel`、`accent`、`accentSoft`、`danger`、`textPrimary` 和 `textSecondary`；业务控件中不得散落硬编码色值。
-- `ThemeService` 将 token 映射为 Qt 调色板、QSS 和图标状态；组件只消费语义 token，不能自行猜测颜色。数据集标签的唯一颜色仍由 `LabelColorService` 提供，绝不能混入应用强调色和错误色。
-- 版式 token 包含 8px 间距基准、文字层级、圆角、分隔线、轻阴影和 120–180ms 的可选状态动画；它们应随系统 DPI 缩放并尊重“减少动态效果”偏好。
+- 视觉事实来源为 `docs/VISUAL_DESIGN.md`。主题改用冷白/浅蓝灰背景、白色表面、清晰品牌蓝、Logo 浅橙/浅蓝、深色画布和现代圆角组件；旧暖灰/灰绿莫兰迪主视觉及默认 Qt 灰色不得继续扩展。
+- `ThemeService` 将 `appBackground`、`surface`、`surfaceSubtle`、`surfaceHover`、`brandPrimary`、`brandSoft`、`canvasBackground`、`focusRing`、`danger`、`textPrimary`、`textSecondary` 等语义 token 映射为 Qt 调色板、QSS 和图标状态；业务控件不得散落颜色、圆角、字号和行高常量。
+- 组件层集中提供主/次/幽灵/危险按钮、输入框、筛选 chip、菜单、表格、虚拟列表、数据集卡片、状态徽标、工具按钮、对话框和空状态；页面只组合组件，不复制成段 QSS。
+- 版式 token 使用 4px 基础网格和 8/12/16/24/32px 常用间距，分别支持宽松主页与紧凑标注工作台；包含字体层级、圆角、轻阴影和 120–180ms 可选状态动画，并尊重 DPI 与“减少动态效果”。
 - 状态色要同时使用图标、边框或文字，不得只依赖颜色区分；键盘焦点环不可被主题样式覆盖。
 - 自有图标资源存放于 `assets/icons/`，由 `IconRegistry` 以语义名称（如 `import`、`export`、`auto_annotate`、`delete`）提供给 UI；SVG 为优先源格式，按需生成 PNG/ICO 等发布尺寸。任何图标替换只修改受管源资产及其派生物，不影响业务代码中的语义名称。
+- 保留 Windows 原生窗口边框和系统按钮，品牌顶栏位于应用内容区。任何无边框窗口方案必须先验证拖动、缩放、阴影、DPI、键盘和辅助功能，不能只为外观牺牲稳定性。
+- 固定截图回归覆盖主页与标注工作台的中英文、空/有数据、hover/selected/disabled、100%/150% DPI；视觉禁止项出现即视为回归失败。
 
 ## 15. 内置教程内容与进度
 
@@ -254,4 +257,4 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 
 ## English Summary
 
-The target architecture replaces the visible workspace/project hierarchy with `AppLibrary -> ManagedDataset`. `HelpContentService`, `TutorialProgressRepository`, and `TutorialCenter` provide versioned offline bilingual tutorials, safe action-based navigation, and global progress without writing to datasets or requiring remote content. `AnnotationWorkspace` composes the top action bar, left drawing/AI toolbar, central canvas, and split right annotation/image panel. Dataset status comes from the index, and per-dataset SQLite, virtualized views, lazy thumbnails, and background jobs support at least 10,000 images. This target is documented but not yet claimed as implemented.
+The target architecture replaces the visible workspace/project hierarchy with `AppLibrary -> ManagedDataset` and adopts visual design v2. `ThemeService` and reusable components provide cool light surfaces, DatumDock brand colors, modern rounded controls, a dark canvas, native Windows chrome, DPI-safe SVG icons, and fixed screenshot regressions instead of legacy Qt-like styling. `HelpContentService` provides offline tutorials, while `AnnotationWorkspace` composes top actions, left tools, the canvas, and the right annotation/image panel. These targets are documented but not yet implemented.
