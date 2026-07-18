@@ -50,6 +50,7 @@ from datumdock.services.dataset import DatasetPoolService, DuplicateCandidate
 from datumdock.services.exporting import SplitPlanner, XAnyLabelingExporter, YoloDetectionExporter
 from datumdock.services.interop import XAnyLabelingInteropService
 from datumdock.services.models import AutoAnnotationService, InferenceBackendSelector
+from datumdock.services.quality import AnnotationQualityService
 from datumdock.services.shortcuts import DEFAULT_SHORTCUTS, ShortcutService
 from datumdock.services.storage import ProjectIndexRepository, read_json_model, write_json_atomic
 from datumdock.services.workspace import WorkspaceService
@@ -483,6 +484,7 @@ class MainWindow(QMainWindow):
             "delete_sample": self.delete_current_sample,
             "trash": self.open_trash,
             "rename_samples": self.rename_dataset_samples,
+            "quality_check": self.check_current_annotation_quality,
             "previous_sample": lambda: self.select_adjacent_sample(-1),
             "next_sample": lambda: self.select_adjacent_sample(1),
             "undo": lambda: self.canvas.undo(),
@@ -544,6 +546,7 @@ class MainWindow(QMainWindow):
                 self._actions["models"],
                 self._actions["similarity"],
                 self._actions["rename_samples"],
+                self._actions["quality_check"],
                 self._actions["delete_sample"],
                 self._actions["trash"],
             ]
@@ -1487,6 +1490,34 @@ class MainWindow(QMainWindow):
             self,
             tr(self.locale_service, "dialog.rename.title"),
             tr(self.locale_service, "dialog.rename.complete").format(count=len(samples)),
+        )
+
+    def check_current_annotation_quality(self) -> None:
+        """仅检查当前保存后的结构质量；结果不会擅自改变用户设置的图片复核状态。"""
+
+        if (
+            self.current_sample is None
+            or self.current_project is None
+            or self.canvas.document is None
+        ):
+            return
+        issues = AnnotationQualityService().inspect(
+            self.current_sample,
+            self.canvas.document,
+            self.current_project.label_set,
+        )
+        if not issues:
+            QMessageBox.information(
+                self,
+                tr(self.locale_service, "dialog.quality.title"),
+                tr(self.locale_service, "dialog.quality.none"),
+            )
+            return
+        descriptions = [f"• {tr(self.locale_service, f'quality.{issue.code}')}" for issue in issues]
+        QMessageBox.warning(
+            self,
+            tr(self.locale_service, "dialog.quality.title"),
+            "\n".join(descriptions),
         )
 
     def refresh_context(self) -> None:
