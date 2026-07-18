@@ -99,6 +99,7 @@
 ## 当前外部阻塞记录
 
 - [-] Python 3.11 独立环境的依赖安装：当前网络环境在访问 PyPI 时出现 TLS `SSLEOFError`，因此尚未能在该环境安装 PySide6、pytest-qt、ONNX Runtime、Ultralytics、PyInstaller 与其 CPU 推理依赖。
+  - 最近复测：2026-07-18 执行 `python -m pip install -e ".[dev,inference]"` 仍在隔离构建依赖阶段失败，错误为访问 PyPI 的 TLS `SSLEOFError`。
   - 影响范围：Python 3.11 运行验证、pytest-qt 回归、ONNX/PT 真模型导入、自动标注和正式 PyInstaller 打包验证。
   - 已完成的替代验证：使用现有 Python 3.13 环境完成静态检查、服务层回归和 Qt 离屏 GUI 冒烟；这不替代 Windows Python 3.11 发布验证。
   - 恢复条件：可用的受信任 PyPI 镜像、离线 wheel 包或已配置的企业证书。
