@@ -36,6 +36,81 @@ class LabelMigrationPreview:
     shape_count: int
 
 
+@dataclass(frozen=True)
+class LabelSetComparison:
+    """两个项目标签集的严格兼容性结果及源标签到目标标签的稳定映射。"""
+
+    compatible: bool
+    label_id_mapping: dict[str, str]
+    differences: tuple[str, ...]
+
+
+class LabelSetCompatibilityService:
+    """在复制、移动或合并数据集前比较标签信息，绝不按显示文字猜测映射。"""
+
+    @staticmethod
+    def compare(source: LabelSet, target: LabelSet) -> LabelSetComparison:
+        """比较完整标签信息；稳定 ID 不同但训练和显示信息一致时可安全建立映射。"""
+
+        source_by_training = {(label.class_id, label.name): label for label in source.labels}
+        target_by_training = {(label.class_id, label.name): label for label in target.labels}
+        differences: list[str] = []
+        mapping: dict[str, str] = {}
+        for training_key in sorted(source_by_training.keys() - target_by_training.keys()):
+            differences.append(f"目标标签集缺少训练标签: {training_key[1]}")
+        for training_key in sorted(target_by_training.keys() - source_by_training.keys()):
+            differences.append(f"源标签集缺少训练标签: {training_key[1]}")
+        for training_key in sorted(source_by_training.keys() & target_by_training.keys()):
+            source_label = source_by_training[training_key]
+            target_label = target_by_training[training_key]
+            if LabelSetCompatibilityService._information_key(
+                source_label
+            ) != LabelSetCompatibilityService._information_key(target_label):
+                differences.append(f"标签信息不一致: {source_label.name}")
+                continue
+            mapping[source_label.id] = target_label.id
+        return LabelSetComparison(
+            compatible=not differences,
+            label_id_mapping=mapping if not differences else {},
+            differences=tuple(differences),
+        )
+
+    def merge_into(self, target: LabelSet, incoming: LabelSet) -> list[Label]:
+        """将不存在且无冲突的标签合并到目标；已有训练标签必须全部信息一致。"""
+
+        target_by_training = {(label.class_id, label.name): label for label in target.labels}
+        target_ids = {label.id for label in target.labels}
+        candidate = target.model_copy(deep=True)
+        additions: list[Label] = []
+        for incoming_label in incoming.labels:
+            training_key = (incoming_label.class_id, incoming_label.name)
+            existing = target_by_training.get(training_key)
+            if existing is not None:
+                if self._information_key(existing) != self._information_key(incoming_label):
+                    raise ValueError(f"标签信息不一致，无法合并: {incoming_label.name}")
+                continue
+            if incoming_label.id in target_ids:
+                raise ValueError(f"标签稳定 ID 与现有标签冲突: {incoming_label.name}")
+            LabelService().add_label(candidate, incoming_label.model_copy(deep=True))
+            additions.append(incoming_label.model_copy(deep=True))
+        target.labels = candidate.labels
+        return additions
+
+    @staticmethod
+    def _information_key(label: Label) -> tuple[object, ...]:
+        """生成不含项目内稳定 ID 的严格标签信息键，便于跨项目对比。"""
+
+        return (
+            label.class_id,
+            label.name,
+            label.alias,
+            label.description,
+            tuple(sorted(item.casefold() for item in label.synonyms)),
+            label.color.lower(),
+            label.status.value,
+        )
+
+
 class LabelService:
     """保持标签训练映射稳定，并保证活动标签颜色不重复。"""
 

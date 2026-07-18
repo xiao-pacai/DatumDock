@@ -121,12 +121,15 @@ class ModelManagerDialog(QDialog):
         layout.addWidget(self.table)
         management = QHBoxLayout()
         import_button = QPushButton(tr(self.locale_service, "dialog.models.import"))
+        update_button = QPushButton(tr(self.locale_service, "dialog.models.update"))
         mapping_button = QPushButton(tr(self.locale_service, "dialog.models.mapping"))
         delete_button = QPushButton(tr(self.locale_service, "dialog.models.delete"))
         import_button.clicked.connect(self.import_model)
+        update_button.clicked.connect(self.update_model)
         mapping_button.clicked.connect(self.configure_mapping)
         delete_button.clicked.connect(self.delete_model)
         management.addWidget(import_button)
+        management.addWidget(update_button)
         management.addWidget(mapping_button)
         management.addWidget(delete_button)
         management.addStretch()
@@ -202,6 +205,27 @@ class ModelManagerDialog(QDialog):
         try:
             self.model_service.save_model(self.root, self.project, entry)
         except (OSError, ValueError) as error:
+            QMessageBox.warning(self, tr(self.locale_service, "dialog.error"), str(error))
+            return
+        self.refresh()
+
+    def update_model(self) -> None:
+        """验证新文件成功后替换当前模型，类别映射需要由用户重新确认。"""
+
+        entry = self.selected_entry()
+        if entry is None:
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            tr(self.locale_service, "dialog.models.update"),
+            "",
+            tr(self.locale_service, "dialog.models.filter"),
+        )
+        if not path:
+            return
+        try:
+            self.model_service.replace_model(self.root, self.project, entry, Path(path))
+        except (OSError, ValueError, RuntimeError) as error:
             QMessageBox.warning(self, tr(self.locale_service, "dialog.error"), str(error))
             return
         self.refresh()

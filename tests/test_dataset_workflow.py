@@ -153,3 +153,27 @@ def test_small_dataset_deletion_can_be_restored_from_managed_trash(tmp_path: Pat
     assert restored.id == sample.id
     assert Path(restored.image_path).is_file()
     assert index.get_sample(sample.id) is not None
+
+
+def test_batch_rename_keeps_image_annotation_and_index_consistent(tmp_path: Path) -> None:
+    """批量重命名后所有受管路径和 LabelMe imagePath 都必须同步更新。"""
+
+    root, project, dataset, _ = create_project_with_dataset(tmp_path)
+    first = tmp_path / "first.png"
+    second = tmp_path / "second.png"
+    create_source_image(first, (50, 100, 150))
+    create_source_image(second, (150, 100, 50))
+    pool = DatasetPoolService()
+    imported = pool.import_images(root, project, dataset, [first, second])
+    dataset.naming_policy.prefix = "component"
+    DatasetPoolService().rename_samples(root, project, dataset, imported.imported_sample_ids)
+    index = ProjectIndexRepository(root / "projects" / project.id / "project-index.sqlite")
+    samples = index.list_samples(dataset.id, limit=10)
+    assert [sample.filename for sample in samples] == [
+        "component_000001.png",
+        "component_000002.png",
+    ]
+    for sample in samples:
+        assert Path(sample.image_path).is_file()
+        payload = Path(sample.annotation_path).read_text(encoding="utf-8")
+        assert f'"imagePath": "{sample.filename}"' in payload

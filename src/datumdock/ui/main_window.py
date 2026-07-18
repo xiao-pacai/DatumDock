@@ -52,6 +52,7 @@ from datumdock.services.shortcuts import DEFAULT_SHORTCUTS, ShortcutService
 from datumdock.services.storage import ProjectIndexRepository, read_json_model, write_json_atomic
 from datumdock.services.workspace import WorkspaceService
 from datumdock.ui.annotation_canvas import AnnotationCanvas
+from datumdock.ui.icons import IconRegistry
 from datumdock.ui.label_manager import LabelManagerDialog
 from datumdock.ui.model_manager import ModelManagerDialog
 from datumdock.ui.sample_browser import SampleBrowser
@@ -368,6 +369,7 @@ class MainWindow(QMainWindow):
         self.is_sidebar_collapsed = False
         self._browser_context: tuple[str, str] | None = None
         self._actions: dict[str, QAction] = {}
+        self.icon_registry = IconRegistry(repository_root())
         self._build_ui()
         self.locale_service.subscribe(self.retranslate_ui)
         self.retranslate_ui()
@@ -416,6 +418,25 @@ class MainWindow(QMainWindow):
             action = QAction(self)
             action.triggered.connect(callback)
             self._actions[action_id] = action
+        icon_names = {
+            "new_workspace": "workspace",
+            "open_workspace": "workspace",
+            "new_project": "workspace",
+            "new_dataset": "dataset",
+            "import_images": "import",
+            "import_xany": "import",
+            "labels": "labels",
+            "models": "models",
+            "export": "export",
+            "export_xany": "export",
+            "export_backup": "export",
+            "import_backup": "import",
+            "delete_sample": "trash",
+            "trash": "trash",
+            "settings": "settings",
+        }
+        for action_id, icon_name in icon_names.items():
+            self._actions[action_id].setIcon(self.icon_registry.icon(icon_name))
 
     def _create_menu_and_toolbar(self) -> None:
         """组织常用入口，任何行动仍复用同一个 QAction 回调。"""

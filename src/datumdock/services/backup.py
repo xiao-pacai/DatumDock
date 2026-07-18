@@ -176,12 +176,18 @@ class DatasetTransferService:
         )
         target_root = WorkspaceService.dataset_path(root, project.id, target.id)
         new_ids: list[str] = []
-        copied: list[tuple[DatasetSample, DatasetSample]] = []
+        copied: list[tuple[DatasetSample, DatasetSample, list[tuple[str, str]]]] = []
+        removed_sources: list[tuple[DatasetSample, DatasetSample, list[tuple[str, str]]]] = []
         try:
             for sample_id in sample_ids:
                 source_sample = index.get_sample(sample_id)
                 if source_sample is None or source_sample.dataset_id != source.id:
                     raise KeyError("存在不属于源数据集的样本")
+                if (
+                    not Path(source_sample.image_path).is_file()
+                    or not Path(source_sample.annotation_path).is_file()
+                ):
+                    raise FileNotFoundError("源样本图片或标注文件不存在")
                 new_sample = source_sample.model_copy(
                     update={
                         "id": new_id(),
@@ -200,18 +206,32 @@ class DatasetTransferService:
                     or Path(new_sample.annotation_path).exists()
                 ):
                     raise FileExistsError(f"目标数据集已存在文件: {new_sample.filename}")
+                label_rows = index.get_label_rows(source_sample.id)
                 shutil.copy2(source_sample.image_path, new_sample.image_path)
                 shutil.copy2(source_sample.annotation_path, new_sample.annotation_path)
-                index.upsert_sample(new_sample, index.get_label_rows(source_sample.id))
-                copied.append((source_sample, new_sample))
+                index.upsert_sample(new_sample, label_rows)
+                copied.append((source_sample, new_sample, label_rows))
                 new_ids.append(new_sample.id)
             if move:
-                for source_sample, _ in copied:
+                for source_sample, new_sample, label_rows in copied:
                     Path(source_sample.image_path).unlink()
                     Path(source_sample.annotation_path).unlink()
                     index.delete_sample(source_sample.id)
+                    removed_sources.append((source_sample, new_sample, label_rows))
         except Exception:
-            for _, new_sample in copied:
+            for source_sample, new_sample, label_rows in reversed(removed_sources):
+                if (
+                    not Path(source_sample.image_path).exists()
+                    and Path(new_sample.image_path).is_file()
+                ):
+                    shutil.copy2(new_sample.image_path, source_sample.image_path)
+                if (
+                    not Path(source_sample.annotation_path).exists()
+                    and Path(new_sample.annotation_path).is_file()
+                ):
+                    shutil.copy2(new_sample.annotation_path, source_sample.annotation_path)
+                index.upsert_sample(source_sample, label_rows)
+            for _, new_sample, _ in copied:
                 Path(new_sample.image_path).unlink(missing_ok=True)
                 Path(new_sample.annotation_path).unlink(missing_ok=True)
                 index.delete_sample(new_sample.id)

@@ -177,36 +177,105 @@ class DatasetPoolService:
         final_names = [filename for _, filename in plan]
         if len(final_names) != len(set(final_names)):
             raise ValueError("命名规则产生重复文件名")
-        temporary_pairs: list[tuple[DatasetSample, Path, Path, str]] = []
+        for filename in final_names:
+            image_conflict = images_root / filename
+            annotation_conflict = annotations_root / f"{Path(filename).stem}.json"
+            for conflict in (image_conflict, annotation_conflict):
+                if not conflict.exists():
+                    continue
+                belongs_to_selected_sample = any(
+                    conflict in {Path(sample.image_path), Path(sample.annotation_path)}
+                    for sample in samples
+                )
+                if not belongs_to_selected_sample:
+                    raise FileExistsError(f"命名目标与未选中样本冲突: {conflict.name}")
+        transactions: list[dict[str, object]] = []
         try:
-            for sample, filename in plan:
+            for position, (sample, filename) in enumerate(plan, start=1):
                 old_image = Path(sample.image_path)
                 old_annotation = Path(sample.annotation_path)
-                temp_image = images_root / f".{sample.id}.rename.png"
-                temp_annotation = annotations_root / f".{sample.id}.rename.json"
+                if (
+                    sample.dataset_id != dataset.id
+                    or not old_image.is_file()
+                    or not old_annotation.is_file()
+                ):
+                    raise FileNotFoundError("待重命名样本不属于当前数据集或文件不存在")
+                temp_image = images_root / f".ddrn-{position:06d}.png"
+                temp_annotation = annotations_root / f".ddrn-{position:06d}.json"
+                if temp_image.exists() or temp_annotation.exists():
+                    raise FileExistsError("发现未清理的重命名临时文件")
+                transaction = {
+                    "sample": sample,
+                    "original": sample.model_copy(deep=True),
+                    "label_rows": index.get_label_rows(sample.id),
+                    "old_annotation": old_annotation.read_bytes(),
+                    "temp_image": temp_image,
+                    "temp_annotation": temp_annotation,
+                    "new_image": images_root / filename,
+                    "new_annotation": annotations_root / f"{Path(filename).stem}.json",
+                    "filename": filename,
+                }
                 os.replace(old_image, temp_image)
-                os.replace(old_annotation, temp_annotation)
-                temporary_pairs.append((sample, temp_image, temp_annotation, filename))
+                try:
+                    os.replace(old_annotation, temp_annotation)
+                except Exception:
+                    os.replace(temp_image, old_image)
+                    raise
+                transactions.append(transaction)
             results: list[tuple[str, str]] = []
-            for sample, temp_image, temp_annotation, filename in temporary_pairs:
-                new_image = images_root / filename
-                new_annotation = annotations_root / f"{Path(filename).stem}.json"
+            for transaction in transactions:
+                sample = transaction["sample"]
+                temp_image = transaction["temp_image"]
+                temp_annotation = transaction["temp_annotation"]
+                new_image = transaction["new_image"]
+                new_annotation = transaction["new_annotation"]
+                filename = transaction["filename"]
+                if not isinstance(sample, DatasetSample):
+                    raise RuntimeError("重命名事务样本无效")
                 os.replace(temp_image, new_image)
                 os.replace(temp_annotation, new_annotation)
-                sample.filename = filename
+                sample.filename = str(filename)
                 sample.image_path = str(new_image)
                 sample.annotation_path = str(new_annotation)
                 document = self.load_document(sample, project)
-                document.image_filename = filename
+                document.image_filename = str(filename)
                 self.save_document(root, project, sample, document)
-                results.append((sample.id, filename))
+                results.append((sample.id, str(filename)))
             return results
         except Exception:
-            for sample, temp_image, temp_annotation, _ in temporary_pairs:
-                if temp_image.exists():
-                    os.replace(temp_image, Path(sample.image_path))
-                if temp_annotation.exists():
-                    os.replace(temp_annotation, Path(sample.annotation_path))
+            for transaction in reversed(transactions):
+                sample = transaction["sample"]
+                original = transaction["original"]
+                temp_image = transaction["temp_image"]
+                temp_annotation = transaction["temp_annotation"]
+                new_image = transaction["new_image"]
+                new_annotation = transaction["new_annotation"]
+                label_rows = transaction["label_rows"]
+                old_annotation = transaction["old_annotation"]
+                if not isinstance(sample, DatasetSample) or not isinstance(original, DatasetSample):
+                    continue
+                old_image_path = Path(original.image_path)
+                old_annotation_path = Path(original.annotation_path)
+                for current_path, old_path in (
+                    (new_image, old_image_path),
+                    (temp_image, old_image_path),
+                    (new_annotation, old_annotation_path),
+                    (temp_annotation, old_annotation_path),
+                ):
+                    if (
+                        isinstance(current_path, Path)
+                        and current_path.exists()
+                        and not old_path.exists()
+                    ):
+                        os.replace(current_path, old_path)
+                if isinstance(old_annotation, bytes) and old_annotation_path.is_file():
+                    self._write_bytes_atomic(old_annotation_path, old_annotation)
+                sample.filename = original.filename
+                sample.image_path = original.image_path
+                sample.annotation_path = original.annotation_path
+                sample.review_status = original.review_status
+                if isinstance(label_rows, list):
+                    index.upsert_sample(original, label_rows)
             raise
 
     def delete_sample(
@@ -222,32 +291,53 @@ class DatasetPoolService:
         project_root = WorkspaceService.project_path(root, project.id)
         image_path = Path(sample.image_path)
         annotation_path = Path(sample.annotation_path)
-        if move_to_trash:
-            trash_root = project_root / "trash" / sample.id
-            trash_root.mkdir(parents=True, exist_ok=False)
-            image_target = trash_root / image_path.name
-            annotation_target = trash_root / annotation_path.name
-            shutil.move(str(image_path), image_target)
-            shutil.move(str(annotation_path), annotation_target)
-            write_json_atomic(
-                trash_root / "manifest.json",
-                {
-                    "sample": sample.model_dump(mode="json"),
-                    "image_filename": image_path.name,
-                    "annotation_filename": annotation_path.name,
-                },
-            )
-        else:
-            image_path.unlink(missing_ok=False)
-            annotation_path.unlink(missing_ok=False)
+        if not image_path.is_file() or not annotation_path.is_file():
+            raise FileNotFoundError("受管图片或标注文件不存在，已停止删除")
         thumbnail = (
             WorkspaceService.dataset_path(root, project.id, sample.dataset_id)
             / "cache"
             / "thumbnails"
             / f"{sample.id}.png"
         )
-        thumbnail.unlink(missing_ok=True)
-        ProjectIndexRepository(project_root / "project-index.sqlite").delete_sample(sample.id)
+        staging_root = project_root / f".deleting-{sample.id}"
+        trash_root = project_root / "trash" / sample.id
+        if staging_root.exists() or trash_root.exists():
+            raise FileExistsError("删除事务目标已存在，请先检查回收站或残留任务")
+        staging_root.mkdir()
+        staged_image = staging_root / image_path.name
+        staged_annotation = staging_root / annotation_path.name
+        staged_thumbnail = staging_root / thumbnail.name
+        active_root = staging_root
+        try:
+            os.replace(image_path, staged_image)
+            os.replace(annotation_path, staged_annotation)
+            if thumbnail.is_file():
+                os.replace(thumbnail, staged_thumbnail)
+            if move_to_trash:
+                write_json_atomic(
+                    staging_root / "manifest.json",
+                    {
+                        "sample": sample.model_dump(mode="json"),
+                        "image_filename": image_path.name,
+                        "annotation_filename": annotation_path.name,
+                        "thumbnail_filename": thumbnail.name
+                        if staged_thumbnail.is_file()
+                        else None,
+                    },
+                )
+                os.replace(staging_root, trash_root)
+                active_root = trash_root
+            ProjectIndexRepository(project_root / "project-index.sqlite").delete_sample(sample.id)
+            if not move_to_trash:
+                shutil.rmtree(staging_root, ignore_errors=True)
+        except Exception:
+            self._restore_staged_sample(
+                active_root,
+                image_path,
+                annotation_path,
+                thumbnail,
+            )
+            raise
 
     def restore_sample(self, root: Path, project: Project, sample_id: str) -> DatasetSample:
         """从受管回收站恢复完整样本，原目标冲突时停止恢复而不覆盖现有文件。"""
@@ -261,11 +351,47 @@ class DatasetPoolService:
         sample = DatasetSample.model_validate(manifest["sample"])
         if Path(sample.image_path).exists() or Path(sample.annotation_path).exists():
             raise FileExistsError("恢复目标已存在同名文件")
-        shutil.move(str(trash_root / manifest["image_filename"]), sample.image_path)
-        shutil.move(str(trash_root / manifest["annotation_filename"]), sample.annotation_path)
-        shutil.rmtree(trash_root)
-        document = self.load_document(sample, project)
-        self.save_document(root, project, sample, document)
+        image_source = trash_root / manifest["image_filename"]
+        annotation_source = trash_root / manifest["annotation_filename"]
+        thumbnail_name = manifest.get("thumbnail_filename")
+        thumbnail_source = trash_root / str(thumbnail_name) if thumbnail_name else None
+        thumbnail_target = (
+            WorkspaceService.dataset_path(root, project.id, sample.dataset_id)
+            / "cache"
+            / "thumbnails"
+            / str(thumbnail_name)
+            if thumbnail_name
+            else None
+        )
+        if not image_source.is_file() or not annotation_source.is_file():
+            raise FileNotFoundError("回收站样本文件不完整，无法恢复")
+        document = self.labelme_repository.load(
+            annotation_source,
+            sample.id,
+            project.label_set,
+            sample.filename,
+            (sample.width, sample.height),
+        )
+        moved: list[tuple[Path, Path]] = []
+        try:
+            os.replace(image_source, sample.image_path)
+            moved.append((Path(sample.image_path), image_source))
+            os.replace(annotation_source, sample.annotation_path)
+            moved.append((Path(sample.annotation_path), annotation_source))
+            if (
+                thumbnail_source is not None
+                and thumbnail_source.is_file()
+                and thumbnail_target is not None
+            ):
+                os.replace(thumbnail_source, thumbnail_target)
+                moved.append((thumbnail_target, thumbnail_source))
+            self.save_document(root, project, sample, document)
+        except Exception:
+            for target, source in reversed(moved):
+                if target.exists():
+                    os.replace(target, source)
+            raise
+        shutil.rmtree(trash_root, ignore_errors=True)
         return sample
 
     def list_trashed_samples(self, root: Path, project: Project) -> list[DatasetSample]:
@@ -280,6 +406,47 @@ class DatasetPoolService:
             except (OSError, ValueError, KeyError, json.JSONDecodeError):
                 continue
         return sorted(samples, key=lambda item: item.filename)
+
+    @staticmethod
+    def _restore_staged_sample(
+        active_root: Path,
+        image_path: Path,
+        annotation_path: Path,
+        thumbnail: Path,
+    ) -> None:
+        """删除事务失败时把已暂存的文件放回原路径，索引仍保持原样。"""
+
+        staged_image = active_root / image_path.name
+        staged_annotation = active_root / annotation_path.name
+        staged_thumbnail = active_root / thumbnail.name
+        if staged_image.is_file() and not image_path.exists():
+            os.replace(staged_image, image_path)
+        if staged_annotation.is_file() and not annotation_path.exists():
+            os.replace(staged_annotation, annotation_path)
+        if staged_thumbnail.is_file() and not thumbnail.exists():
+            os.replace(staged_thumbnail, thumbnail)
+        if active_root.exists():
+            shutil.rmtree(active_root, ignore_errors=True)
+
+    @staticmethod
+    def _write_bytes_atomic(path: Path, content: bytes) -> None:
+        """在事务回滚时恢复原始 JSON 字节，避免二次序列化改变兼容载荷。"""
+
+        handle, temporary_name = tempfile.mkstemp(
+            prefix=f".{path.stem}-",
+            suffix=".rollback",
+            dir=path.parent,
+        )
+        temporary_path = Path(temporary_name)
+        try:
+            with os.fdopen(handle, "wb") as stream:
+                stream.write(content)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary_path, path)
+        except Exception:
+            temporary_path.unlink(missing_ok=True)
+            raise
 
     @staticmethod
     def _next_filename(images_root: Path, dataset: Dataset, index: int) -> str:

@@ -109,6 +109,7 @@ CATALOGS: dict[str, dict[str, str]] = {
         "dialog.delete.trash": "将删除受管图片、标注与缓存，并移动到回收站，可稍后恢复。继续吗？",
         "dialog.delete.permanent": "将永久删除受管图片、标注与缓存，此操作不可恢复。继续吗？",
         "dialog.trash.title": "项目回收站",
+        "dialog.trash.id": "标识",
         "dialog.trash.restore": "恢复选中图片",
         "dialog.trash.empty": "回收站为空。",
         "dialog.export.title": "导出 YOLO 检测数据集",
@@ -125,6 +126,12 @@ CATALOGS: dict[str, dict[str, str]] = {
         "dialog.labels.add": "新增标签",
         "dialog.labels.edit": "编辑标签",
         "dialog.labels.archive": "归档标签",
+        "dialog.labels.merge": "合并其他项目标签集",
+        "dialog.labels.merge_choose": "选择要合并标签集的来源项目",
+        "dialog.labels.merge_preview": (
+            "将新增 {count} 个无冲突标签。重复训练标签的完整信息必须一致，是否继续？"
+        ),
+        "dialog.labels.merge_no_source": "当前工作区没有可用于合并的其他项目。",
         "dialog.labels.name": "英文训练名",
         "dialog.labels.alias": "显示别名",
         "dialog.labels.description": "描述",
@@ -150,6 +157,7 @@ CATALOGS: dict[str, dict[str, str]] = {
         ),
         "dialog.models.title": "自动标注模型库",
         "dialog.models.import": "导入模型",
+        "dialog.models.update": "更新模型",
         "dialog.models.delete": "删除模型",
         "dialog.models.mapping": "配置类别映射",
         "dialog.models.current": "标注当前图片",
@@ -309,6 +317,7 @@ CATALOGS: dict[str, dict[str, str]] = {
             "This cannot be undone. Continue?"
         ),
         "dialog.trash.title": "Project Trash",
+        "dialog.trash.id": "ID",
         "dialog.trash.restore": "Restore Selected Image",
         "dialog.trash.empty": "Trash is empty.",
         "dialog.export.title": "Export YOLO Detection Dataset",
@@ -325,6 +334,13 @@ CATALOGS: dict[str, dict[str, str]] = {
         "dialog.labels.add": "Add Label",
         "dialog.labels.edit": "Edit Label",
         "dialog.labels.archive": "Archive Label",
+        "dialog.labels.merge": "Merge Another Project's Label Set",
+        "dialog.labels.merge_choose": "Select the source project whose label set to merge",
+        "dialog.labels.merge_preview": (
+            "This adds {count} non-conflicting labels. All information of duplicate "
+            "training labels must match. Continue?"
+        ),
+        "dialog.labels.merge_no_source": "There is no other project available to merge.",
         "dialog.labels.name": "English Training Name",
         "dialog.labels.alias": "Display Alias",
         "dialog.labels.description": "Description",
@@ -353,6 +369,7 @@ CATALOGS: dict[str, dict[str, str]] = {
         ),
         "dialog.models.title": "Auto-annotation Model Library",
         "dialog.models.import": "Import Model",
+        "dialog.models.update": "Update Model",
         "dialog.models.delete": "Delete Model",
         "dialog.models.mapping": "Configure Class Mapping",
         "dialog.models.current": "Annotate Current Image",

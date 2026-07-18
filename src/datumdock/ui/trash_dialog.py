@@ -73,7 +73,12 @@ class TrashDialog(QDialog):
             tr(self.locale_service, "dialog.trash.empty") if not samples else ""
         )
         self.table.setRowCount(len(samples))
-        self.table.setHorizontalHeaderLabels(["ID", tr(self.locale_service, "panel.samples")])
+        self.table.setHorizontalHeaderLabels(
+            [
+                tr(self.locale_service, "dialog.trash.id"),
+                tr(self.locale_service, "panel.samples"),
+            ]
+        )
         for row, sample in enumerate(samples):
             identifier = QTableWidgetItem(sample.id)
             identifier.setData(Qt.ItemDataRole.UserRole, sample.id)

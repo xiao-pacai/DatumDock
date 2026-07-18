@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -96,6 +97,57 @@ class ModelImportService:
         if not model_directory.is_dir():
             raise FileNotFoundError("项目中找不到该模型目录")
         shutil.rmtree(model_directory)
+
+    def replace_model(
+        self,
+        root: Path,
+        project: Project,
+        entry: ModelEntry,
+        source_path: Path,
+    ) -> ModelEntry:
+        """先完成新模型验证和暂存，再原子替换旧目录，失败时保留旧模型可用。"""
+
+        suffix = source_path.suffix.lower()
+        if suffix == ".onnx":
+            inspection = self._inspect_onnx(source_path)
+        elif suffix == ".pt":
+            inspection = self._inspect_ultralytics(source_path)
+        else:
+            raise ValueError("仅支持 ONNX 或经验证的 Ultralytics YOLO PT 模型")
+        models_root = WorkspaceService.project_path(root, project.id) / "models"
+        target_directory = models_root / entry.id
+        if not target_directory.is_dir():
+            raise FileNotFoundError("项目中找不到待更新的模型目录")
+        updated = entry.model_copy(
+            update={
+                "display_name": source_path.stem,
+                "filename": source_path.name,
+                "format": suffix.removeprefix("."),
+                "runtime_config": inspection["runtime_config"],
+                "model_classes": inspection["model_classes"],
+                "label_mapping": {},
+                "status": "verified",
+            }
+        )
+        staging = models_root / f".updating-{entry.id}"
+        rollback = models_root / f".previous-{entry.id}"
+        if staging.exists() or rollback.exists():
+            raise FileExistsError("模型更新事务残留，请先处理后重试")
+        staging.mkdir()
+        try:
+            shutil.copy2(source_path, staging / source_path.name)
+            write_json_atomic(staging / "model.json", updated)
+            os.replace(target_directory, rollback)
+            try:
+                os.replace(staging, target_directory)
+            except Exception:
+                os.replace(rollback, target_directory)
+                raise
+            shutil.rmtree(rollback, ignore_errors=True)
+        except Exception:
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
+        return updated
 
     @staticmethod
     def _inspect_onnx(source_path: Path) -> dict[str, Any]:

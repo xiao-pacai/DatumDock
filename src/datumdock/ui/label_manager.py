@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFormLayout,
     QHBoxLayout,
+    QInputDialog,
     QLineEdit,
     QMessageBox,
     QPushButton,
@@ -25,7 +26,11 @@ from PySide6.QtWidgets import (
 from datumdock.domain.models import Label, LabelStatus, Project
 from datumdock.i18n.catalog import LocaleService, tr
 from datumdock.services.labelme import LabelMeRepository
-from datumdock.services.labels import LabelMigrationService, LabelService
+from datumdock.services.labels import (
+    LabelMigrationService,
+    LabelService,
+    LabelSetCompatibilityService,
+)
 from datumdock.services.storage import ProjectIndexRepository
 from datumdock.services.workspace import WorkspaceService
 
@@ -150,14 +155,17 @@ class LabelManagerDialog(QDialog):
         self.add_button = QPushButton(tr(self.locale_service, "dialog.labels.add"))
         self.edit_button = QPushButton(tr(self.locale_service, "dialog.labels.edit"))
         self.archive_button = QPushButton(tr(self.locale_service, "dialog.labels.archive"))
+        self.merge_button = QPushButton(tr(self.locale_service, "dialog.labels.merge"))
         close_button = QPushButton(tr(self.locale_service, "settings.close"))
         self.add_button.clicked.connect(self.add_label)
         self.edit_button.clicked.connect(self.edit_selected)
         self.archive_button.clicked.connect(self.archive_selected)
+        self.merge_button.clicked.connect(self.merge_label_set)
         close_button.clicked.connect(self.accept)
         buttons_layout.addWidget(self.add_button)
         buttons_layout.addWidget(self.edit_button)
         buttons_layout.addWidget(self.archive_button)
+        buttons_layout.addWidget(self.merge_button)
         buttons_layout.addStretch()
         buttons_layout.addWidget(close_button)
         layout.addLayout(buttons_layout)
@@ -221,7 +229,7 @@ class LabelManagerDialog(QDialog):
         try:
             self.label_service.add_label(self.project.label_set, dialog.build_label())
             WorkspaceService().save_project(self.root, self.project)
-        except (ValueError, OSError) as error:
+        except (ValueError, OSError, KeyError) as error:
             QMessageBox.warning(self, tr(self.locale_service, "dialog.error"), str(error))
             return
         self.refresh()
@@ -242,6 +250,7 @@ class LabelManagerDialog(QDialog):
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
+        original = label.model_copy(deep=True)
         try:
             candidate = dialog.build_label()
             self.label_service.validate_label(self.project.label_set, candidate)
@@ -281,7 +290,15 @@ class LabelManagerDialog(QDialog):
                 label.color = candidate.color
                 label.class_id = candidate.class_id
                 WorkspaceService().save_project(self.root, self.project)
-        except (ValueError, OSError) as error:
+        except (ValueError, OSError, KeyError) as error:
+            label.id = original.id
+            label.class_id = original.class_id
+            label.name = original.name
+            label.alias = original.alias
+            label.description = original.description
+            label.synonyms = original.synonyms
+            label.color = original.color
+            label.status = original.status
             QMessageBox.warning(self, tr(self.locale_service, "dialog.error"), str(error))
             return
         self.refresh()
@@ -297,6 +314,59 @@ class LabelManagerDialog(QDialog):
         try:
             WorkspaceService().save_project(self.root, self.project)
         except OSError as error:
+            QMessageBox.warning(self, tr(self.locale_service, "dialog.error"), str(error))
+            return
+        self.refresh()
+        self.labels_changed.emit()
+
+    def merge_label_set(self) -> None:
+        """从同一工作区选择来源项目；冲突时保持当前项目标签集完全不变。"""
+
+        workspace = WorkspaceService().open_workspace(self.root)
+        candidates = [item for item in workspace.projects if item.id != self.project.id]
+        if not candidates:
+            QMessageBox.information(
+                self,
+                tr(self.locale_service, "dialog.labels.merge"),
+                tr(self.locale_service, "dialog.labels.merge_no_source"),
+            )
+            return
+        display_names = [f"{item.name} ({item.id[:8]})" for item in candidates]
+        choice, accepted = QInputDialog.getItem(
+            self,
+            tr(self.locale_service, "dialog.labels.merge"),
+            tr(self.locale_service, "dialog.labels.merge_choose"),
+            display_names,
+            editable=False,
+        )
+        if not accepted:
+            return
+        selected_index = display_names.index(choice)
+        source_project = WorkspaceService().open_project(
+            self.root,
+            candidates[selected_index].id,
+        )
+        target_keys = {(label.class_id, label.name) for label in self.project.label_set.labels}
+        addition_count = sum(
+            (label.class_id, label.name) not in target_keys
+            for label in source_project.label_set.labels
+        )
+        confirmed = QMessageBox.question(
+            self,
+            tr(self.locale_service, "dialog.labels.merge"),
+            tr(self.locale_service, "dialog.labels.merge_preview").format(count=addition_count),
+        )
+        if confirmed != QMessageBox.StandardButton.Yes:
+            return
+        original = self.project.label_set.model_copy(deep=True)
+        try:
+            LabelSetCompatibilityService().merge_into(
+                self.project.label_set,
+                source_project.label_set,
+            )
+            WorkspaceService().save_project(self.root, self.project)
+        except (OSError, ValueError, KeyError) as error:
+            self.project.label_set = original
             QMessageBox.warning(self, tr(self.locale_service, "dialog.error"), str(error))
             return
         self.refresh()
