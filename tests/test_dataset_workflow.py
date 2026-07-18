@@ -104,6 +104,43 @@ def test_xanylabeling_export_preserves_unsupported_shape(tmp_path: Path) -> None
     assert '"shape_type": "rectangle"' in payload
 
 
+def test_project_label_inspection_query_returns_samples_across_datasets(tmp_path: Path) -> None:
+    """标签检查集合从 SQLite 跨数据集查询，不复制图片且能返回目标框数量。"""
+
+    root, project, first_dataset, label = create_project_with_dataset(tmp_path)
+    second_dataset = WorkspaceService().create_dataset(root, project, "验证池")
+    first_source = tmp_path / "first.png"
+    second_source = tmp_path / "second.png"
+    create_source_image(first_source, (30, 80, 120))
+    create_source_image(second_source, (120, 80, 30))
+    pool = DatasetPoolService()
+    first_report = pool.import_images(root, project, first_dataset, [first_source])
+    second_report = pool.import_images(root, project, second_dataset, [second_source])
+    index = ProjectIndexRepository(root / "projects" / project.id / "project-index.sqlite")
+    for sample_id in [*first_report.imported_sample_ids, *second_report.imported_sample_ids]:
+        sample = index.get_sample(sample_id)
+        assert sample is not None
+        document = pool.load_document(sample, project)
+        document.rectangles.extend(
+            [
+                RectangleShape(label_id=label.id, x1=1, y1=1, x2=20, y2=20),
+                RectangleShape(label_id=label.id, x1=30, y1=5, x2=50, y2=25),
+            ]
+        )
+        pool.save_document(root, project, sample, document)
+
+    result = index.list_project_label_samples(
+        [first_dataset.id, second_dataset.id],
+        label.id,
+    )
+
+    assert index.count_project_label_samples([first_dataset.id, second_dataset.id], label.id) == 2
+    assert {(sample.dataset_id, shape_count) for sample, shape_count in result} == {
+        (first_dataset.id, 2),
+        (second_dataset.id, 2),
+    }
+
+
 def test_confirmed_similar_images_are_not_split_across_yolo_partitions(tmp_path: Path) -> None:
     """确认的近似图组必须整体进入同一划分，避免验证集泄露训练集近似样本。"""
 

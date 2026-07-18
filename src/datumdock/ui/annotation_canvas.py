@@ -206,6 +206,23 @@ class AnnotationCanvas(QGraphicsView):
 
         self.current_label_id = label_id
 
+    def focus_first_label_shape(self, label_id: str) -> None:
+        """从标签检查集合跳转后选中并居中第一个目标框，帮助用户立即核查。"""
+
+        if self.document is None:
+            return
+        self._scene.clearSelection()
+        for rectangle in self.document.rectangles:
+            if rectangle.label_id != label_id:
+                continue
+            item = self._items.get(rectangle.id)
+            if item is None:
+                continue
+            item.setSelected(True)
+            self.centerOn(item)
+            item.update()
+            return
+
     def delete_selected(self) -> None:
         """删除选中矩形并发出自动保存通知，未选中时不影响图片文件。"""
 

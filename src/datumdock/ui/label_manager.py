@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QInputDialog,
+    QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
@@ -115,10 +116,141 @@ class LabelEditorDialog(QDialog):
         self.color_button.setStyleSheet(f"background: {self.color}; color: #35403C;")
 
 
+class LabelInspectionDialog(QDialog):
+    """按页展示项目内包含目标标签的样本，点击后由主窗口跳转回原始画布。"""
+
+    sample_open_requested = Signal(str, str, str)
+    PAGE_SIZE = 100
+
+    def __init__(
+        self,
+        locale_service: LocaleService,
+        index: ProjectIndexRepository,
+        project: Project,
+        label: Label,
+        parent: QWidget,
+    ) -> None:
+        super().__init__(parent)
+        self.locale_service = locale_service
+        self.index = index
+        self.project = project
+        self.label = label
+        self.page = 0
+        self.dataset_names = {dataset.id: dataset.name for dataset in project.datasets}
+        self.setWindowTitle(
+            tr(locale_service, "dialog.labels.inspect_title").format(label=label.alias)
+        )
+        self._build_ui()
+        self.refresh()
+
+    def _build_ui(self) -> None:
+        """创建轻量表格和分页控件，不会为了万级项目预加载所有检查结果。"""
+
+        layout = QVBoxLayout(self)
+        self.empty_label = QLabel()
+        self.empty_label.setWordWrap(True)
+        layout.addWidget(self.empty_label)
+        self.table = QTableWidget(0, 4)
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.table.cellDoubleClicked.connect(lambda *_: self.open_selected())
+        layout.addWidget(self.table)
+        controls = QHBoxLayout()
+        self.previous_button = QPushButton(tr(self.locale_service, "browser.previous_page"))
+        self.previous_button.clicked.connect(self.previous_page)
+        self.page_label = QLabel()
+        self.page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.next_button = QPushButton(tr(self.locale_service, "browser.next_page"))
+        self.next_button.clicked.connect(self.next_page)
+        self.open_button = QPushButton(tr(self.locale_service, "dialog.labels.inspect_open"))
+        self.open_button.clicked.connect(self.open_selected)
+        controls.addWidget(self.previous_button)
+        controls.addWidget(self.page_label, 1)
+        controls.addWidget(self.next_button)
+        controls.addWidget(self.open_button)
+        layout.addLayout(controls)
+
+    def refresh(self) -> None:
+        """从项目索引读取当前页，样本稳定 ID 放在不可编辑表格项的用户数据中。"""
+
+        dataset_ids = [dataset.id for dataset in self.project.datasets]
+        total = self.index.count_project_label_samples(dataset_ids, self.label.id)
+        page_total = max(1, (total + self.PAGE_SIZE - 1) // self.PAGE_SIZE)
+        self.page = min(self.page, page_total - 1)
+        rows = self.index.list_project_label_samples(
+            dataset_ids,
+            self.label.id,
+            offset=self.page * self.PAGE_SIZE,
+            limit=self.PAGE_SIZE,
+        )
+        self.table.setHorizontalHeaderLabels(
+            [
+                tr(self.locale_service, "dialog.labels.inspect_dataset"),
+                tr(self.locale_service, "dialog.labels.inspect_filename"),
+                tr(self.locale_service, "dialog.labels.inspect_shapes"),
+                tr(self.locale_service, "dialog.labels.inspect_review"),
+            ]
+        )
+        self.table.setRowCount(len(rows))
+        for row, (sample, shape_count) in enumerate(rows):
+            values = [
+                self.dataset_names.get(sample.dataset_id, sample.dataset_id),
+                sample.filename,
+                str(shape_count),
+                tr(self.locale_service, f"review.{sample.review_status.value}"),
+            ]
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                if column == 0:
+                    item.setData(Qt.ItemDataRole.UserRole, (sample.dataset_id, sample.id))
+                self.table.setItem(row, column, item)
+        self.empty_label.setText(
+            tr(self.locale_service, "dialog.labels.inspect_empty") if not rows else ""
+        )
+        self.previous_button.setEnabled(self.page > 0)
+        self.next_button.setEnabled(self.page + 1 < page_total)
+        self.open_button.setEnabled(bool(rows))
+        self.page_label.setText(
+            tr(self.locale_service, "browser.page").format(
+                page=self.page + 1,
+                total=page_total,
+                count=total,
+            )
+        )
+        self.table.resizeColumnsToContents()
+
+    def previous_page(self) -> None:
+        """返回上一页标签检查结果。"""
+
+        if self.page > 0:
+            self.page -= 1
+            self.refresh()
+
+    def next_page(self) -> None:
+        """读取下一页标签检查结果。"""
+
+        self.page += 1
+        self.refresh()
+
+    def open_selected(self) -> None:
+        """将选中样本的稳定 ID 发给主窗口，检查窗口不直接修改项目上下文。"""
+
+        rows = self.table.selectionModel().selectedRows()
+        if not rows:
+            return
+        value = self.table.item(rows[0].row(), 0).data(Qt.ItemDataRole.UserRole)
+        if not isinstance(value, tuple) or len(value) != 2:
+            return
+        self.sample_open_requested.emit(str(value[0]), str(value[1]), self.label.id)
+        self.accept()
+
+
 class LabelManagerDialog(QDialog):
     """集中管理当前项目标签，并在训练名变更时执行可确认的迁移。"""
 
     labels_changed = Signal()
+    sample_inspection_requested = Signal(str, str, str)
 
     def __init__(
         self,
@@ -156,16 +288,19 @@ class LabelManagerDialog(QDialog):
         self.edit_button = QPushButton(tr(self.locale_service, "dialog.labels.edit"))
         self.archive_button = QPushButton(tr(self.locale_service, "dialog.labels.archive"))
         self.merge_button = QPushButton(tr(self.locale_service, "dialog.labels.merge"))
+        self.inspect_button = QPushButton(tr(self.locale_service, "dialog.labels.inspect"))
         close_button = QPushButton(tr(self.locale_service, "settings.close"))
         self.add_button.clicked.connect(self.add_label)
         self.edit_button.clicked.connect(self.edit_selected)
         self.archive_button.clicked.connect(self.archive_selected)
         self.merge_button.clicked.connect(self.merge_label_set)
+        self.inspect_button.clicked.connect(self.inspect_selected)
         close_button.clicked.connect(self.accept)
         buttons_layout.addWidget(self.add_button)
         buttons_layout.addWidget(self.edit_button)
         buttons_layout.addWidget(self.archive_button)
         buttons_layout.addWidget(self.merge_button)
+        buttons_layout.addWidget(self.inspect_button)
         buttons_layout.addStretch()
         buttons_layout.addWidget(close_button)
         layout.addLayout(buttons_layout)
@@ -371,6 +506,25 @@ class LabelManagerDialog(QDialog):
             return
         self.refresh()
         self.labels_changed.emit()
+
+    def inspect_selected(self) -> None:
+        """打开选中标签的项目级检查集合，检索结果始终来自索引而非复制的图片目录。"""
+
+        label = self._selected_label()
+        if label is None:
+            return
+        index = ProjectIndexRepository(
+            WorkspaceService.project_path(self.root, self.project.id) / "project-index.sqlite"
+        )
+        dialog = LabelInspectionDialog(
+            self.locale_service,
+            index,
+            self.project,
+            label,
+            self,
+        )
+        dialog.sample_open_requested.connect(self.sample_inspection_requested)
+        dialog.exec()
 
     def _selected_label(self) -> Label | None:
         """从选中行读取稳定 ID，避免相同别名或显示名造成误编辑。"""

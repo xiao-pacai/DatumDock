@@ -365,6 +365,53 @@ class ProjectIndexRepository:
             ).fetchall()
         return {str(row["label_id"]): int(row["count"]) for row in rows}
 
+    def list_project_label_samples(
+        self,
+        dataset_ids: Iterable[str],
+        label_id: str,
+        *,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> list[tuple[DatasetSample, int]]:
+        """按页提取项目内包含某个标签的样本及目标框数量，避免复制图片形成检查集。"""
+
+        identifiers = list(dataset_ids)
+        if not identifiers:
+            return []
+        placeholders = ", ".join("?" for _ in identifiers)
+        query = f"""
+            SELECT samples.*, COUNT(sample_labels.shape_id) AS shape_count
+            FROM samples
+            JOIN sample_labels ON sample_labels.sample_id = samples.id
+            WHERE samples.dataset_id IN ({placeholders}) AND sample_labels.label_id = ?
+            GROUP BY samples.id
+            ORDER BY samples.filename
+            LIMIT ? OFFSET ?
+        """
+        with self._connection() as connection:
+            rows = connection.execute(
+                query,
+                [*identifiers, label_id, limit, offset],
+            ).fetchall()
+        return [(self._sample_from_row(row), int(row["shape_count"])) for row in rows]
+
+    def count_project_label_samples(self, dataset_ids: Iterable[str], label_id: str) -> int:
+        """返回项目级标签检查集合的总样本数，用于分页而不扫描图片文件。"""
+
+        identifiers = list(dataset_ids)
+        if not identifiers:
+            return 0
+        placeholders = ", ".join("?" for _ in identifiers)
+        query = f"""
+            SELECT COUNT(DISTINCT samples.id) AS count
+            FROM samples
+            JOIN sample_labels ON sample_labels.sample_id = samples.id
+            WHERE samples.dataset_id IN ({placeholders}) AND sample_labels.label_id = ?
+        """
+        with self._connection() as connection:
+            row = connection.execute(query, [*identifiers, label_id]).fetchone()
+        return int(row["count"])
+
     def update_review_status(self, sample_id: str, status: ReviewStatus) -> None:
         """问题状态与已复核的互斥性由单字段状态自然保证。"""
 

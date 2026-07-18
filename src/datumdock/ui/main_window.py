@@ -949,6 +949,7 @@ class MainWindow(QMainWindow):
             self,
         )
         dialog.labels_changed.connect(self.on_labels_changed)
+        dialog.sample_inspection_requested.connect(self.open_inspected_label_sample)
         dialog.exec()
 
     def on_labels_changed(self) -> None:
@@ -958,6 +959,33 @@ class MainWindow(QMainWindow):
         self.sample_browser.retranslate_ui()
         if self.current_sample is not None:
             self.load_sample(self.current_sample)
+
+    def open_inspected_label_sample(
+        self,
+        dataset_id: str,
+        sample_id: str,
+        label_id: str,
+    ) -> None:
+        """从跨数据集标签检查集合切换回原始样本，并高亮第一个对应矩形框。"""
+
+        if self.current_project is None or self.workspace_root is None:
+            return
+        target_dataset = next(
+            (dataset for dataset in self.current_project.datasets if dataset.id == dataset_id),
+            None,
+        )
+        if target_dataset is None:
+            return
+        sample = self.index_repository().get_sample(sample_id)
+        if sample is None or sample.dataset_id != target_dataset.id:
+            return
+        self.current_dataset = target_dataset
+        self.current_sample = None
+        self._browser_context = None
+        self.refresh_tree()
+        self.refresh_context()
+        self.load_sample(sample)
+        self.canvas.focus_first_label_shape(label_id)
 
     def open_similarity_review(self) -> None:
         """让用户确认近似图片组；只有确认组会在导出时被强制绑定。"""
