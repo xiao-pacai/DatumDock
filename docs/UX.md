@@ -45,6 +45,14 @@
 - 视觉目标是“轻盈、安静、专业”：默认使用明亮小清新的浅色主题、充足留白和低饱和莫兰迪色，而非高饱和科技风、厚重阴影或大面积深色界面。画布专注于图片和标注，管理界面专注于信息层级。
 - 参考 X-AnyLabeling 的高效三栏标注工作流、直接反馈和紧凑但不拥挤的信息密度；不得复制其品牌、图标、源代码或让用户误以为这是 X-AnyLabeling。
 
+### 品牌使用
+
+- 应用主窗口左上角固定设置品牌区：常规侧栏显示完整 `DD + DatumDock` 字标，作为工作区、项目与数据集导航的起点；点击它返回当前工作区概览，不应触发数据修改。
+- 当用户将侧栏折叠到窄宽度时，只显示浅橙色与浅蓝色的 `DD` 标记；鼠标悬停显示 `DatumDock` tooltip，展开侧栏后恢复完整字标。不得将完整字标挤压到难以辨认的尺寸。
+- 欢迎/空工作区页、项目创建向导首屏与“关于 DatumDock”页面使用完整字标；普通内容页不重复放置大 Logo，避免挤占数据管理与标注空间。
+- 所有应用内展示统一使用 `assets/brand/datumdock-wordmark-v3.png`；在 GUI 资源打包阶段将它纳入 Qt 资源。后续的小尺寸窗口图标、托盘图标和安装包图标从同一 `DD` 标记派生，不以文字截图替代。
+- 品牌字标仅用于产品身份，不可作为危险操作、状态颜色、标签类别颜色或可点击的主要操作按钮；始终提供文字标题和无障碍名称，不让 Logo 成为唯一的导航线索。
+
 ### 设计令牌
 
 | 用途 | Token | MVP 建议值 | 使用规则 |
@@ -76,7 +84,7 @@
 
 ### 图标资产
 
-- DatumDock 的产品图标、导航图标、工具栏图标、空状态插图和安装包图标均作为自有项目资产生成并保存在 `assets/icons/`；不得直接复制 X-AnyLabeling 或其他产品的品牌标识、图标文件或视觉资产。
+- DatumDock 的产品图标、导航图标、工具栏图标、空状态插图和安装包图标均作为自有项目资产生成并保存在 `assets/icons/`；其中应用图标从品牌 `DD` 标记派生。不得直接复制 X-AnyLabeling 或其他产品的品牌标识、图标文件或视觉资产。
 - 图标统一采用圆角、简洁线性、低饱和单色/双色风格，默认 20px 或 24px 视觉网格；需要强调时使用主题语义色，不使用与项目标签混淆的颜色。
 - 每个图标必须有清晰文字 tooltip、可访问名称和禁用/悬停/焦点状态。仅图标按钮在常用场景下仍须能通过 tooltip 和快捷键说明被理解。
 - 首批至少覆盖：应用图标、工作区/项目/数据集、导入、导出、标签、模型、自动标注、筛选、搜索、设置、帮助、保存、撤销/重做、删除、回收站、上一张/下一张、缩放、适配画布和状态提示。
@@ -184,4 +192,4 @@
 
 ## English Summary
 
-The main GUI contains workspace/project/dataset navigation, a dataset-pool sidebar, an image annotation canvas, and a label/property panel. Its default bright, fresh Morandi design system uses centralized semantic tokens, generous 8px-based spacing, restrained corners/shadows, and direct canvas feedback; it takes workflow inspiration from X-AnyLabeling without copying its brand. Every active label has a unique color shown consistently in the table, picker, canvas, inspection collection, and auto-annotation suggestions; states also use non-color cues. It can import X-AnyLabeling directories and export directly reopenable image-plus-LabelMe-JSON directories, preserving unsupported shapes as read-only compatibility payloads. Application settings offer immediate Simplified Chinese/English UI switching and a searchable shortcut editor with conflict detection.
+The main GUI contains workspace/project/dataset navigation, a dataset-pool sidebar, an image annotation canvas, and a label/property panel. Its default bright, fresh Morandi design system uses centralized semantic tokens, generous 8px-based spacing, restrained corners/shadows, and direct canvas feedback; it takes workflow inspiration from X-AnyLabeling without copying its brand. The full DatumDock wordmark is fixed at the top of the normal sidebar, while its `DD` monogram is used in the collapsed sidebar and later small application-icon contexts; welcome and About pages use the full wordmark. Every active label has a unique color shown consistently in the table, picker, canvas, inspection collection, and auto-annotation suggestions; states also use non-color cues. It can import X-AnyLabeling directories and export directly reopenable image-plus-LabelMe-JSON directories, preserving unsupported shapes as read-only compatibility payloads. Application settings offer immediate Simplified Chinese/English UI switching and a searchable shortcut editor with conflict detection.
