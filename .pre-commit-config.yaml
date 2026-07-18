@@ -1,0 +1,13 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-lint
+        name: Ruff 静态检查与自动修复
+        entry: python -m ruff check --fix
+        language: system
+        types: [python]
+      - id: ruff-format
+        name: Ruff 代码格式化
+        entry: python -m ruff format
+        language: system
+        types: [python]

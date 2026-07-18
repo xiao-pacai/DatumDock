@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Build and packaging output
+build/
+dist/
+*.egg-info/
+*.spec
+installer-output/
+
+# Qt and local application state
+*.qm
+*.qrc.depends
+.datumdock/
+workspace/
+projects/
+data/
+datasets/
+thumbnails/
+cache/
+trash/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Large datasets, models and exported training artifacts
+models/
+exports/
+*.onnx
+*.pt
+*.pth
+*.ckpt
+*.engine
+*.weights
+
+# Editor and operating-system files
+.idea/
+.vscode/
+*.code-workspace
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Image generation intermediates
+assets/brand/*-chromakey.png

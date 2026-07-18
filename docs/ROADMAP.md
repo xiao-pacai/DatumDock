@@ -1,0 +1,101 @@
+# DatumDock 开发路线图
+
+状态标记：`[ ]` 未开始，`[-]` 进行中，`[x]` 已完成，`[?]` 需要产品决策。
+
+完成等级与 X-AnyLabeling 对标标准见 `docs/X_ANYLABELING_BASELINE.md`。路线图任务必须注明并最终满足相应的 L1–L4 验收门槛。
+
+## 阶段 0：项目定义
+
+- [x] 建立产品、架构、交互、验收与协作规范文档。
+- [ ] 确认首发平台、自动保存策略和首批导出格式。
+
+## 阶段 1：可启动的项目与应用骨架
+
+- [-] 初始化 Python 项目、依赖和质量检查配置：已建立 `pyproject.toml`、Ruff 与 pre-commit 规则；应用依赖和可启动包结构待随首个 GUI 模块加入。
+- [ ] 实现应用入口及可启动的 PySide6 主窗口。
+- [ ] 建立 `ThemeService`、莫兰迪设计令牌、可缩放 QSS/图标状态和组件样式基线；完成主窗口、表格、网格、表单、对话框与画布的视觉回归样例。
+- [ ] 生成并登记首批自有图标资产：应用/安装包、导航、数据管理、画布、状态与空状态插图；提供 SVG 源文件及 Windows 发布所需 ICO/PNG 派生尺寸。
+- [ ] 实现工作区创建/打开和本地工作区元数据存储。
+- [ ] 实现项目、数据集的创建、打开、重命名与快速切换。
+- [ ] 实现空数据集与源数据集模板创建，复用兼容标签集和数据集配置。
+- [ ] 实现全局设置、简体中文/英文翻译资源和即时界面语言切换。
+- [ ] 实现集中式操作注册、快捷键设置页面、冲突检测、即时应用和恢复默认值。
+- [ ] 实现项目级标签集与独立标签管理页面：表格、搜索、筛选、增删改查、归档和稳定类别 ID 分配。
+- [ ] 实现标签集签名比较、差异报告与无冲突标签集合并。
+- [ ] 实现活动标签唯一颜色的自动分配、手动颜色选择、冲突校验和跨画布/列表一致渲染。
+- [ ] 实现莫兰迪主题 token、主窗口三栏布局与基础状态栏。
+- [ ] 为领域模型和服务层建立测试框架。
+
+## 阶段 2：数据集池与图片浏览
+
+- [ ] 实现导入文件夹到当前数据集受管池、样本索引与去重提示。
+- [ ] 实现 JPG/JPEG、PNG、BMP、WebP、TIFF 导入与统一 PNG 转码、重复图对比确认、进度和失败报告。
+- [ ] 实现 X-AnyLabeling/LabelMe 目录导入：递归配对图片和同名 JSON、将矩形框转换为可编辑项目标注、保留暂不支持的 shape 与扩展字段。
+- [ ] 实现近似图片候选扫描、相似组人工确认/拆分，以及导出时相似组不可拆分的分组划分。
+- [ ] 实现 SQLite 项目索引、虚拟样本列表、延迟缩略图和可取消后台任务，支持单项目万张图片。
+- [ ] 实现数据集池列表、搜索、基础筛选与当前图片加载。
+- [ ] 实现数据集命名规则、重命名预览和安全批量重命名；同步 LabelMe、索引和缓存引用。
+- [ ] 实现标注页面的样本删除确认、回收站恢复/清空与大批量永久删除。
+- [ ] 实现全局回收站少量样本阈值、设置项悬停帮助与删除影响范围说明。
+- [ ] 实现上一张/下一张导航。
+- [ ] 实现画布图片缩放、平移和适配窗口。
+
+## 阶段 3：矩形框标注
+
+- [ ] 实现项目级标签数据模型、标签管理面板和颜色显示。
+- [ ] 实现可搜索标签选择器，支持中文别名、英文名、同义词和描述，并显示完整标签说明。
+- [ ] 实现按项目标签跨数据集提取样本的标签检查视图、索引查询和目标标注框高亮跳转。
+- [ ] 实现标签修改影响预检、确认对话框和可恢复的 LabelMe 批量迁移。
+- [ ] 实现矩形框创建、选中、移动、缩放和删除。
+- [ ] 实现标注列表与画布选中状态同步。
+- [ ] 实现未保存变更提示。
+
+## 阶段 4：标注持久化与模型格式导出
+
+- [ ] 实现 LabelMe JSON 读取和矩形框写入。
+- [ ] 实现 X-AnyLabeling 交换目录导出（PNG、同名 LabelMe JSON、`labels.txt`），并以 X-AnyLabeling 实际打开作为回归验证。
+- [ ] 实现兼容载荷回写，覆盖未支持 X shape、`flags`、`attributes`、`description`、`difficult` 与 `score` 在保存、重命名、标签迁移和导出后的不丢失测试。
+- [ ] 覆盖正常、损坏和缺失 JSON 的测试。
+- [ ] 实现项目级模型目录、模型管理页面和模型条目增删改查。
+- [ ] 实现 ONNX 模型导入、元数据/输入输出探测、本地校验与可编辑运行配置。
+- [ ] 实现受支持 PT 变体识别；对未知或不兼容文件给出明确提示。
+- [ ] 实现模型类别到项目标签的映射、GPU 优先/CPU 回退与配置指引，以及直接保存为图片级待人工复核/有问题/已复核状态的检测框自动标注。
+- [ ] 实现项目备份压缩包、导入前结构/完整性校验，以及标签集一致的数据集间复制/移动。
+- [ ] 实现标签兼容性检查、重复图预览与兼容数据集的复制/移动合并。
+- [ ] 实现一次性导出请求：全局默认或临时覆盖的 train/val/test 比例、目标模型/格式、候选范围、随机种子与输出位置；不保存方案和记录。
+- [ ] 实现确定性划分器与划分统计预览。
+- [ ] 定义可扩展的模型格式导出器接口。
+- [ ] 实现 YOLO Detection 标签转换、目录导出与 `data.yaml`。
+- [ ] 覆盖比例校验、确定性划分及 YOLO 标签格式的测试。
+- [ ] 验证 100 张图片连续标注流程。
+- [ ] 对照 `docs/ACCEPTANCE.md` 完成 MVP 验收。
+- [ ] 完成 X-AnyLabeling 对标基线 L1，并发布支持范围和已知限制。
+
+## 阶段 4.5：核心标注工作流对标（L2）
+
+- [ ] 实现撤销/重做、标注复制/粘贴（如适用）和核心快捷键回归测试。
+- [ ] 实现标注质量检查：空标签、越界框、无效面积、缺失文件和未保存状态。
+- [ ] 完成 100 张以上图片的浏览、编辑、保存、重开与导出回归验证。
+- [ ] 对照 `docs/X_ANYLABELING_BASELINE.md` 完成 L2 必需项并发布差异清单。
+
+## 阶段 5：MVP 后增强
+
+- [ ] 撤销/重做。
+- [ ] 多边形与实例分割。
+- [ ] YOLO/COCO 格式导入导出。
+
+## 阶段 6：AI 与格式对标（L3）
+
+- [ ] 为 LabelMe、YOLO Detection、COCO Detection、Pascal VOC Detection 建立导入/导出回归样例。
+- [ ] 对照 `docs/X_ANYLABELING_BASELINE.md` 完成 L3 必需项并发布支持矩阵。
+
+## 阶段 6：安装包交付
+
+- [ ] 添加应用图标、版本信息和 Windows 资源文件。
+- [ ] 编写 PyInstaller 打包配置与可重复执行的构建脚本。
+- [ ] 编写 Inno Setup 安装程序配置，支持安装、卸载及开始菜单快捷方式。
+- [ ] 在无 Python 开发环境的 Windows 测试机上验证安装、启动、导入和 YOLO 导出流程。
+
+## English Summary
+
+Development starts with a workspace that can manage multiple projects and datasets, each with an isolated managed pool. The foundation includes global Simplified Chinese/English UI localization with immediate switching and customizable conflict-checked shortcuts. Dataset ingestion supports common images normalized to managed PNG plus X-AnyLabeling/LabelMe directory import and lossless compatibility-payload re-export; SQLite indexes, virtual lists, lazy thumbnails, and cancellable background work support at least 10,000 images per project. Project-level label sets provide stable machine names, Chinese human-friendly aliases and descriptions, unique active-label colors, and live cross-dataset label inspection collections.
