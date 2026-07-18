@@ -12,6 +12,15 @@
 - [ ] 每次正常启动均先显示带完整 Logo、已有数据集卡片和“新建数据集”入口的主页。
 - [ ] 主页可按名称搜索数据集，并可按最后修改时间、创建时间或名称排序。
 - [ ] 数据集卡片显示名称、代表缩略图、图片数量、标签数量、复核进度和最后修改时间。
+- [ ] 首次启动主页显示“创建数据集 → 配置标签 → 导入图片 → 标注/审核 → 导出训练数据”五步快速开始；可跳过、折叠并从学习中心重新打开。
+- [ ] 首页学习中心至少提供 DatumDock 入门、标签与矩形框、AI 审核、YOLO Detection 入门、数据划分/数据泄露、导出与训练准备、X-AnyLabeling 互操作、备份恢复和常见问题入口。
+- [ ] 已有数据集时，数据集卡片仍是主页主内容；教程不会以强制弹窗、自动播放或大幅轮播阻挡打开数据集。
+- [ ] 核心教程在断网环境中可打开，正文、目录、必要插图、上一步/下一步和完成标记可用。
+- [ ] 教程可在简体中文与英文间即时切换，并保持同一章节、滚动位置和完成进度。
+- [ ] YOLO 教程正确解释标签行、归一化坐标、`data.yaml`、数据划分、负样本和数据泄露，并明确 MVP 只导出数据集、不直接训练模型。
+- [ ] 第三方训练命令和外部官方文档带适用版本或外链标记；外部链接失败不影响本地教程和主页。
+- [ ] 教程中的功能跳转不会绕过导入、删除、模型推理或导出的原有确认与校验。
+- [ ] 教程进度保存在全局设置中，不进入数据集、数据集备份、YOLO 导出或 X-AnyLabeling 目录；升级后旧进度保留。
 - [ ] 点击已有数据集卡片直接进入该数据集的标注与管理工作台。
 - [ ] 新建空数据集时不要求选择保存目录；创建成功后直接进入同一个空标注工作台，并提供“导入图片”和“管理标签”引导。
 - [ ] 从其他数据集复制配置时可复用标签集、命名与导入规则，但默认不复制图片或标注。
@@ -163,4 +172,4 @@
 
 ## English Summary
 
-The highest-priority acceptance gate covers a game-save-like dataset home page and an internal per-user managed library. The annotation workspace must provide a top dataset/import/export bar, left drawing and AI tools, a central canvas, and a resizable right panel containing synchronized annotations and a virtualized image list with fixed status badges. Pending Review, Completed, Issue, and Error are image-level states; Completed requires explicit review and also supports confirmed empty negative samples. These planned items must pass before the new experience is claimed as implemented, together with restart recovery, dataset isolation, bilingual UI, managed-pool safety, backup, and X-AnyLabeling round-tripping.
+The highest-priority acceptance gate covers a game-save-like dataset home page, an internal managed library, and a non-blocking offline bilingual tutorial center. First-time users receive a dismissible five-step quick start plus accurate DatumDock, YOLO Detection, splitting/leakage, export-preparation, interoperability, backup, and FAQ content; progress is global and survives upgrades without entering datasets. The annotation workspace must provide top actions, left drawing and AI tools, a central canvas, and a resizable right annotation/image panel with explicit image-level statuses. These planned items must pass before the new experience is claimed as implemented.

@@ -10,9 +10,13 @@
 启动
 ┌───────────────────────────────────────────────────────────────────┐
 │ DatumDock Logo                         搜索    设置    关于        │
+│ 快速开始：创建数据集 → 配置标签 → 导入图片 → 标注 → 导出         │
 │ 我的数据集                                                       │
 │ ┌ 新建数据集 ┐  ┌ 数据集卡片 ┐  ┌ 数据集卡片 ┐                 │
 │ └───────────┘  └───────────┘  └───────────┘                 │
+│ 学习中心                                                          │
+│ ┌ DatumDock 入门 ┐ ┌ YOLO 入门 ┐ ┌ 导出与训练准备 ┐ ┌ 更多教程 ┐│
+│ └──────────────┘ └───────────┘ └───────────────┘ └──────────┘│
 └───────────────────────────────────────────────────────────────────┘
 
 打开数据集
@@ -107,6 +111,22 @@
 - 切换模型格式时，向导动态显示该格式所需参数、支持的标注类型和输出示例；不支持的样本或标注要在执行前明确提示。
 - 导出前预览显示 train/val/test 的样本数、标签框数量和相似组约束造成的比例偏差；存在问题时明确提示，而不是自动忽略。
 - 数据集工具栏提供“相似图片检查”入口，显示高置信度相似组和待确认候选；用户可确认相似组、移出误报图片或忽略候选，图片不会被自动删除。
+
+### 3.1 首页快速开始与学习中心
+
+- 首页除数据集卡片外，提供“快速开始”和“学习中心”，让第一次使用数据集工具和 YOLO 的用户不必先阅读仓库文档。
+- 首次启动时，“快速开始”位于数据集区域上方，以五个可点击步骤展示：创建数据集 → 配置标签 → 导入图片 → 标注/审核 → 导出训练数据。每一步显示一句目的说明，并可直接跳到对应页面或打开相关教程。
+- 用户完成某一步后显示轻量进度，不强制按顺序操作。用户可折叠或关闭快速开始；关闭后仍可从学习中心、帮助菜单和设置页重新打开。
+- 非首次启动且已有数据集时，数据集列表仍是主页最重要内容。学习中心放在数据集卡片下方或右侧辅助区，不能用大幅轮播、自动播放视频或弹窗遮挡用户进入数据集。
+- 学习卡片至少包括“DatumDock 快速入门”“标签与矩形框标注”“AI 标注与人工审核”“YOLO Detection 入门”“数据划分与数据泄露”“导出 YOLO 并开始训练”“X-AnyLabeling 互操作”“备份与恢复”和“常见问题”。
+- 点击卡片在应用内教程阅读器打开。阅读器包含目录、上一步/下一步、预计阅读时间、完成标记和返回当前操作的入口；教程中可使用静态截图、短动图或交互式控件高亮，但不得自动播放声音。
+- DatumDock 教程覆盖从创建数据集、配置标签、导入与去重，到矩形框操作、图片级状态、AI 复核、YOLO 导出和备份恢复的完整闭环。
+- YOLO 教程至少解释：检测任务是什么、图片与标签文件关系、`class_id x_center y_center width height`、归一化坐标、`data.yaml`、train/val/test、相似图片导致的数据泄露、导出前检查、训练环境与 GPU/CPU 的基本区别，以及常见目录或类别错误。
+- “导出 YOLO 并开始训练”必须明确 DatumDock 当前负责数据管理、标注和数据集导出，不在 MVP 内直接执行模型训练。训练命令和第三方界面可能随版本变化，教程应标注适用版本，并把“打开官方文档”显示为外部链接。
+- 核心教程随安装包离线提供，在没有网络时仍可阅读。外部链接必须带外链图标和目标说明，打开失败不影响本地教程。
+- 教程正文和图片说明支持简体中文与英文即时切换；切换语言保持当前章节和阅读进度，不翻译或修改任何数据集内容。
+- 教程完成进度属于全局应用偏好，不写入数据集、备份或 X-AnyLabeling 交换目录。应用升级时保留进度；教程版本变化时只把新增章节标记为未读，不清空旧进度。
+- 首页可显示当前应用版本对应的“新功能”入口，但不得请求账号、展示广告、加载未经用户同意的远程资讯或影响离线启动速度。
 
 ## 4. 视觉风格：莫兰迪色系
 
@@ -260,4 +280,4 @@
 
 ## English Summary
 
-The target GUI starts on a game-save-like dataset home page with the full DatumDock wordmark, existing dataset cards, and a clear create action. Opening or creating a dataset enters an X-AnyLabeling-inspired workspace with a top dataset/import/export action bar, a narrow left annotation and AI toolbar, a large central canvas, and a split right panel for current-image annotations and the virtualized image list. Every image row ends with a text-and-icon status such as Unlabeled, Pending Review, Completed, Issue, or Error; Completed is an explicit image-level review decision, including confirmed empty negative samples. No workspace picker, project tree, or external project directory is shown. This layout is documented but not yet claimed as implemented, and it uses DatumDock's own bright Morandi design system and brand assets.
+The target GUI starts on a game-save-like dataset home page with the full DatumDock wordmark, dataset cards, a dismissible five-step quick start, and an offline bilingual learning center. Tutorials cover the full DatumDock workflow, YOLO Detection, dataset splitting and leakage, export preparation, X-AnyLabeling exchange, backup, and common problems without blocking experienced users or implying that MVP trains models. Opening a dataset enters an X-AnyLabeling-inspired workspace with a top action bar, left annotation and AI tools, a central canvas, and a split right annotation/image panel with explicit image-level statuses. This layout is documented but not yet claimed as implemented and uses DatumDock's own Morandi design and brand assets.

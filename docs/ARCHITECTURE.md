@@ -23,7 +23,7 @@ src/datumdock/
 ├─ ui/                      # 数据集主页、四区标注工作台、模型管理、设置、虚拟图片列表、画布、导出向导等
 ├─ state/                   # 当前数据集、主页状态、界面语言、快捷键、筛选条件、选中标注、待处理状态等
 ├─ i18n/                    # 简体中文、英文翻译资源和本地化辅助函数
-└─ resources/               # Qt 资源、图标或主题
+└─ resources/               # Qt 资源、图标、主题，以及版本化中英文离线教程内容
 ```
 
 ## 3. 关键对象
@@ -35,6 +35,8 @@ src/datumdock/
 | `DatasetLibraryService` | 初始化内部资料库，以事务创建、登记、打开和恢复受管数据集，并向主页提供分页摘要。 |
 | `Workspace` | 旧实现对象，仅用于迁移读取；目标产品不再创建或打开用户工作区。 |
 | `LocaleService` | 读取和保存全局界面语言，加载 Qt 翻译资源并通知可见界面重新翻译。 |
+| `HelpContentService` | 按应用版本与界面语言加载安装包内可信教程目录、正文和插图，解析页面跳转；不依赖远程内容完成核心阅读。 |
+| `TutorialProgressRepository` | 在全局设置中保存快速开始折叠状态、已完成步骤、教程阅读位置和内容版本；不写入数据集。 |
 | `ShortcutService` | 集中注册操作及默认组合，读取/验证/保存用户绑定，并将更新即时应用到 Qt Actions。 |
 | `ThemeService` | 集中提供界面设计令牌、状态样式、系统缩放和减少动态效果适配；不管理数据集标签颜色。 |
 | `IconRegistry` | 集中登记自有 SVG/PNG 图标、语义名称、尺寸与各状态变体，为菜单、工具栏、空状态和安装包提供统一资产。 |
@@ -79,6 +81,7 @@ src/datumdock/
 | `YoloDetectionExporter` | 首个 `DatasetExporter` 实现，将图片、标签和 `data.yaml` 写入独立 YOLO 目录。 |
 | `AnnotationCanvas` | 坐标变换、绘制和鼠标交互；不负责 JSON 持久化。 |
 | `AnnotationWorkspace` | 组合顶部主操作栏、左侧标注工具、中央 `AnnotationCanvas`、右侧当前标注与虚拟图片列表；只转发意图，不直接执行耗时 I/O。 |
+| `TutorialCenter` | 展示首页学习卡片和应用内教程阅读器，通过稳定 `action_id` 跳转到功能，不直接执行有副作用的业务操作。 |
 | `MainWindow` | 在数据集主页和 `AnnotationWorkspace` 间切换，并组装全局操作、语言、主题和错误边界。 |
 
 ## 4. 坐标约定
@@ -231,13 +234,24 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 - 状态色要同时使用图标、边框或文字，不得只依赖颜色区分；键盘焦点环不可被主题样式覆盖。
 - 自有图标资源存放于 `assets/icons/`，由 `IconRegistry` 以语义名称（如 `import`、`export`、`auto_annotate`、`delete`）提供给 UI；SVG 为优先源格式，按需生成 PNG/ICO 等发布尺寸。任何图标替换只修改受管源资产及其派生物，不影响业务代码中的语义名称。
 
-## 15. 错误处理
+## 15. 内置教程内容与进度
+
+- 教程资源按 `content_version`、`app_version_range` 和语言组织，至少包含教程 ID、标题、摘要、预计时间、章节、插图引用、相关 `action_id`、外部链接及其目标说明。
+- 简体中文和英文使用相同稳定教程 ID 与章节 ID。`LocaleService` 切换语言时，`TutorialCenter` 用相同 ID 重载正文并恢复章节、滚动位置和完成状态。
+- 核心教程作为只读可信资源随应用打包，首页首次绘制后再延迟加载卡片摘要和插图，不能因解析全部教程拖慢应用启动。
+- `TutorialProgressRepository` 只保存 `{tutorial_id, section_id, completed, last_position, content_version}` 等全局进度；数据集备份、X-AnyLabeling 交换和 YOLO 导出均不得包含这些记录。
+- 教程跳转只分发已登记的无副作用导航 `action_id`。导入、删除、模型推理和导出等操作仍必须经过原有页面及确认流程，教程不能绕过安全检查。
+- 核心内容不得从网络动态覆盖。外部官方文档通过系统浏览器打开，并在 UI 显示外链标记、站点说明和失败提示；离线失败不影响本地教程。
+- 第三方命令、参数和截图记录适用版本。应用升级发现内容版本变化时迁移旧进度并把新增章节标记为未读，不能清空全部阅读记录。
+
+## 16. 错误处理
 
 - 图片无法加载：在文件列表标记错误，并允许继续浏览其他图片。
 - JSON 解析失败：提示文件名与原因，不自动覆盖原文件。
 - 保存失败：保留内存修改和脏状态，并提供重试入口。
 - 导出前校验失败：列出未标注、损坏或不支持的样本，并明确让用户选择跳过或取消；绝不静默遗漏。
+- 教程正文或插图缺失：保留主页和数据集入口，显示可恢复的内容错误，不得因帮助资源损坏阻止应用启动。
 
 ## English Summary
 
-The target architecture replaces the visible workspace/project hierarchy with `AppLibrary -> ManagedDataset`. `AnnotationWorkspace` composes the top action bar, left drawing/AI toolbar, central canvas, and split right annotation/image panel without performing long-running I/O directly. Image-level review status comes from the dataset index, not widget guesses; zero-box negative samples may be explicitly reviewed as complete. `DatasetLibraryService` manages isolated datasets under `%LOCALAPPDATA%\DatumDock`, while per-dataset SQLite indexes, virtualized image views, lazy thumbnails, and background jobs support at least 10,000 images. This target is documented but not yet claimed as implemented.
+The target architecture replaces the visible workspace/project hierarchy with `AppLibrary -> ManagedDataset`. `HelpContentService`, `TutorialProgressRepository`, and `TutorialCenter` provide versioned offline bilingual tutorials, safe action-based navigation, and global progress without writing to datasets or requiring remote content. `AnnotationWorkspace` composes the top action bar, left drawing/AI toolbar, central canvas, and split right annotation/image panel. Dataset status comes from the index, and per-dataset SQLite, virtualized views, lazy thumbnails, and background jobs support at least 10,000 images. This target is documented but not yet claimed as implemented.

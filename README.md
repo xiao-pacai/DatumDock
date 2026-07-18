@@ -51,6 +51,7 @@ python -m pip install -r requirements.txt
 | 领域 | 规划能力 |
 | --- | --- |
 | 数据集主页 | 像游戏存档一样创建、查看、搜索和打开多个受管数据集；不要求选择工作区或项目目录。 |
+| 内置教程 | 首页提供可折叠快速开始和离线中英文学习中心，覆盖 DatumDock 全流程、YOLO Detection、数据划分/泄露与导出训练准备。 |
 | 受管数据集池 | 导入后复制到软件内部统一管理；常见静态图片统一转换为 PNG，外部源文件不被改写。 |
 | 数据质量 | 导入时检查完全相同图片；近似图片以相似组管理，避免训练、验证和测试集之间的数据泄露。 |
 | 标注与复核 | 参考 X-AnyLabeling 的高效布局：顶部切换/导入/导出、左侧矩形框与 AI 工具、中央画布、右侧标注和带状态图片列表；图片级区分未标注、待审核、已完成、有问题和异常。 |
@@ -143,7 +144,7 @@ DatumDock is a local-first desktop application for managing and annotating compu
 
 The repository is in an executable pre-release implementation stage. The current GUI still uses the legacy workspace/project/dataset entry; the dataset-home and internal-library migration is documented in `docs/DATASET_LIBRARY.md` but has not been implemented. Existing development slices cover managed-pool, rectangle-annotation, YOLO-export, LabelMe/X-AnyLabeling exchange, backup, and a bilingual shell. It is not a release-ready installer yet.
 
-Planned MVP capabilities include managed PNG ingestion; duplicate and similarity-group handling; rectangle annotation; image-level review states; dataset-level bilingual label management; local ONNX and supported Ultralytics YOLO model assistance; deterministic YOLO Detection export; validated dataset backups; and configurable shortcuts. DatumDock also imports X-AnyLabeling/LabelMe directories and exports directly reopenable directories while preserving unsupported shapes as compatibility payloads.
+Planned MVP capabilities include an offline bilingual quick-start and tutorial center for DatumDock and YOLO; managed PNG ingestion; duplicate and similarity-group handling; rectangle annotation; image-level review states; dataset-level bilingual label management; local ONNX and supported Ultralytics YOLO model assistance; deterministic YOLO Detection export; validated dataset backups; and configurable shortcuts. DatumDock also imports X-AnyLabeling/LabelMe directories and exports directly reopenable directories while preserving unsupported shapes as compatibility payloads.
 
 The repository uses the MIT license. Before public release, complete the checks recorded in [docs/ROADMAP.md](docs/ROADMAP.md), especially the Python 3.11 and isolated installer verification. See [CONTRIBUTING.md](CONTRIBUTING.md) for development rules and [SECURITY.md](SECURITY.md) for responsible vulnerability reporting.
 

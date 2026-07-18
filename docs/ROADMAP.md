@@ -17,7 +17,9 @@
 - [ ] 冻结 `AppLibrary`、`ManagedDataset`、`DatasetLibraryService` 和内部路径解析接口，并补齐领域单元测试。
 - [ ] 将默认数据根目录设为 `%LOCALAPPDATA%\DatumDock`，首次启动自动创建资料库，不显示目录选择器。
 - [ ] 实现资料库登记、数据集事务创建、异常数据集隔离和资料库索引安全重建。
-- [ ] 实现带完整 Logo、数据集卡片、搜索、排序、设置和“新建数据集”的主页。
+- [ ] 实现带完整 Logo、数据集卡片、搜索、排序、设置、“新建数据集”、可折叠快速开始和学习中心的主页。
+- [ ] 实现 `HelpContentService`、`TutorialProgressRepository` 和应用内教程阅读器；核心中英文内容随安装包离线提供，进度不进入数据集。
+- [ ] 编写并校验 DatumDock 全流程、YOLO Detection、数据划分/泄露、导出训练准备、X-AnyLabeling、备份恢复和常见问题教程，标注第三方内容适用版本。
 - [ ] 实现空数据集与从已有数据集复制配置的创建流程；成功后直接进入标注工作台。
 - [ ] 将标注工作台上下文收敛为单一当前数据集，并移除用户可见的工作区、项目树和打开目录入口。
 - [ ] 按 UX 固定标注工作台布局：顶部数据集/导入/导出操作栏、左侧标注与 AI 工具、中央画布、右侧当前标注和带状态的图片列表。
@@ -37,6 +39,7 @@
 - [ ] 在阶段 0.5 的内部资料库上实现数据集重命名、归档和快速切换；不实现工作区创建或打开。
 - [ ] 实现空数据集与源数据集模板创建，复用兼容标签集和数据集配置。
 - [ ] 实现全局设置、简体中文/英文翻译资源和即时界面语言切换。
+- [ ] 覆盖首页教程首次显示、折叠/恢复、功能跳转、离线阅读、双语章节保持、内容版本迁移和损坏资源降级测试。
 - [ ] 实现集中式操作注册、快捷键设置页面、冲突检测、即时应用和恢复默认值。
 - [ ] 实现数据集级标签集与独立标签管理页面：表格、搜索、筛选、增删改查、归档和稳定类别 ID 分配。
 - [-] 实现标签集签名比较、差异报告与无冲突标签集合并：旧代码已提供严格信息比较、稳定 ID 映射和无冲突合并入口；迁移到数据集级边界、差异报告与数据集合并向导仍待完成。
@@ -127,4 +130,4 @@
 
 ## English Summary
 
-The next implementation stage replaces the visible workspace/project hierarchy with a game-save-like home page and an internal `AppLibrary -> ManagedDataset` model under `%LOCALAPPDATA%\DatumDock`. It also introduces the documented annotation layout: top dataset/import/export actions, left annotation and AI tools, a central canvas, and a split right annotation/image panel with explicit image-level review states. Only the documentation and acceptance direction are complete; code migration, UI implementation, legacy conversion, and regression tests remain unchecked and must score at least 90 before later feature work resumes.
+The next implementation stage replaces the visible workspace/project hierarchy with a game-save-like home page and an internal `AppLibrary -> ManagedDataset` model. The home page must include a dismissible quick start and a versioned offline bilingual tutorial center, while the annotation workspace uses top actions, left annotation and AI tools, a central canvas, and a split right annotation/image panel. Only the documentation direction is complete; the content service, progress storage, tutorial authoring, code migration, UI implementation, and regression tests remain unchecked and must score at least 90.

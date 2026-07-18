@@ -56,7 +56,7 @@ flowchart LR
 ### 4.1 首次启动
 
 - 自动创建内部应用数据目录和空资料库索引，不弹出目录选择器。
-- 展示完整 DatumDock Logo、简短产品说明、“新建数据集”主按钮和空状态说明。
+- 展示完整 DatumDock Logo、简短产品说明、“新建数据集”主按钮、五步快速开始和学习中心；即使没有数据集，用户也可以先阅读 DatumDock 或 YOLO 教程。
 - 设置、语言切换、关于与备份导入入口仍可从主页访问。
 
 ### 4.2 非首次启动
@@ -65,6 +65,7 @@ flowchart LR
 - 每张卡片至少展示：数据集名称、封面或代表缩略图、图片数量、标签数量、复核进度、最后修改时间。
 - 提供数据集名称搜索和按最后修改时间、创建时间、名称排序的能力。
 - 损坏或暂时不可读取的数据集不得让主页崩溃；卡片应显示异常状态并提供诊断或恢复入口。
+- 数据集卡片保持主页主视觉；快速开始可折叠，学习中心位于数据集区域之后，不阻碍熟练用户快速进入已有数据集。
 
 ### 4.3 新建数据集
 
@@ -75,6 +76,15 @@ flowchart LR
 3. 预检名称和内部资料库状态。
 4. 原子创建目录、元数据和索引；任一步失败均回滚，不留下无法打开的半成品卡片。
 5. 创建成功后直接进入空标注工作台，提示用户先管理标签或导入图片。
+
+### 4.4 首页教程与帮助
+
+- “快速开始”用创建数据集、配置标签、导入图片、标注/审核和导出训练数据五个步骤连接产品主流程；完成状态保存在全局设置中，可跳过、折叠并重新打开。
+- “学习中心”以内置离线教程卡片提供 DatumDock 使用教程、YOLO Detection 基础、数据划分与数据泄露、导出与训练准备、X-AnyLabeling 互操作、备份恢复和常见问题。
+- YOLO 内容应帮助用户理解 DatumDock 导出的文件，而不是让用户误以为应用已经包含模型训练。涉及第三方训练命令时标注适用版本并提供明确的官方外部链接入口。
+- 教程阅读器支持中英文、目录、上一步/下一步、阅读进度和从教程跳转到相应功能；切换语言后保持章节与进度。
+- 核心教程及必要插图随安装包提供，不依赖网络加载。教程进度只属于应用全局偏好，不进入任何数据集或备份。
+- 学习中心不得展示广告、自动播放声音、强制弹窗或未经同意的远程资讯；已有数据集用户可以直接忽略教程区。
 
 ## 5. 标注与数据管理工作台
 
@@ -200,4 +210,4 @@ flowchart LR
 
 ## English Summary
 
-DatumDock will replace its user-facing workspace/project hierarchy with a game-save-like managed dataset library. The application always opens to a home page listing existing datasets and a clear create action; opening or creating a dataset goes directly to an annotation workspace with top-level import/export and dataset switching, left-side drawing and AI tools, a central canvas, and a split right panel for annotations and a status-bearing image list. Each managed dataset independently owns its labels, managed PNG pool, annotations, index, model configuration, trash, and cache under the per-user Windows application-data directory. External sources are copied rather than registered as projects. This document is a confirmed product and architecture plan only; no application code is claimed to have been migrated yet.
+DatumDock will replace its user-facing workspace/project hierarchy with a game-save-like managed dataset library. The home page combines dataset cards with a dismissible quick start and offline bilingual tutorials for DatumDock, YOLO Detection, splitting and leakage, export preparation, interoperability, and backup. Opening a dataset goes directly to an annotation workspace with top-level import/export and dataset switching, left drawing and AI tools, a central canvas, and a split right annotation/image panel. Each managed dataset independently owns its content under the per-user Windows application-data directory, while tutorial progress remains a global preference. This is a confirmed plan only; no application code is claimed to have been migrated yet.
