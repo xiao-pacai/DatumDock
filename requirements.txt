@@ -1,0 +1,20 @@
+# DatumDock 完整本地开发、推理与 Windows 构建依赖。
+# 使用 Python 3.11 x64：python -m pip install -r requirements.txt
+
+# 桌面应用与数据处理
+PySide6>=6.8,<7
+Pillow>=10.4
+Pydantic>=2.9
+PyYAML>=6.0
+
+# 本地自动标注模型
+onnx>=1.17
+onnxruntime>=1.20
+ultralytics>=8.3
+
+# 测试、质量检查与 Windows 构建
+pre-commit
+pyinstaller
+pytest
+pytest-qt
+ruff

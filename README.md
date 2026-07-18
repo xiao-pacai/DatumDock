@@ -34,6 +34,12 @@ python -m pip install -e ".[dev,inference]"
 python -m datumdock
 ```
 
+如果只需要一次性安装完整开发、推理和构建依赖，也可使用：
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
 构建 Windows 分发目录和 Inno Setup 安装包的具体步骤见 [Windows 构建说明](docs/BUILD_WINDOWS.md)。
 
 当前优先级、完成规则和验收边界分别记录在 [路线图](docs/ROADMAP.md)、[验收标准](docs/ACCEPTANCE.md) 与 [X-AnyLabeling 对标基线](docs/X_ANYLABELING_BASELINE.md)。
@@ -137,3 +143,5 @@ The repository is in an executable pre-release implementation stage. Its Windows
 Planned MVP capabilities include managed PNG ingestion; duplicate and similarity-group handling; rectangle annotation; image-level review states; project-level bilingual label management; local ONNX and supported Ultralytics YOLO model assistance; deterministic YOLO Detection export; validated project backups; and configurable shortcuts. DatumDock also imports X-AnyLabeling/LabelMe directories and exports directly reopenable directories while preserving unsupported shapes as compatibility payloads.
 
 The repository uses the MIT license. Before public release, complete the checks recorded in [docs/ROADMAP.md](docs/ROADMAP.md), especially the Python 3.11 and isolated installer verification. See [CONTRIBUTING.md](CONTRIBUTING.md) for development rules and [SECURITY.md](SECURITY.md) for responsible vulnerability reporting.
+
+For a non-editable local setup with the complete development, inference, and build dependency set, run `python -m pip install -r requirements.txt`.
