@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from datumdock.i18n.prototype_catalog import PROTOTYPE_CATALOGS
+
 CATALOGS: dict[str, dict[str, str]] = {
     "zh_CN": {
         "app.title": "DatumDock",
@@ -478,6 +480,9 @@ CATALOGS: dict[str, dict[str, str]] = {
         "dialog.xany.export_complete": "X-AnyLabeling exchange directory exported.",
     },
 }
+
+for _locale, _messages in PROTOTYPE_CATALOGS.items():
+    CATALOGS[_locale].update(_messages)
 
 
 class LocaleService:
