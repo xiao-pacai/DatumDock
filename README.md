@@ -15,11 +15,13 @@
 
 > 🚧 **预发布开发中**：`v0.1.0` 已包含可运行的桌面开发版本与核心服务回归，但尚未完成 Python 3.11 依赖、真实模型、X-AnyLabeling 和安装包的隔离环境验收。请不要将它用于唯一的数据副本。
 
-DatumDock 用于把分散在本地文件夹中的视觉数据，集中到安全、可追踪的数据集池中进行管理、标注、复核与导出。它的重点不只是“画框”，而是让多项目、多数据集、标签体系、模型和训练导出在一个清晰的桌面工作流内协作。
+DatumDock 用于把分散在本地文件夹中的视觉数据，集中到安全、可追踪的数据集池中进行管理、标注、复核与导出。它的重点不只是“画框”，而是让多个独立数据集、标签体系、模型和训练导出在一个清晰的桌面工作流内协作。
+
+> **已确认、待实现的入口调整（2026-07-19）**：DatumDock 将取消用户可见的工作区 / 项目层级，改为类似游戏存档的内部数据集主页。软件启动后展示已有数据集和“新建数据集”，点击或创建后直接进入标注工作台；数据自动保存到软件管理的 Windows 用户数据目录。完整方案与未完成项见 [内部数据集主页与存档式管理方案](docs/DATASET_LIBRARY.md)。本段是产品计划，不表示当前 GUI 已完成重构。
 
 ## 当前状态
 
-项目已进入可运行的 Windows GUI 实现阶段：可创建工作区/项目/数据集、导入受管 PNG、管理标签、绘制矩形并自动保存、导出 YOLO、进行 X-AnyLabeling 目录互操作和项目备份。发布前仍需完成 Python 3.11、真实模型和隔离安装验证。
+项目已进入可运行的 Windows GUI 实现阶段；现有预发布代码仍采用旧的工作区 / 项目 / 数据集入口，并已包含受管 PNG 导入、标签管理、矩形绘制与自动保存、YOLO 导出、X-AnyLabeling 目录互操作和备份等开发切片。下一轮代码任务是把入口与存储重构为内部数据集主页。在该重构及 Python 3.11、真实模型和隔离安装验证完成前，不应把当前版本视为可交付成品。
 
 当前已验证的开发机检查为 Ruff、格式检查、服务层 pytest 与 Qt 离屏 GUI 冒烟。由于当前环境访问 PyPI 出现 TLS 错误，Python 3.11 的完整依赖与 `pytest-qt` 尚未安装；详情见 [路线图的外部阻塞记录](docs/ROADMAP.md#当前外部阻塞记录)。
 
@@ -48,15 +50,15 @@ python -m pip install -r requirements.txt
 
 | 领域 | 规划能力 |
 | --- | --- |
-| 多项目管理 | 工作区 → 项目 → 数据集 → 受管数据集池；可快速切换多个项目与数据集。 |
+| 数据集主页 | 像游戏存档一样创建、查看、搜索和打开多个受管数据集；不要求选择工作区或项目目录。 |
 | 受管数据集池 | 导入后复制到软件内部统一管理；常见静态图片统一转换为 PNG，外部源文件不被改写。 |
 | 数据质量 | 导入时检查完全相同图片；近似图片以相似组管理，避免训练、验证和测试集之间的数据泄露。 |
 | 标注与复核 | MVP 优先矩形框；图片级未复核、自动标注待复核、已复核和有问题状态；高效交互参考 X-AnyLabeling。 |
-| 标签体系 | 项目级标签集，包含英文训练名、中文别名、描述、同义词、稳定类别 ID 与独立颜色；可跨数据集检查标签使用情况。 |
-| 自动标注 | 每个项目可管理本地 ONNX 与受支持的 Ultralytics YOLO `.pt` 模型；优先 GPU、无 GPU 时明确回退 CPU。 |
+| 标签体系 | 每个数据集独立管理标签集，包含英文训练名、中文别名、描述、同义词、稳定类别 ID 与独立颜色；可按标签检查图片。 |
+| 自动标注 | 每个数据集可管理本地 ONNX 与受支持的 Ultralytics YOLO `.pt` 模型；优先 GPU、无 GPU 时明确回退 CPU。 |
 | 模型训练导出 | 导出时自由选择比例、随机种子和目标格式；MVP 首先提供可直接训练的 YOLO Detection 目录与 `data.yaml`。 |
 | 格式互操作 | 可导入 X-AnyLabeling/LabelMe 图片与同名 JSON；可导出让 X-AnyLabeling 直接打开的目录。 |
-| 安全与可移植 | 项目备份支持校验后导入；模型二进制不随备份包分发，避免无意携带大文件或执行风险。 |
+| 安全与可移植 | 数据集备份支持校验后导入；模型二进制不随备份包分发，避免无意携带大文件或执行风险。 |
 
 ## 设计理念
 
@@ -73,7 +75,7 @@ DatumDock 将与 X-AnyLabeling 共用 LabelMe JSON 工作流：
 - 导入含图片与同名 JSON 的目录后，矩形框可继续编辑；
 - 当前不支持的多边形、旋转框、圆、线、点和扩展字段会被保留，而不是静默删除；
 - 导出后生成 PNG、同名 LabelMe JSON 与 `labels.txt`，可由 X-AnyLabeling 直接打开；
-- DatumDock 的项目管理、复核状态、模型来源等私有信息不会写进交换 JSON。
+- DatumDock 的内部管理信息、复核状态、模型来源等私有信息不会写进交换 JSON。
 
 详见 [X-AnyLabeling 互操作规范](docs/X_ANYLABELING_INTEROP.md)。
 
@@ -82,6 +84,7 @@ DatumDock 将与 X-AnyLabeling 共用 LabelMe JSON 工作流：
 | 文档 | 内容 |
 | --- | --- |
 | [文档导航](docs/README.md) | 推荐阅读顺序、每份文档的职责与开发前检查。 |
+| [内部数据集主页与存档式管理方案](docs/DATASET_LIBRARY.md) | 最新入口、软件内部存储、数据集边界、旧结构迁移与验收清单。 |
 | [产品需求文档](docs/PRD.md) | MVP 范围、数据池、标签、模型、导出与性能要求。 |
 | [架构说明](docs/ARCHITECTURE.md) | 分层、核心对象、受管存储、任务与视觉系统。 |
 | [交互与界面规范](docs/UX.md) | 三栏工作流、莫兰迪设计令牌、画布与页面交互。 |
@@ -112,7 +115,7 @@ DatumDock/
 
 - 代码注释使用中文；Markdown 中文为主，同时提供英文摘要；
 - 使用 Ruff 统一格式化、静态检查与 import 排序；详细规则见 [代码规范](docs/CODE_STYLE.md)；
-- 不提交真实数据集、项目工作区、导出训练集、模型权重、密钥或缓存；
+- 不提交真实数据集、内部资料库、旧工作区、导出训练集、模型权重、密钥或缓存；
 - 涉及受管数据、格式互操作、划分或 YOLO 导出的改动必须有相应测试；
 - UI 复用统一设计令牌与自有图标资产，不复制第三方产品图形；
 - 每完成一项功能，更新路线图并按验收标准验证。
@@ -136,11 +139,11 @@ DatumDock/
 
 ## English Summary
 
-DatumDock is a local-first desktop application for managing and annotating computer-vision datasets. It is designed around a workspace → project → dataset → managed pool hierarchy, so images, annotations, labels, models, review states, and exports remain organized rather than scattered across folders.
+DatumDock is a local-first desktop application for managing and annotating computer-vision datasets. Its confirmed target experience uses a game-save-like home page backed by an app-managed dataset library: users create or open a dataset directly, without selecting a workspace or project directory, and each dataset independently owns its images, annotations, labels, models, review states, and indexes.
 
-The repository is in an executable pre-release implementation stage. Its Windows-first PySide6 GUI already covers the managed-pool, rectangle-annotation, YOLO-export, LabelMe/X-AnyLabeling exchange, backup, and bilingual-shell slices. It is not a release-ready installer yet: Python 3.11 dependencies, real-model workflows, X-AnyLabeling interoperability, and clean-machine installer validation still need to pass.
+The repository is in an executable pre-release implementation stage. The current GUI still uses the legacy workspace/project/dataset entry; the dataset-home and internal-library migration is documented in `docs/DATASET_LIBRARY.md` but has not been implemented. Existing development slices cover managed-pool, rectangle-annotation, YOLO-export, LabelMe/X-AnyLabeling exchange, backup, and a bilingual shell. It is not a release-ready installer yet.
 
-Planned MVP capabilities include managed PNG ingestion; duplicate and similarity-group handling; rectangle annotation; image-level review states; project-level bilingual label management; local ONNX and supported Ultralytics YOLO model assistance; deterministic YOLO Detection export; validated project backups; and configurable shortcuts. DatumDock also imports X-AnyLabeling/LabelMe directories and exports directly reopenable directories while preserving unsupported shapes as compatibility payloads.
+Planned MVP capabilities include managed PNG ingestion; duplicate and similarity-group handling; rectangle annotation; image-level review states; dataset-level bilingual label management; local ONNX and supported Ultralytics YOLO model assistance; deterministic YOLO Detection export; validated dataset backups; and configurable shortcuts. DatumDock also imports X-AnyLabeling/LabelMe directories and exports directly reopenable directories while preserving unsupported shapes as compatibility payloads.
 
 The repository uses the MIT license. Before public release, complete the checks recorded in [docs/ROADMAP.md](docs/ROADMAP.md), especially the Python 3.11 and isolated installer verification. See [CONTRIBUTING.md](CONTRIBUTING.md) for development rules and [SECURITY.md](SECURITY.md) for responsible vulnerability reporting.
 
