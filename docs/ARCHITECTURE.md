@@ -20,7 +20,7 @@ src/datumdock/
 ├─ app.py                   # QApplication 初始化与依赖组装
 ├─ domain/                  # AppLibrary、ManagedDataset、LabelSet、ModelEntry、NamingPolicy、DatasetSample 等纯数据模型
 ├─ services/                # 内部资料库、模型导入/推理、数据集、索引、缩略图、重命名、样本删除、标注读写、划分、模型格式导出
-├─ ui/                      # 数据集主页、标注工作台、模型管理、设置、数据集池、画布、导出向导等
+├─ ui/                      # 数据集主页、四区标注工作台、模型管理、设置、虚拟图片列表、画布、导出向导等
 ├─ state/                   # 当前数据集、主页状态、界面语言、快捷键、筛选条件、选中标注、待处理状态等
 ├─ i18n/                    # 简体中文、英文翻译资源和本地化辅助函数
 └─ resources/               # Qt 资源、图标或主题
@@ -78,7 +78,8 @@ src/datumdock/
 | `DatasetExporter` | 模型格式导出器的统一接口，声明支持的标注类型、校验规则和输出方式。 |
 | `YoloDetectionExporter` | 首个 `DatasetExporter` 实现，将图片、标签和 `data.yaml` 写入独立 YOLO 目录。 |
 | `AnnotationCanvas` | 坐标变换、绘制和鼠标交互；不负责 JSON 持久化。 |
-| `MainWindow` | 组合 UI，转发用户意图到状态和服务层。 |
+| `AnnotationWorkspace` | 组合顶部主操作栏、左侧标注工具、中央 `AnnotationCanvas`、右侧当前标注与虚拟图片列表；只转发意图，不直接执行耗时 I/O。 |
+| `MainWindow` | 在数据集主页和 `AnnotationWorkspace` 间切换，并组装全局操作、语言、主题和错误边界。 |
 
 ## 4. 坐标约定
 
@@ -119,7 +120,8 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 - 全局应用设置保存 `ui_locale`（初始值 `zh_CN`）、`shortcut_overrides`、默认数据划分比例和回收站少量样本阈值，不保存在数据集元数据中；翻译资源随应用安装包提供，例如 `i18n/datumdock_zh_CN.qm` 与 `i18n/datumdock_en_US.qm`。
 - 每个模型在数据集 `models/{model-id}/` 中受管存放，`model.json` 记录 `{id, display_name, format, task_type, source_filename, runtime_config, model_classes, label_mapping, status}`。模型二进制和配置只属于其所在数据集；数据集备份只保留模型配置并在导入后标记二进制待重新导入。
 - `index.sqlite` 是单个受管数据集内万级样本的查询事实来源，至少包含 `samples`、`sample_labels`、`sample_review`、`similarity_groups`、`similarity_members`、`import_jobs` 和回收站记录。对 `filename`、`review_status`、`label_id`、相似组 ID、更新时间建立索引。
-- `sample_review` 是互斥的图片级状态，至少区分 `unreviewed`、`auto_pending_review`、`reviewed` 与 `issue`；从 `issue` 完成复核时必须原子切换为 `reviewed`。自动标注 shape 保存 `model_id`、推理时间和置信度，人工标注不被模型任务覆盖。
+- `sample_review` 是互斥的图片级状态，至少区分 `unreviewed`、`auto_pending_review`、`reviewed` 与 `issue`；加载失败另由样本健康状态表示。显示状态按明确顺序计算：健康检查失败为异常；`issue` 为有问题；`reviewed` 为已完成；`auto_pending_review` 或 `unreviewed` 且已有 shape 为待审核；其余 `unreviewed` 为未标注。从 `issue` 完成复核时必须原子切换为 `reviewed`。自动标注 shape 保存 `model_id`、推理时间和置信度，人工标注不被模型任务覆盖。
+- `reviewed` 不能由 shape 数量自动推导；零 shape 样本也可通过明确的负样本确认进入 `reviewed`，并在 UI 显示“已完成（无目标）”。右侧列表状态从索引字段读取，不在控件层临时猜测。
 - `trash/` 只保存被选择“移入回收站”的完整样本包及恢复元数据；永久删除和大批量删除不进入该目录。
 - 图片及其 LabelMe JSON 在导入时复制到目标数据集池；池内可使用样本 ID 命名以避免同名文件冲突，并在元数据中保留原始来源路径。
 - 外部 X-AnyLabeling/LabelMe 文件的兼容载荷与 DatumDock 的可编辑矩形框分层存储：矩形框解析为内部 `label_id` 与像素坐标；其他 shape 及 `flags`、`attributes`、`description`、`difficult`、`score` 等未知或未支持字段保留为只读兼容载荷。`LabelMeRepository` 在写回或导出时按原顺序合并该载荷，不将私有稳定 ID、复核状态或模型元数据泄漏到交换 JSON。
@@ -238,4 +240,4 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 
 ## English Summary
 
-The target architecture replaces the visible workspace/project hierarchy with `AppLibrary -> ManagedDataset`. `DatasetLibraryService` manages isolated datasets under `%LOCALAPPDATA%\DatumDock`, while legacy `Workspace` and `Project` objects remain migration inputs only until the refactor is implemented. The architecture otherwise separates domain models, services, UI, and application state. Per-dataset SQLite indexes, virtualized views, lazy thumbnails, and background jobs support at least 10,000 common images. `ImageImportService` copies and normalizes supported images to managed PNG, while `XAnyLabelingInteropService` performs atomic X-AnyLabeling import/export and `CompatibilityPayloadRepository` preserves unsupported shapes. This target is documented but not yet claimed as implemented.
+The target architecture replaces the visible workspace/project hierarchy with `AppLibrary -> ManagedDataset`. `AnnotationWorkspace` composes the top action bar, left drawing/AI toolbar, central canvas, and split right annotation/image panel without performing long-running I/O directly. Image-level review status comes from the dataset index, not widget guesses; zero-box negative samples may be explicitly reviewed as complete. `DatasetLibraryService` manages isolated datasets under `%LOCALAPPDATA%\DatumDock`, while per-dataset SQLite indexes, virtualized image views, lazy thumbnails, and background jobs support at least 10,000 images. This target is documented but not yet claimed as implemented.

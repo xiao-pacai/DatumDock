@@ -20,6 +20,7 @@
 - [ ] 实现带完整 Logo、数据集卡片、搜索、排序、设置和“新建数据集”的主页。
 - [ ] 实现空数据集与从已有数据集复制配置的创建流程；成功后直接进入标注工作台。
 - [ ] 将标注工作台上下文收敛为单一当前数据集，并移除用户可见的工作区、项目树和打开目录入口。
+- [ ] 按 UX 固定标注工作台布局：顶部数据集/导入/导出操作栏、左侧标注与 AI 工具、中央画布、右侧当前标注和带状态的图片列表。
 - [ ] 将标签、模型、索引、回收站、备份、导出和跨数据集操作迁移为数据集级边界。
 - [ ] 提供旧 `Workspace -> Project -> Dataset` 结构的只读迁移预检、备份、校验、提交与失败回滚。
 - [ ] 完成中英文旧术语清理，以及首次启动、重启恢复、双数据集隔离、损坏元数据和升级保留数据的 GUI / 自动化回归。
@@ -40,7 +41,7 @@
 - [ ] 实现数据集级标签集与独立标签管理页面：表格、搜索、筛选、增删改查、归档和稳定类别 ID 分配。
 - [-] 实现标签集签名比较、差异报告与无冲突标签集合并：旧代码已提供严格信息比较、稳定 ID 映射和无冲突合并入口；迁移到数据集级边界、差异报告与数据集合并向导仍待完成。
 - [ ] 实现活动标签唯一颜色的自动分配、手动颜色选择、冲突校验和跨画布/列表一致渲染。
-- [ ] 实现莫兰迪主题 token、主窗口三栏布局与基础状态栏。
+- [ ] 实现莫兰迪主题 token、标注工作台四区布局、可调整右侧分区与基础状态栏。
 - [ ] 为领域模型和服务层建立测试框架。
 
 ## 阶段 2：数据集池与图片浏览
@@ -51,6 +52,7 @@
 - [ ] 实现近似图片候选扫描、相似组人工确认/拆分，以及导出时相似组不可拆分的分组划分。
 - [ ] 实现 SQLite 数据集索引、虚拟样本列表、延迟缩略图和可取消后台任务，支持单数据集万张图片。
 - [ ] 实现数据集池列表、搜索、基础筛选与当前图片加载。
+- [ ] 实现右侧虚拟图片列表/网格、固定行末状态徽标，以及未标注/待审核/已完成/有问题/异常筛选。
 - [ ] 实现数据集命名规则、重命名预览和安全批量重命名；同步 LabelMe、索引和缓存引用。
 - [ ] 实现标注页面的样本删除确认、回收站恢复/清空与大批量永久删除。
 - [ ] 实现全局回收站少量样本阈值、设置项悬停帮助与删除影响范围说明。
@@ -64,7 +66,8 @@
 - [-] 实现当前数据集内按标签提取样本的标签检查视图、索引查询和目标标注框高亮跳转：旧代码已实现部分分页索引检索、跳转与首个目标框高亮；迁移到新边界、网格/列表视图切换和更多复合筛选仍待完成。
 - [ ] 实现标签修改影响预检、确认对话框和可恢复的 LabelMe 批量迁移。
 - [ ] 实现矩形框创建、选中、移动、缩放和删除。
-- [ ] 实现标注列表与画布选中状态同步。
+- [ ] 实现右侧当前图片标注列表与画布选中状态双向同步、双击切换标签和分区折叠/调节。
+- [ ] 实现图片级“已完成”确认和无目标负样本确认；自动标注进入待审核，完成问题处理后清除问题状态。
 - [ ] 实现立即自动保存、写入失败待处理状态和重试/放弃保护提示。
 
 ## 阶段 4：标注持久化与模型格式导出
@@ -76,7 +79,7 @@
 - [ ] 实现数据集级模型目录、模型管理页面和模型条目增删改查。
 - [ ] 实现 ONNX 模型导入、元数据/输入输出探测、本地校验与可编辑运行配置。
 - [ ] 实现受支持 PT 变体识别；对未知或不兼容文件给出明确提示。
-- [ ] 实现模型类别到当前数据集标签的映射、GPU 优先/CPU 回退与配置指引，以及直接保存为图片级待人工复核/有问题/已复核状态的检测框自动标注。
+- [ ] 实现模型类别到当前数据集标签的映射、GPU 优先/CPU 回退与配置指引，以及直接保存为图片级待审核/有问题/已完成状态的检测框自动标注。
 - [ ] 实现数据集备份压缩包、导入前结构/完整性校验，以及标签集一致的数据集间复制/移动。
 - [ ] 实现标签兼容性检查、重复图预览与兼容数据集的复制/移动合并。
 - [ ] 实现一次性导出请求：全局默认或临时覆盖的 train/val/test 比例、目标模型/格式、候选范围、随机种子与输出位置；不保存方案和记录。
@@ -124,4 +127,4 @@
 
 ## English Summary
 
-The next implementation stage replaces the visible workspace/project hierarchy with a game-save-like home page and an internal `AppLibrary -> ManagedDataset` model under `%LOCALAPPDATA%\DatumDock`. Only the documentation and acceptance direction are complete; code migration, the home page, transactional dataset creation, legacy conversion, and regression tests remain unchecked and must score at least 90 before later feature work resumes. The broader roadmap still includes immediate Chinese/English localization, customizable shortcuts, managed PNG ingestion, X-AnyLabeling interoperability, per-dataset SQLite indexes, virtualized browsing, and at least 10,000 images per dataset.
+The next implementation stage replaces the visible workspace/project hierarchy with a game-save-like home page and an internal `AppLibrary -> ManagedDataset` model under `%LOCALAPPDATA%\DatumDock`. It also introduces the documented annotation layout: top dataset/import/export actions, left annotation and AI tools, a central canvas, and a split right annotation/image panel with explicit image-level review states. Only the documentation and acceptance direction are complete; code migration, UI implementation, legacy conversion, and regression tests remain unchecked and must score at least 90 before later feature work resumes.

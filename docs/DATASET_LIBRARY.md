@@ -80,13 +80,18 @@ flowchart LR
 
 工作台保留 DatumDock 的数据集管理核心和 X-AnyLabeling 风格的高效标注体验，但不显示工作区树或项目树。
 
-- 左上角品牌区提供“返回主页”行为；返回只切换页面，不修改数据。
-- 左侧为当前数据集的图片列表或网格、搜索、状态筛选、标签筛选和标注预览开关。
-- 中间为图片画布、矩形框标注、缩放、平移和当前图片操作。
-- 右侧为当前数据集标签、别名、描述、标注属性与复核状态。
-- 顶部或数据集菜单提供：导入图片、标签管理、模型管理、自动标注、导出训练数据、备份、重命名、删除与设置。
+- 顶部为标题与主操作栏：DatumDock 品牌/返回主页、当前数据集下拉、导入图片、导出、标签管理、模型管理、设置与更多操作。当前数据集下拉支持搜索和快速切换，但不会打开外部目录。
+- “导出”必须区分训练数据集、X-AnyLabeling 交换目录和数据集备份，不能把不同数据边界隐藏在含糊的单一“导出图片”行为里。
+- 左侧为窄标注工具栏：选择/编辑、矩形框、AI 标注、平移、适配窗口、缩放、撤销与重做。AI 菜单支持当前图片、全部图片和全部未标注图片。
+- 中间为占据主要空间的图片画布，负责矩形框标注、缩放、平移、选中态和直接编辑。
+- 右侧上半区显示当前图片的全部标注。列表行显示标签颜色、中文别名、英文训练名和选中状态，并与画布框双向同步。
+- 右侧下半区显示图片列表或网格，支持搜索和筛选。每一行/卡片显示缩略图、文件名、标注数量，并在末尾固定显示图片级状态。
+- 用户可见状态至少包含“未标注、待审核、已完成、有问题、异常”。其中“已完成”等同于内部已复核；它必须由用户按整张图片确认，不能仅因存在矩形框自动产生。人工确认的无目标负样本可显示“已完成（无目标）”。
+- 右侧两个区域使用可调整分隔条，可分别折叠；图片列表按 SQLite 分页并延迟加载缩略图，保证万张图片规模下可用。
 - 页面标题始终明确显示当前数据集名称，避免用户误操作其他存档。
 - 空数据集显示“导入图片”和“管理标签”两个首要操作，不展示无意义的空表格或 IDE 式目录提示。
+
+详细控件位置、状态映射和交互规则以 [交互与界面规范](UX.md#1-主窗口布局) 为准。
 
 ## 6. 软件内部存储方案
 
@@ -195,4 +200,4 @@ flowchart LR
 
 ## English Summary
 
-DatumDock will replace its user-facing workspace/project hierarchy with a game-save-like managed dataset library. The application always opens to a home page listing existing datasets and a clear create action; opening or creating a dataset goes directly to the same annotation and management workspace. Each managed dataset independently owns its labels, managed PNG pool, annotations, index, model configuration, trash, and cache under the per-user Windows application-data directory. External sources are copied rather than registered as projects. This document is a confirmed product and architecture plan only; no application code is claimed to have been migrated yet.
+DatumDock will replace its user-facing workspace/project hierarchy with a game-save-like managed dataset library. The application always opens to a home page listing existing datasets and a clear create action; opening or creating a dataset goes directly to an annotation workspace with top-level import/export and dataset switching, left-side drawing and AI tools, a central canvas, and a split right panel for annotations and a status-bearing image list. Each managed dataset independently owns its labels, managed PNG pool, annotations, index, model configuration, trash, and cache under the per-user Windows application-data directory. External sources are copied rather than registered as projects. This document is a confirmed product and architecture plan only; no application code is claimed to have been migrated yet.

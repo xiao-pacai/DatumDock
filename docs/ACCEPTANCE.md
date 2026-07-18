@@ -27,7 +27,11 @@
 ## A. 启动与界面
 
 - [ ] 在目标平台执行项目说明中的启动命令后，应用正常打开。
-- [ ] 窗口包含数据集池、图像画布、类别/属性区域、主操作入口和状态栏。
+- [ ] 标注工作台包含顶部标题与主操作栏、左侧标注工具栏、中央图像画布、右侧标注/图片分区和底部状态栏。
+- [ ] 顶部始终显示当前数据集名称，并可执行导入图片、打开明确分类的导出入口和快速切换数据集；切换不会打开外部目录选择器。
+- [ ] 当前图片保存失败时，快速切换数据集会被阻止，并提供重试、放弃内存修改或取消。
+- [ ] 左侧工具栏至少可到达选择/编辑、矩形框、AI 标注、平移、适配窗口、撤销和重做；激活、悬停和键盘焦点状态清晰。
+- [ ] 右侧上半区显示当前图片标注，下半区显示图片列表/网格，两区可调整高度和折叠；右侧刷新不会造成画布明显跳动。
 - [ ] 首次启动主页及空数据集工作台均有明确的引导式空状态提示。
 - [ ] 界面使用一致的莫兰迪主题，且选中、错误和禁用状态可清晰区分。
 - [ ] 默认浅色界面具有小清新、安静且专业的视觉层级：暖灰背景、低饱和面板、克制圆角和轻微分隔；页面不使用大面积高饱和色、厚重阴影、强渐变或密集常驻操作按钮。
@@ -58,6 +62,10 @@
 - [ ] 少量样本删除可移入软件回收站并恢复；“少量”阈值可在全局设置修改并有悬停说明；大批量样本可在明确确认后永久删除，两个操作都显示影响范围。
 - [ ] 单个数据集导入至少一万张常见静态图片后，可分页浏览、搜索、筛选、打开图片、执行标签检查与导出，且界面不会因全量样本或缩略图加载而失去响应。
 - [ ] 网格视图的标注预览开关可显示或隐藏缩略图矩形框与标签色；关闭时仍清晰显示原图和图片级状态。
+- [ ] 右侧图片列表的每一行显示缩略图、文件名、标注数量，并在行末固定显示“文字 + 图标/形状”的图片级状态徽标。
+- [ ] 图片状态至少包括未标注、待审核、已完成、有问题和异常；“已完成”必须由图片级确认产生，不能仅因存在标注框自动产生。
+- [ ] 没有目标框的负样本可被人工确认成“已完成（无目标）”，并能与尚未处理的未标注图片明确区分。
+- [ ] AI 标注结果自动进入待审核；解决“有问题”图片并确认后，状态切换为已完成且问题标记被清除。
 - [ ] 能正确打开 PNG、JPG/JPEG 至少两种常见格式。
 - [ ] 用户可通过 UI 和快捷键切换上一张、下一张图片。
 - [ ] 图片可缩放、平移，且缩放后标注位置仍正确。
@@ -77,6 +85,8 @@
 - [ ] 修改英文训练名时，软件在写入前展示受影响范围；确认后当前数据集标签集和所有受影响 LabelMe 标注文件同步更新。
 - [ ] 迁移中发生写入失败时，软件能报告失败文件并保持或恢复一致状态，不能静默只更新部分标注。
 - [ ] 用户可选中、移动、缩放和删除矩形框。
+- [ ] 点击右侧当前图片标注项会选中并定位对应画布框；点击画布框也会同步选中右侧标注项。
+- [ ] 双击画布框或右侧标注项可快速切换标签，修改后立即自动保存。
 - [ ] 编辑操作会立即原子保存并显示保存中/已保存状态；写入失败时显示可处理的待保存错误状态。
 
 ## D. 标注保存与读取
@@ -95,8 +105,8 @@
 - [ ] 用户可查看并修改模型类别到当前数据集标签的映射；未映射模型类别不会创建标注。
 - [ ] 更新模型时，旧模型在新模型验证成功前保持可用；删除模型不删除图片、数据集或人工标注。
 - [ ] 有可用 GPU 推理后端时自动标注优先使用 GPU；首次 CPU 推理时说明原因、允许继续，并提供应用内 GPU 配置指引。
-- [ ] 自动标注结果直接保存，带模型来源、置信度和图片级待人工复核状态；用户可修改漏标、误标、标签和框位置后，将整张图片标记为已复核或有问题，且自动标注不会静默覆盖人工标注。
-- [ ] “有问题”与“已复核”是互斥的图片级状态；用户完成问题处理并标记已复核后，有问题状态被清除。
+- [ ] 自动标注结果直接保存，带模型来源、置信度和图片级待审核状态；用户可修改漏标、误标、标签和框位置后，将整张图片标记为已完成或有问题，且自动标注不会静默覆盖人工标注。
+- [ ] “有问题”与“已完成”是互斥的图片级状态；用户完成问题处理并标记已完成后，有问题状态被清除。
 
 ## F. 模型格式导出
 
@@ -153,4 +163,4 @@
 
 ## English Summary
 
-The highest-priority acceptance gate now covers a game-save-like dataset home page and an internal per-user managed library: no workspace picker or project tree, direct opening or creation into the annotation workspace, restart recovery, dataset isolation, safe external-source copying, and non-destructive legacy migration. These items are planned and must pass before the new experience is claimed as implemented. Acceptance also covers immediate Simplified Chinese/English switching, conflict-checked shortcuts, managed pool browsing, file renaming and deletion, rectangle annotation, dataset-level label management, backup and X-AnyLabeling round-tripping with unsupported payload preservation.
+The highest-priority acceptance gate covers a game-save-like dataset home page and an internal per-user managed library. The annotation workspace must provide a top dataset/import/export bar, left drawing and AI tools, a central canvas, and a resizable right panel containing synchronized annotations and a virtualized image list with fixed status badges. Pending Review, Completed, Issue, and Error are image-level states; Completed requires explicit review and also supports confirmed empty negative samples. These planned items must pass before the new experience is claimed as implemented, together with restart recovery, dataset isolation, bilingual UI, managed-pool safety, backup, and X-AnyLabeling round-tripping.
