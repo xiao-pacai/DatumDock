@@ -17,6 +17,7 @@ build/
 dist/
 *.egg-info/
 *.spec
+!datumdock.spec
 installer-output/
 
 # Qt and local application state
