@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from datumdock.i18n.catalog import LocaleService
+from datumdock.resources import resource_root
 from datumdock.services.workspace import WorkspaceService
 from datumdock.ui.main_window import MainWindow
 from datumdock.ui.theme import application_stylesheet
@@ -20,7 +20,7 @@ def create_application(arguments: list[str] | None = None) -> QApplication:
     application = QApplication(arguments if arguments is not None else sys.argv)
     application.setApplicationName("DatumDock")
     application.setOrganizationName("DatumDock")
-    icon_path = Path(__file__).resolve().parents[2] / "assets" / "brand" / "datumdock-app-icon.ico"
+    icon_path = resource_root() / "assets" / "brand" / "datumdock-app-icon.ico"
     application.setWindowIcon(QIcon(str(icon_path)))
     application.setStyleSheet(application_stylesheet())
     return application

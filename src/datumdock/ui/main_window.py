@@ -44,6 +44,7 @@ from datumdock.domain.models import (
     Workspace,
 )
 from datumdock.i18n.catalog import LocaleService, tr
+from datumdock.resources import resource_root
 from datumdock.services.backup import ProjectBackupService
 from datumdock.services.dataset import DatasetPoolService, DuplicateCandidate
 from datumdock.services.exporting import SplitPlanner, XAnyLabelingExporter, YoloDetectionExporter
@@ -59,12 +60,6 @@ from datumdock.ui.model_manager import ModelManagerDialog
 from datumdock.ui.sample_browser import SampleBrowser
 from datumdock.ui.similarity_dialog import SimilarityDialog
 from datumdock.ui.trash_dialog import TrashDialog
-
-
-def repository_root() -> Path:
-    """在开发环境中定位随项目分发的品牌资产目录。"""
-
-    return Path(__file__).resolve().parents[3]
 
 
 class DuplicateDialog(QDialog):
@@ -453,7 +448,7 @@ class MainWindow(QMainWindow):
         self.is_sidebar_collapsed = False
         self._browser_context: tuple[str, str] | None = None
         self._actions: dict[str, QAction] = {}
-        self.icon_registry = IconRegistry(repository_root())
+        self.icon_registry = IconRegistry(resource_root())
         self._build_ui()
         self.locale_service.subscribe(self.retranslate_ui)
         self.retranslate_ui()
@@ -686,7 +681,7 @@ class MainWindow(QMainWindow):
     def _set_brand_pixmaps(self) -> None:
         """正常侧栏、欢迎页和关于页都使用同一份完整 DatumDock 字标。"""
 
-        logo_path = repository_root() / "assets" / "brand" / "datumdock-wordmark-v3.png"
+        logo_path = resource_root() / "assets" / "brand" / "datumdock-wordmark-v3.png"
         pixmap = QPixmap(str(logo_path))
         if pixmap.isNull():
             self.brand_label.setText("DatumDock")
@@ -1585,7 +1580,7 @@ class MainWindow(QMainWindow):
         dialog.setWindowTitle(tr(self.locale_service, "about.title"))
         layout = QVBoxLayout(dialog)
         logo = QLabel()
-        pixmap = QPixmap(str(repository_root() / "assets" / "brand" / "datumdock-wordmark-v3.png"))
+        pixmap = QPixmap(str(resource_root() / "assets" / "brand" / "datumdock-wordmark-v3.png"))
         logo.setPixmap(pixmap.scaledToWidth(340, Qt.TransformationMode.SmoothTransformation))
         logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         body = QLabel(tr(self.locale_service, "about.body"))
