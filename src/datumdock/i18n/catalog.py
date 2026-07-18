@@ -1,0 +1,440 @@
+"""集中管理 DatumDock 的中英文系统文案。"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+
+CATALOGS: dict[str, dict[str, str]] = {
+    "zh_CN": {
+        "app.title": "DatumDock",
+        "menu.file": "文件",
+        "menu.project": "项目",
+        "menu.help": "帮助",
+        "action.new_workspace": "新建工作区",
+        "action.open_workspace": "打开工作区",
+        "action.new_project": "新建项目",
+        "action.new_dataset": "新建数据集",
+        "action.import_images": "导入图片",
+        "action.import_xany": "导入 X-AnyLabeling 项目",
+        "action.labels": "管理项目标签集",
+        "action.models": "管理自动标注模型",
+        "action.settings": "设置",
+        "action.export": "导出数据集",
+        "action.export_xany": "导出 X-AnyLabeling 项目",
+        "action.export_backup": "导出项目备份",
+        "action.import_backup": "导入项目备份",
+        "action.similarity": "检查近似图片",
+        "action.about": "关于 DatumDock",
+        "action.collapse_sidebar": "折叠侧栏",
+        "action.delete_sample": "删除当前图片",
+        "action.trash": "打开回收站",
+        "action.previous_sample": "上一张图片",
+        "action.next_sample": "下一张图片",
+        "action.undo": "撤销标注编辑",
+        "action.redo": "重做标注编辑",
+        "action.fit_image": "适应窗口",
+        "action.zoom_in": "放大",
+        "action.zoom_out": "缩小",
+        "panel.workspace": "工作区与数据集",
+        "panel.samples": "数据集池",
+        "panel.labels": "标签与属性",
+        "panel.no_workspace": "尚未打开工作区",
+        "panel.no_project": "请先创建或选择项目",
+        "panel.no_labels": "当前项目尚未配置标签",
+        "welcome.title": "管理数据集，从一个可靠的数据池开始",
+        "welcome.description": "创建或打开工作区，集中管理项目、数据集、标签和标注。",
+        "welcome.create": "创建工作区",
+        "welcome.open": "打开已有工作区",
+        "status.ready": "就绪",
+        "status.saved": "已保存",
+        "status.no_dataset": "未选择数据集",
+        "dialog.workspace.title": "选择新工作区位置",
+        "dialog.workspace.exists": "所选目录已包含 DatumDock 工作区。",
+        "dialog.project.title": "新建项目",
+        "dialog.project.name": "项目名称",
+        "dialog.project.copy_template": (
+            "是否复制当前项目的标签集作为新项目模板？不会复制图片、标注或模型。"
+        ),
+        "dialog.dataset.title": "新建数据集",
+        "dialog.dataset.name": "数据集名称",
+        "dialog.dataset.copy_template": (
+            "是否复制当前数据集的命名与预览配置？项目标签集会自动共享，不会复制图片或标注。"
+        ),
+        "dialog.required": "请输入名称。",
+        "dialog.error": "操作失败",
+        "settings.title": "设置",
+        "settings.language": "界面语言",
+        "settings.shortcuts": "快捷键",
+        "settings.trash": "回收站少量样本阈值",
+        "settings.split": "默认训练/验证/测试比例",
+        "settings.close": "关闭",
+        "about.title": "关于 DatumDock",
+        "about.body": "本地优先的视觉数据集管理与标注桌面应用。",
+        "empty.canvas": "选择数据集后即可在这里浏览和标注图片。",
+        "tooltip.brand": "返回工作区概览",
+        "label.alias": "中文别名",
+        "label.name": "英文训练名",
+        "label.description": "描述",
+        "label.color": "颜色",
+        "label.class_id": "类别 ID",
+        "label.status": "状态",
+        "label.usage": "使用次数",
+        "label.search": "搜索标签、别名、描述或同义词",
+        "label.status.active": "活动",
+        "label.status.archived": "已归档",
+        "browser.search": "按文件名搜索",
+        "browser.all_status": "全部状态",
+        "browser.page": "第 {page} / {total} 页，共 {count} 张",
+        "browser.previous_page": "上一页",
+        "browser.next_page": "下一页",
+        "browser.preview": "显示标注预览",
+        "canvas.no_sample": "从数据集池选择一张图片开始标注。",
+        "canvas.no_label": "请先在项目标签集中选择一个标签。",
+        "canvas.autosaved": "标注已自动保存",
+        "canvas.save_failed": "自动保存失败，原文件未被覆盖；请检查磁盘权限后重试。",
+        "canvas.review": "图片复核状态",
+        "canvas.label": "当前绘制标签",
+        "review.unreviewed": "未复核",
+        "review.auto_pending_review": "待人工复核",
+        "review.reviewed": "已复核",
+        "review.issue": "有问题",
+        "dialog.import.title": "导入图片到受管数据集池",
+        "dialog.import.filter": "图片文件 (*.jpg *.jpeg *.png *.bmp *.webp *.tif *.tiff)",
+        "dialog.import.summary": "已导入 {imported} 张；跳过 {skipped} 张；失败 {failed} 张。",
+        "dialog.duplicate.title": "发现完全相同的图片",
+        "dialog.duplicate.body": "左侧是待导入图片，右侧是数据集中的已有图片。是否仍然保留两张？",
+        "dialog.duplicate.keep": "继续导入",
+        "dialog.duplicate.skip": "跳过这张",
+        "dialog.delete.title": "删除当前图片",
+        "dialog.delete.trash": "将删除受管图片、标注与缓存，并移动到回收站，可稍后恢复。继续吗？",
+        "dialog.delete.permanent": "将永久删除受管图片、标注与缓存，此操作不可恢复。继续吗？",
+        "dialog.trash.title": "项目回收站",
+        "dialog.trash.restore": "恢复选中图片",
+        "dialog.trash.empty": "回收站为空。",
+        "dialog.export.title": "导出 YOLO 检测数据集",
+        "dialog.export.directory": "导出目录",
+        "dialog.export.choose": "选择目录",
+        "dialog.export.include_negative": "包含无标注图片作为负样本",
+        "dialog.export.train": "训练集比例",
+        "dialog.export.val": "验证集比例",
+        "dialog.export.test": "测试集比例",
+        "dialog.export.complete": "YOLO 数据集导出完成。",
+        "dialog.export.invalid_split": "训练、验证、测试比例之和必须为 100。",
+        "dialog.export.no_annotated": "当前筛选条件下没有可导出的已标注图片。",
+        "dialog.labels.title": "管理项目标签集",
+        "dialog.labels.add": "新增标签",
+        "dialog.labels.edit": "编辑标签",
+        "dialog.labels.archive": "归档标签",
+        "dialog.labels.name": "英文训练名",
+        "dialog.labels.alias": "显示别名",
+        "dialog.labels.description": "描述",
+        "dialog.labels.color": "标签颜色",
+        "dialog.labels.class_id": "类别 ID",
+        "dialog.labels.migrate": "英文训练名会改写 {count} 张图片中的关联矩形，是否继续？",
+        "dialog.shortcuts.title": "快捷键设置",
+        "dialog.shortcuts.restore": "恢复默认",
+        "dialog.shortcuts.sequence": "快捷键",
+        "dialog.shortcuts.invalid": "快捷键无效或与其他操作冲突。",
+        "dialog.choose_label": "切换矩形标签",
+        "dialog.choose_label.prompt": "选择新的标签",
+        "dialog.similarity.title": "近似图片检查",
+        "dialog.similarity.group": "近似组",
+        "dialog.similarity.samples": "图片",
+        "dialog.similarity.status": "导出绑定",
+        "dialog.similarity.confirm": "确认绑定",
+        "dialog.similarity.unconfirm": "取消绑定",
+        "dialog.similarity.pending": "未确认",
+        "dialog.similarity.confirmed": "已确认：导出时不会拆分",
+        "dialog.similarity.help": (
+            "确认后，同组近似图片将固定放入同一个训练、验证或测试集合，以降低数据泄露风险。"
+        ),
+        "dialog.models.title": "自动标注模型库",
+        "dialog.models.import": "导入模型",
+        "dialog.models.delete": "删除模型",
+        "dialog.models.mapping": "配置类别映射",
+        "dialog.models.current": "标注当前图片",
+        "dialog.models.all": "一键标注全部图片",
+        "dialog.models.unannotated": "标注所有未标注图片",
+        "dialog.models.name": "模型名称",
+        "dialog.models.format": "格式",
+        "dialog.models.classes": "类别数",
+        "dialog.models.status": "状态",
+        "dialog.models.filter": "模型文件 (*.onnx *.pt)",
+        "dialog.models.delete_confirm": "将永久删除当前项目中的模型文件，此操作不可恢复。继续吗？",
+        "dialog.models.cpu.title": "将使用 CPU 推理",
+        "dialog.models.cpu.body": "未检测到可用 GPU。可以继续使用 CPU 推理，或查看 GPU 配置说明。",
+        "dialog.models.cpu.continue": "继续使用 CPU",
+        "dialog.models.cpu.guide": "查看配置说明",
+        "dialog.models.cpu.guide_body": (
+            "请安装支持当前 NVIDIA 驱动的 PyTorch CUDA 版本，并在设置好 CUDA 后重启 DatumDock。"
+        ),
+        "dialog.models.mapping.class": "模型类别",
+        "dialog.models.mapping.label": "项目标签",
+        "dialog.models.mapping.none": "跳过此类别",
+        "dialog.models.no_mapping": "请先至少映射一个模型类别到项目标签。",
+        "dialog.models.complete": "自动标注完成：已处理 {count} 张图片。",
+        "dialog.backup.export_title": "导出项目备份",
+        "dialog.backup.import_title": "导入项目备份",
+        "dialog.backup.filter": "DatumDock 项目备份 (*.ddbackup)",
+        "dialog.backup.export_complete": "项目备份已创建。模型二进制按设计未包含在备份中。",
+        "dialog.backup.import_complete": "项目备份验证通过并已导入。模型二进制需要单独重新导入。",
+        "dialog.xany.import_title": "导入 X-AnyLabeling / LabelMe 目录",
+        "dialog.xany.export_title": "导出 X-AnyLabeling 项目",
+        "dialog.xany.folder_name": "导出目录名称",
+        "dialog.xany.import_complete": (
+            "已导入 {imported} 张；缺少标注 {missing} 张；无效 JSON {invalid} 个。"
+        ),
+        "dialog.xany.export_complete": "X-AnyLabeling 交换目录已导出。",
+    },
+    "en_US": {
+        "app.title": "DatumDock",
+        "menu.file": "File",
+        "menu.project": "Project",
+        "menu.help": "Help",
+        "action.new_workspace": "New Workspace",
+        "action.open_workspace": "Open Workspace",
+        "action.new_project": "New Project",
+        "action.new_dataset": "New Dataset",
+        "action.import_images": "Import Images",
+        "action.import_xany": "Import X-AnyLabeling Project",
+        "action.labels": "Manage Project Labels",
+        "action.models": "Manage Auto-annotation Models",
+        "action.settings": "Settings",
+        "action.export": "Export Dataset",
+        "action.export_xany": "Export X-AnyLabeling Project",
+        "action.export_backup": "Export Project Backup",
+        "action.import_backup": "Import Project Backup",
+        "action.similarity": "Review Similar Images",
+        "action.about": "About DatumDock",
+        "action.collapse_sidebar": "Collapse Sidebar",
+        "action.delete_sample": "Delete Current Image",
+        "action.trash": "Open Trash",
+        "action.previous_sample": "Previous Image",
+        "action.next_sample": "Next Image",
+        "action.undo": "Undo Annotation Edit",
+        "action.redo": "Redo Annotation Edit",
+        "action.fit_image": "Fit to Window",
+        "action.zoom_in": "Zoom In",
+        "action.zoom_out": "Zoom Out",
+        "panel.workspace": "Workspace & Datasets",
+        "panel.samples": "Dataset Pool",
+        "panel.labels": "Labels & Properties",
+        "panel.no_workspace": "No workspace is open",
+        "panel.no_project": "Create or select a project first",
+        "panel.no_labels": "The current project has no labels yet",
+        "welcome.title": "Start dataset management with a reliable data pool",
+        "welcome.description": (
+            "Create or open a workspace to manage projects, datasets, labels, and annotations."
+        ),
+        "welcome.create": "Create Workspace",
+        "welcome.open": "Open Existing Workspace",
+        "status.ready": "Ready",
+        "status.saved": "Saved",
+        "status.no_dataset": "No dataset selected",
+        "dialog.workspace.title": "Choose a New Workspace Location",
+        "dialog.workspace.exists": "The selected folder already contains a DatumDock workspace.",
+        "dialog.project.title": "New Project",
+        "dialog.project.name": "Project Name",
+        "dialog.project.copy_template": (
+            "Copy the current project's label set as the new project template? "
+            "Images, annotations, and models are not copied."
+        ),
+        "dialog.dataset.title": "New Dataset",
+        "dialog.dataset.name": "Dataset Name",
+        "dialog.dataset.copy_template": (
+            "Copy the current dataset's naming and preview settings? "
+            "The project label set is shared; "
+            "images and annotations are not copied."
+        ),
+        "dialog.required": "Enter a name.",
+        "dialog.error": "Operation Failed",
+        "settings.title": "Settings",
+        "settings.language": "Interface Language",
+        "settings.shortcuts": "Shortcuts",
+        "settings.trash": "Small-sample Trash Threshold",
+        "settings.split": "Default Train / Val / Test Split",
+        "settings.close": "Close",
+        "about.title": "About DatumDock",
+        "about.body": (
+            "A local-first desktop application for visual dataset management and annotation."
+        ),
+        "empty.canvas": "Select a dataset to browse and annotate images here.",
+        "tooltip.brand": "Return to workspace overview",
+        "label.alias": "Chinese Alias",
+        "label.name": "Training Name",
+        "label.description": "Description",
+        "label.color": "Color",
+        "label.class_id": "Class ID",
+        "label.status": "Status",
+        "label.usage": "Usage",
+        "label.search": "Search labels, aliases, descriptions, or synonyms",
+        "label.status.active": "Active",
+        "label.status.archived": "Archived",
+        "browser.search": "Search filenames",
+        "browser.all_status": "All statuses",
+        "browser.page": "Page {page} / {total}, {count} images",
+        "browser.previous_page": "Previous Page",
+        "browser.next_page": "Next Page",
+        "browser.preview": "Show annotation preview",
+        "canvas.no_sample": "Choose an image from the dataset pool to start annotating.",
+        "canvas.no_label": "Choose a label from the project label set first.",
+        "canvas.autosaved": "Annotation saved automatically",
+        "canvas.save_failed": (
+            "Automatic save failed. The original file was not overwritten; "
+            "check permissions and retry."
+        ),
+        "canvas.review": "Image review status",
+        "canvas.label": "Drawing label",
+        "review.unreviewed": "Unreviewed",
+        "review.auto_pending_review": "Awaiting manual review",
+        "review.reviewed": "Reviewed",
+        "review.issue": "Has issue",
+        "dialog.import.title": "Import Images into the Managed Dataset Pool",
+        "dialog.import.filter": "Image files (*.jpg *.jpeg *.png *.bmp *.webp *.tif *.tiff)",
+        "dialog.import.summary": "Imported {imported}; skipped {skipped}; failed {failed}.",
+        "dialog.duplicate.title": "Identical Image Detected",
+        "dialog.duplicate.body": (
+            "The pending image is on the left and an existing dataset image is on the right. "
+            "Keep both?"
+        ),
+        "dialog.duplicate.keep": "Keep and Import",
+        "dialog.duplicate.skip": "Skip This Image",
+        "dialog.delete.title": "Delete Current Image",
+        "dialog.delete.trash": (
+            "The managed image, annotation, and cache will move to Trash and can be restored. "
+            "Continue?"
+        ),
+        "dialog.delete.permanent": (
+            "The managed image, annotation, and cache will be permanently deleted. "
+            "This cannot be undone. Continue?"
+        ),
+        "dialog.trash.title": "Project Trash",
+        "dialog.trash.restore": "Restore Selected Image",
+        "dialog.trash.empty": "Trash is empty.",
+        "dialog.export.title": "Export YOLO Detection Dataset",
+        "dialog.export.directory": "Export directory",
+        "dialog.export.choose": "Choose Directory",
+        "dialog.export.include_negative": "Include unannotated images as negative samples",
+        "dialog.export.train": "Train split",
+        "dialog.export.val": "Validation split",
+        "dialog.export.test": "Test split",
+        "dialog.export.complete": "YOLO dataset export complete.",
+        "dialog.export.invalid_split": "Train, validation, and test splits must add up to 100.",
+        "dialog.export.no_annotated": "There are no annotated images available for export.",
+        "dialog.labels.title": "Manage Project Label Set",
+        "dialog.labels.add": "Add Label",
+        "dialog.labels.edit": "Edit Label",
+        "dialog.labels.archive": "Archive Label",
+        "dialog.labels.name": "English Training Name",
+        "dialog.labels.alias": "Display Alias",
+        "dialog.labels.description": "Description",
+        "dialog.labels.color": "Label Color",
+        "dialog.labels.class_id": "Class ID",
+        "dialog.labels.migrate": (
+            "Changing the training name rewrites matching rectangles in {count} images. Continue?"
+        ),
+        "dialog.shortcuts.title": "Shortcut Settings",
+        "dialog.shortcuts.restore": "Restore Defaults",
+        "dialog.shortcuts.sequence": "Shortcut",
+        "dialog.shortcuts.invalid": "The shortcut is invalid or conflicts with another action.",
+        "dialog.choose_label": "Change Rectangle Label",
+        "dialog.choose_label.prompt": "Choose the new label",
+        "dialog.similarity.title": "Similar Image Review",
+        "dialog.similarity.group": "Similarity Group",
+        "dialog.similarity.samples": "Images",
+        "dialog.similarity.status": "Export Binding",
+        "dialog.similarity.confirm": "Confirm Binding",
+        "dialog.similarity.unconfirm": "Remove Binding",
+        "dialog.similarity.pending": "Unconfirmed",
+        "dialog.similarity.confirmed": "Confirmed: never split during export",
+        "dialog.similarity.help": (
+            "Once confirmed, similar images in a group stay in the same train, validation, "
+            "or test split to reduce data leakage."
+        ),
+        "dialog.models.title": "Auto-annotation Model Library",
+        "dialog.models.import": "Import Model",
+        "dialog.models.delete": "Delete Model",
+        "dialog.models.mapping": "Configure Class Mapping",
+        "dialog.models.current": "Annotate Current Image",
+        "dialog.models.all": "Annotate All Images",
+        "dialog.models.unannotated": "Annotate All Unannotated Images",
+        "dialog.models.name": "Model Name",
+        "dialog.models.format": "Format",
+        "dialog.models.classes": "Class Count",
+        "dialog.models.status": "Status",
+        "dialog.models.filter": "Model files (*.onnx *.pt)",
+        "dialog.models.delete_confirm": (
+            "The current project model file will be permanently deleted. Continue?"
+        ),
+        "dialog.models.cpu.title": "CPU Inference Will Be Used",
+        "dialog.models.cpu.body": (
+            "No usable GPU was detected. Continue with CPU inference or view GPU setup guidance."
+        ),
+        "dialog.models.cpu.continue": "Continue with CPU",
+        "dialog.models.cpu.guide": "View Setup Guidance",
+        "dialog.models.cpu.guide_body": (
+            "Install a PyTorch CUDA build compatible with your NVIDIA driver, "
+            "then restart DatumDock after CUDA is configured."
+        ),
+        "dialog.models.mapping.class": "Model Class",
+        "dialog.models.mapping.label": "Project Label",
+        "dialog.models.mapping.none": "Skip This Class",
+        "dialog.models.no_mapping": "Map at least one model class to a project label first.",
+        "dialog.models.complete": "Auto-annotation complete: processed {count} images.",
+        "dialog.backup.export_title": "Export Project Backup",
+        "dialog.backup.import_title": "Import Project Backup",
+        "dialog.backup.filter": "DatumDock project backup (*.ddbackup)",
+        "dialog.backup.export_complete": (
+            "Project backup created. Model binaries are intentionally excluded."
+        ),
+        "dialog.backup.import_complete": (
+            "Project backup verified and imported. Re-import model binaries separately."
+        ),
+        "dialog.xany.import_title": "Import X-AnyLabeling / LabelMe Directory",
+        "dialog.xany.export_title": "Export X-AnyLabeling Project",
+        "dialog.xany.folder_name": "Export folder name",
+        "dialog.xany.import_complete": (
+            "Imported {imported}; missing annotations {missing}; invalid JSON {invalid}."
+        ),
+        "dialog.xany.export_complete": "X-AnyLabeling exchange directory exported.",
+    },
+}
+
+
+class LocaleService:
+    """向所有活跃界面广播即时语言切换，领域数据不参与翻译。"""
+
+    def __init__(self, locale: str = "zh_CN") -> None:
+        self.locale = locale if locale in CATALOGS else "zh_CN"
+        self._listeners: list[Callable[[], None]] = []
+
+    def text(self, key: str) -> str:
+        """读取当前语言文案；缺失键显示键名以便开发阶段发现遗漏。"""
+
+        return CATALOGS[self.locale].get(key, key)
+
+    def set_locale(self, locale: str) -> None:
+        """仅刷新系统界面，不对项目内容执行任何改写。"""
+
+        if locale not in CATALOGS:
+            raise ValueError(f"不支持的界面语言: {locale}")
+        self.locale = locale
+        for listener in list(self._listeners):
+            listener()
+
+    def subscribe(self, listener: Callable[[], None]) -> None:
+        """注册可重翻译窗口，避免各控件散落硬编码文案。"""
+
+        self._listeners.append(listener)
+
+    def unsubscribe(self, listener: Callable[[], None]) -> None:
+        """在临时对话框关闭时移除监听，避免已销毁 Qt 对象被再次刷新。"""
+
+        if listener in self._listeners:
+            self._listeners.remove(listener)
+
+
+def tr(service: LocaleService, key: str) -> str:
+    """为界面代码提供简短的集中翻译入口。"""
+
+    return service.text(key)

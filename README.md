@@ -13,13 +13,28 @@
   <a href="#english-summary">English</a>
 </p>
 
-> 🚧 **开发中**：当前仓库是产品规格与工程骨架，尚未发布可下载的应用版本。README 中的能力均以规划/MVP 目标表述，不代表已经实现。
+> 🚧 **预发布开发中**：`v0.1.0` 已包含可运行的桌面开发版本与核心服务回归，但尚未完成 Python 3.11 依赖、真实模型、X-AnyLabeling 和安装包的隔离环境验收。请不要将它用于唯一的数据副本。
 
 DatumDock 用于把分散在本地文件夹中的视觉数据，集中到安全、可追踪的数据集池中进行管理、标注、复核与导出。它的重点不只是“画框”，而是让多项目、多数据集、标签体系、模型和训练导出在一个清晰的桌面工作流内协作。
 
 ## 当前状态
 
-项目正在从需求定义进入可启动应用骨架阶段。首发目标为 Windows 原生 GUI（PySide6），后续使用 PyInstaller 与 Inno Setup 打包为可安装应用。
+项目已进入可运行的 Windows GUI 实现阶段：可创建工作区/项目/数据集、导入受管 PNG、管理标签、绘制矩形并自动保存、导出 YOLO、进行 X-AnyLabeling 目录互操作和项目备份。发布前仍需完成 Python 3.11、真实模型和隔离安装验证。
+
+当前已验证的开发机检查为 Ruff、格式检查、服务层 pytest 与 Qt 离屏 GUI 冒烟。由于当前环境访问 PyPI 出现 TLS 错误，Python 3.11 的完整依赖与 `pytest-qt` 尚未安装；详情见 [路线图的外部阻塞记录](docs/ROADMAP.md#当前外部阻塞记录)。
+
+## 本地运行
+
+首选 Python 3.11 独立虚拟环境。安装依赖后，使用下列命令启动：
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e ".[dev,inference]"
+python -m datumdock
+```
+
+构建 Windows 分发目录和 Inno Setup 安装包的具体步骤见 [Windows 构建说明](docs/BUILD_WINDOWS.md)。
 
 当前优先级、完成规则和验收边界分别记录在 [路线图](docs/ROADMAP.md)、[验收标准](docs/ACCEPTANCE.md) 与 [X-AnyLabeling 对标基线](docs/X_ANYLABELING_BASELINE.md)。
 
@@ -100,10 +115,10 @@ DatumDock/
 
 仓库已经包含 `.gitignore`、`.gitattributes`、贡献指南、安全策略、中文/英文 Issue 模板和 PR 模板。上传到 GitHub 前，请完成以下项目：
 
-1. 选择并添加开源许可证（这是仓库所有者的授权决定，当前尚未预设）。
-2. 将 `.github/ISSUE_TEMPLATE/config.yml` 中的 `OWNER/REPOSITORY` 替换为实际仓库地址。
-3. 在 GitHub 设置仓库简介、主题标签、可见性与安全联系渠道。
-4. 首次推送后确认 README Logo、Issue 模板和分支默认名称显示正常。
+1. 确认 [MIT 许可证](LICENSE) 符合发布意图。
+2. 在 GitHub 设置仓库简介、主题标签、可见性与安全联系渠道。
+3. 完成 Python 3.11、X-AnyLabeling、真实模型和隔离安装包验收后再创建 Release。
+4. 首次发布后确认 README Logo、Issue 模板和默认 `main` 分支显示正常。
 
 当你提供 GitHub 仓库链接后，我可以继续完成远程地址绑定、首次提交、推送及仓库页面配置。
 
@@ -117,8 +132,8 @@ DatumDock/
 
 DatumDock is a local-first desktop application for managing and annotating computer-vision datasets. It is designed around a workspace → project → dataset → managed pool hierarchy, so images, annotations, labels, models, review states, and exports remain organized rather than scattered across folders.
 
-The repository is currently in the product-specification and application-skeleton stage; it is not yet a downloadable application. The planned Windows-first PySide6 GUI combines a bright, fresh Morandi design system with an efficient three-pane annotation workflow.
+The repository is in an executable pre-release implementation stage. Its Windows-first PySide6 GUI already covers the managed-pool, rectangle-annotation, YOLO-export, LabelMe/X-AnyLabeling exchange, backup, and bilingual-shell slices. It is not a release-ready installer yet: Python 3.11 dependencies, real-model workflows, X-AnyLabeling interoperability, and clean-machine installer validation still need to pass.
 
 Planned MVP capabilities include managed PNG ingestion; duplicate and similarity-group handling; rectangle annotation; image-level review states; project-level bilingual label management; local ONNX and supported Ultralytics YOLO model assistance; deterministic YOLO Detection export; validated project backups; and configurable shortcuts. DatumDock also imports X-AnyLabeling/LabelMe directories and exports directly reopenable directories while preserving unsupported shapes as compatibility payloads.
 
-Before public release, choose a license and replace the placeholder GitHub repository URL in the issue-template configuration. See [CONTRIBUTING.md](CONTRIBUTING.md) for development rules and [SECURITY.md](SECURITY.md) for responsible vulnerability reporting.
+The repository uses the MIT license. Before public release, complete the checks recorded in [docs/ROADMAP.md](docs/ROADMAP.md), especially the Python 3.11 and isolated installer verification. See [CONTRIBUTING.md](CONTRIBUTING.md) for development rules and [SECURITY.md](SECURITY.md) for responsible vulnerability reporting.
