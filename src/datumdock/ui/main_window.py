@@ -38,6 +38,7 @@ from datumdock.domain.models import (
     Dataset,
     DatasetSample,
     ExportRequest,
+    NamingPolicy,
     Project,
     ReviewStatus,
     Workspace,
@@ -206,6 +207,77 @@ class ExportDialog(QDialog):
         )
 
 
+class RenameSamplesDialog(QDialog):
+    """在真正写入前预览受管图片的新名称；外部导入来源不会出现在操作范围内。"""
+
+    def __init__(
+        self,
+        locale_service: LocaleService,
+        policy: NamingPolicy,
+        samples: list[DatasetSample],
+        parent: QWidget,
+    ) -> None:
+        super().__init__(parent)
+        self.locale_service = locale_service
+        self.samples = samples
+        self.setWindowTitle(tr(locale_service, "dialog.rename.title"))
+        self.prefix = QLineEdit(policy.prefix)
+        self.start = QSpinBox()
+        self.start.setRange(0, 9_999_999)
+        self.start.setValue(policy.start_index)
+        self.padding = QSpinBox()
+        self.padding.setRange(1, 12)
+        self.padding.setValue(policy.padding)
+        self.preview = QLabel()
+        self.preview.setWordWrap(True)
+        self._build_ui()
+        self._refresh_preview()
+
+    def _build_ui(self) -> None:
+        """表单仅接收命名策略字段，预览随着输入变化而刷新。"""
+
+        layout = QVBoxLayout(self)
+        form = QFormLayout()
+        form.addRow(tr(self.locale_service, "dialog.rename.prefix"), self.prefix)
+        form.addRow(tr(self.locale_service, "dialog.rename.start"), self.start)
+        form.addRow(tr(self.locale_service, "dialog.rename.padding"), self.padding)
+        layout.addLayout(form)
+        layout.addWidget(self.preview)
+        self.prefix.textChanged.connect(self._refresh_preview)
+        self.start.valueChanged.connect(self._refresh_preview)
+        self.padding.valueChanged.connect(self._refresh_preview)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _refresh_preview(self) -> None:
+        """展示按当前文件名顺序计算的首批目标名称，避免执行后才发现规则写错。"""
+
+        policy = self.build_policy()
+        shown_samples = sorted(self.samples, key=lambda item: item.filename)[:5]
+        examples = [
+            f"{sample.filename} → {policy.filename_for(policy.start_index + index)}"
+            for index, sample in enumerate(shown_samples)
+        ]
+        header = tr(self.locale_service, "dialog.rename.preview").format(
+            shown=len(shown_samples),
+            total=len(self.samples),
+        )
+        self.preview.setText("\n".join([header, *examples]))
+
+    def build_policy(self) -> NamingPolicy:
+        """将当前表单值验证为领域命名规则，非法前缀由确认时统一提示。"""
+
+        return NamingPolicy(
+            prefix=self.prefix.text().strip() or "image",
+            start_index=self.start.value(),
+            padding=self.padding.value(),
+        )
+
+
 class ShortcutDialog(QDialog):
     """集中编辑全局快捷键，并在确认时检查冲突。"""
 
@@ -304,6 +376,16 @@ class SettingsDialog(QDialog):
         self.language_combo = QComboBox()
         self.threshold_input = QComboBox()
         self.threshold_input.addItems(["10", "30", "50", "100"])
+        self.threshold_field = QWidget()
+        threshold_layout = QHBoxLayout(self.threshold_field)
+        threshold_layout.setContentsMargins(0, 0, 0, 0)
+        threshold_layout.addWidget(self.threshold_input)
+        self.threshold_help = QLabel("?")
+        self.threshold_help.setObjectName("helpHint")
+        self.threshold_help.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.threshold_help.setFixedWidth(20)
+        threshold_layout.addWidget(self.threshold_help)
+        threshold_layout.addStretch()
         self.shortcuts_button = QPushButton()
         self.shortcuts_button.clicked.connect(self.open_shortcuts)
         self._build_ui()
@@ -332,10 +414,12 @@ class SettingsDialog(QDialog):
         self.language_combo.setCurrentIndex(0 if self.locale_service.locale == "zh_CN" else 1)
         self.language_combo.blockSignals(False)
         self.threshold_input.setCurrentText(str(self.settings.trash_sample_threshold))
+        self.threshold_help.setToolTip(tr(self.locale_service, "tooltip.trash_threshold"))
+        self.threshold_help.setAccessibleName(tr(self.locale_service, "tooltip.trash_threshold"))
         while self.form.rowCount():
             self.form.removeRow(0)
         self.form.addRow(tr(self.locale_service, "settings.language"), self.language_combo)
-        self.form.addRow(tr(self.locale_service, "settings.trash"), self.threshold_input)
+        self.form.addRow(tr(self.locale_service, "settings.trash"), self.threshold_field)
         self.shortcuts_button.setText(tr(self.locale_service, "settings.shortcuts"))
         self.form.addRow(tr(self.locale_service, "settings.shortcuts"), self.shortcuts_button)
 
@@ -403,6 +487,7 @@ class MainWindow(QMainWindow):
             "import_backup": self.import_backup,
             "delete_sample": self.delete_current_sample,
             "trash": self.open_trash,
+            "rename_samples": self.rename_dataset_samples,
             "previous_sample": lambda: self.select_adjacent_sample(-1),
             "next_sample": lambda: self.select_adjacent_sample(1),
             "undo": lambda: self.canvas.undo(),
@@ -463,6 +548,7 @@ class MainWindow(QMainWindow):
                 self._actions["labels"],
                 self._actions["models"],
                 self._actions["similarity"],
+                self._actions["rename_samples"],
                 self._actions["delete_sample"],
                 self._actions["trash"],
             ]
@@ -1331,6 +1417,54 @@ class MainWindow(QMainWindow):
         self.current_sample = None
         self._browser_context = None
         self.refresh_context()
+
+    def rename_dataset_samples(self) -> None:
+        """以一次明确确认执行当前数据集全量重命名，并在元数据写入失败时回滚规则。"""
+
+        if not self.require_dataset():
+            return
+        samples = self.index_repository().list_samples(
+            self.current_dataset.id,
+            limit=100_000,
+        )
+        if not samples:
+            return
+        dialog = RenameSamplesDialog(
+            self.locale_service,
+            self.current_dataset.naming_policy,
+            samples,
+            self,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        confirmed = QMessageBox.question(
+            self,
+            tr(self.locale_service, "dialog.rename.title"),
+            tr(self.locale_service, "dialog.rename.confirm").format(count=len(samples)),
+        )
+        if confirmed != QMessageBox.StandardButton.Yes:
+            return
+        original_policy = self.current_dataset.naming_policy.model_copy(deep=True)
+        self.current_dataset.naming_policy = dialog.build_policy()
+        try:
+            self.pool_service.rename_samples(
+                self.workspace_root,
+                self.current_project,
+                self.current_dataset,
+                [sample.id for sample in samples],
+            )
+            self.workspace_service.save_project(self.workspace_root, self.current_project)
+        except (OSError, ValueError, KeyError) as error:
+            self.current_dataset.naming_policy = original_policy
+            self.show_error(error)
+            return
+        self.sample_browser.refresh()
+        self.refresh_context()
+        QMessageBox.information(
+            self,
+            tr(self.locale_service, "dialog.rename.title"),
+            tr(self.locale_service, "dialog.rename.complete").format(count=len(samples)),
+        )
 
     def refresh_context(self) -> None:
         """根据当前项目/数据集切换欢迎页或真实浏览与标注工作区。"""

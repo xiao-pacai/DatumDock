@@ -41,6 +41,12 @@ def application_stylesheet() -> str:
         border-radius: 10px;
     }}
     QLabel#panelTitle {{ font-size: 16px; font-weight: 600; padding: 8px 10px; }}
+    QLabel#helpHint {{
+        background: {TOKENS["accent_soft"]};
+        border-radius: 10px;
+        color: {TOKENS["text_secondary"]};
+        font-weight: 600;
+    }}
     QPushButton {{
         background: {TOKENS["surface"]};
         border: 1px solid {TOKENS["panel"]};

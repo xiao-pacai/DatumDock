@@ -28,6 +28,7 @@ CATALOGS: dict[str, dict[str, str]] = {
         "action.collapse_sidebar": "折叠侧栏",
         "action.delete_sample": "删除当前图片",
         "action.trash": "打开回收站",
+        "action.rename_samples": "按规则重命名数据集图片",
         "action.previous_sample": "上一张图片",
         "action.next_sample": "下一张图片",
         "action.undo": "撤销标注编辑",
@@ -72,6 +73,9 @@ CATALOGS: dict[str, dict[str, str]] = {
         "about.body": "本地优先的视觉数据集管理与标注桌面应用。",
         "empty.canvas": "选择数据集后即可在这里浏览和标注图片。",
         "tooltip.brand": "返回工作区概览",
+        "tooltip.trash_threshold": (
+            "当前数据集样本数不超过此值时，删除图片会移入项目回收站；超过后将永久删除。"
+        ),
         "label.alias": "中文别名",
         "label.name": "英文训练名",
         "label.description": "描述",
@@ -112,6 +116,15 @@ CATALOGS: dict[str, dict[str, str]] = {
         "dialog.trash.id": "标识",
         "dialog.trash.restore": "恢复选中图片",
         "dialog.trash.empty": "回收站为空。",
+        "dialog.rename.title": "按规则重命名数据集图片",
+        "dialog.rename.prefix": "文件名前缀",
+        "dialog.rename.start": "起始序号",
+        "dialog.rename.padding": "序号位数",
+        "dialog.rename.preview": "预览（前 {shown} / 共 {total} 张）",
+        "dialog.rename.confirm": (
+            "将重命名 {count} 张受管图片及其标注。外部源文件不会变更，是否继续？"
+        ),
+        "dialog.rename.complete": "已安全重命名 {count} 张图片。",
         "dialog.export.title": "导出 YOLO 检测数据集",
         "dialog.export.directory": "导出目录",
         "dialog.export.choose": "选择目录",
@@ -217,6 +230,7 @@ CATALOGS: dict[str, dict[str, str]] = {
         "action.collapse_sidebar": "Collapse Sidebar",
         "action.delete_sample": "Delete Current Image",
         "action.trash": "Open Trash",
+        "action.rename_samples": "Rename Dataset Images by Rule",
         "action.previous_sample": "Previous Image",
         "action.next_sample": "Next Image",
         "action.undo": "Undo Annotation Edit",
@@ -268,6 +282,10 @@ CATALOGS: dict[str, dict[str, str]] = {
         ),
         "empty.canvas": "Select a dataset to browse and annotate images here.",
         "tooltip.brand": "Return to workspace overview",
+        "tooltip.trash_threshold": (
+            "When the current dataset has no more than this number of samples, deleting "
+            "an image moves it to the project trash; larger datasets delete permanently."
+        ),
         "label.alias": "Chinese Alias",
         "label.name": "Training Name",
         "label.description": "Description",
@@ -320,6 +338,16 @@ CATALOGS: dict[str, dict[str, str]] = {
         "dialog.trash.id": "ID",
         "dialog.trash.restore": "Restore Selected Image",
         "dialog.trash.empty": "Trash is empty.",
+        "dialog.rename.title": "Rename Dataset Images by Rule",
+        "dialog.rename.prefix": "Filename Prefix",
+        "dialog.rename.start": "Starting Number",
+        "dialog.rename.padding": "Number Padding",
+        "dialog.rename.preview": "Preview (first {shown} of {total})",
+        "dialog.rename.confirm": (
+            "This will rename {count} managed images and their annotations. "
+            "External source files stay unchanged. Continue?"
+        ),
+        "dialog.rename.complete": "Safely renamed {count} images.",
         "dialog.export.title": "Export YOLO Detection Dataset",
         "dialog.export.directory": "Export directory",
         "dialog.export.choose": "Choose Directory",
