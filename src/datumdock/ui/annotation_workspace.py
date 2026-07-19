@@ -59,7 +59,7 @@ from datumdock.ui.components import (
     SearchBox,
     StatusBadge,
     ToolButton,
-    brand_asset_path,
+    cropped_brand_pixmap,
 )
 from datumdock.ui.icons import IconRegistry
 from datumdock.ui.managed_sample_model import ManagedSampleDelegate, ManagedSampleListModel
@@ -236,9 +236,8 @@ class AnnotationWorkspace(QWidget):
         layout.setContentsMargins(12, 7, 12, 7)
         layout.setSpacing(8)
         self.home_button = GhostButton()
-        self.home_button.setIcon(QIcon(str(brand_asset_path("datumdock-wordmark-v3.png"))))
-        self.home_button.setIconSize(QSize(160, 36))
-        self.home_button.setFixedWidth(178)
+        self.home_button.setAccessibleName("DatumDock")
+        self._set_brand_compact(False)
         self.home_button.clicked.connect(self.home_requested)
         layout.addWidget(self.home_button)
         self.dataset_combo = QComboBox()
@@ -284,6 +283,24 @@ class AnnotationWorkspace(QWidget):
             layout.addWidget(button)
         self.top_layout = layout
         return bar
+
+    def _set_brand_compact(self, compact: bool) -> None:
+        """按工作台宽度切换完整字标与 DD 标记，并使用裁去透明区的资产。"""
+
+        filename = "datumdock-app-icon.png" if compact else "datumdock-wordmark-v3.png"
+        pixmap = cropped_brand_pixmap(filename)
+        self.home_button.setText("")
+        if pixmap.isNull():
+            self.home_button.setIcon(QIcon())
+            self.home_button.setText("DD" if compact else "DatumDock")
+        else:
+            self.home_button.setIcon(QIcon(pixmap))
+        if compact:
+            self.home_button.setIconSize(QSize(38, 30))
+            self.home_button.setFixedSize(52, 48)
+        else:
+            self.home_button.setIconSize(QSize(210, 36))
+            self.home_button.setFixedSize(226, 48)
 
     def _build_tool_rail(self) -> QFrame:
         rail = QFrame()
@@ -526,6 +543,7 @@ class AnnotationWorkspace(QWidget):
 
         self.banner.retranslate_ui()
         self.home_button.setToolTip(tr(self.locale, "workspace.back_home"))
+        self.home_button.setAccessibleDescription(tr(self.locale, "workspace.back_home"))
         self.dataset_combo.setToolTip(tr(self.locale, "workspace.switch"))
         self.import_button.setText(tr(self.locale, "workspace.import"))
         self.export_button.setText(tr(self.locale, "workspace.export"))
@@ -978,6 +996,7 @@ class AnnotationWorkspace(QWidget):
         compact = self.width() < 1180
         if compact != self._compact:
             self._compact = compact
+            self._set_brand_compact(compact)
             self.labels_button.setVisible(not compact)
             self.models_button.setVisible(not compact)
             self.settings_button.setVisible(not compact)

@@ -16,6 +16,7 @@ from PySide6.QtGui import (
     QPainterPath,
     QPen,
     QPixmap,
+    QRegion,
 )
 from PySide6.QtWidgets import (
     QFrame,
@@ -58,6 +59,18 @@ class BrandLockup(QLabel):
         width = 38 if self.compact else 170
         self.setPixmap(pixmap.scaledToWidth(width, Qt.TransformationMode.SmoothTransformation))
         self.setFixedHeight(42 if self.compact else 48)
+
+
+def cropped_brand_pixmap(filename: str) -> QPixmap:
+    """裁掉品牌 PNG 的透明安全区，避免按完整画布缩放后字标视觉过小。"""
+
+    pixmap = QPixmap(str(brand_asset_path(filename)))
+    if pixmap.isNull():
+        return pixmap
+    bounds = QRegion(pixmap.mask()).boundingRect()
+    if bounds.isEmpty():
+        return pixmap
+    return pixmap.copy(bounds)
 
 
 class PreviewBanner(QFrame):
