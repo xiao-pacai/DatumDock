@@ -216,11 +216,11 @@
 
 ## 当前外部阻塞记录
 
-- [-] A0.8 需求文档提交暂未同步远端。
-  - 原因：2026-07-20 推送提交 `0618c90` 时，三次 HTTPS 尝试分别出现连接重置和 `github.com:443` 无法连接，已按最多三次策略停止重试。
-  - 影响范围：A0.8 的 Logo 放大、默认选择模式辅助线与 `Ctrl + 滚轮` 缩放规范已安全提交在本地 `main`，但远端 `origin/main` 暂时不可见；没有代码或用户资料库受影响。
+- [-] A0.8 完整交付暂未同步远端。
+  - 原因：2026-07-20 对本地交付提交 `9a6e857` 执行三次 HTTPS 推送；第一次和第三次无法连接 `github.com:443`，第二次在发送阶段发生连接重置。随后只读 `ls-remote` 也无法连接，已按最多三次推送策略停止重试。
+  - 影响范围：A0.8 的共享品牌、静态 Logo/独立返回按钮、默认选择模式辅助线、`Ctrl + 滚轮` 锚定缩放、测试和文档均已安全提交在本地 `main`；本地 `origin/main` 跟踪引用仍为 `500e079`，远端是否接收过第二次发送无法在线确认。没有代码、截图或用户资料库丢失。
   - 恢复条件：本机到 GitHub HTTPS 443 的连接恢复。
-  - 下一步：网络恢复后执行 `git push origin main`，确认远端包含 `0618c90` 及本阻塞记录提交；不得重写本地历史。
+  - 下一步：网络恢复后先执行 `git ls-remote origin refs/heads/main`，再执行 `git push origin main`，确认远端包含 A0.8 完整提交及本阻塞记录；不得重写本地历史。
 - [x] GitHub `main` 推送阻塞已恢复：2026-07-19 已将现代视觉设计规范提交 `f28dc79` 成功推送到远端 `main`。
 - [x] 步骤一与步骤二推送阻塞已恢复：早前连接重置、`curl 55` 和 `github.com:443` 失败均为临时网络问题；2026-07-19 已成功将 `f28dc79..e7e8aa9` 推送到远端 `main`，包含步骤一 UI 与步骤二内部资料库提交。
 - [x] 步骤二严格复验与步骤三提交已恢复远端同步。
@@ -240,4 +240,4 @@
 
 ## English Summary
 
-The revised step-four interaction slice and phases 3.2–3.5 are implemented. A0.8 aligns the static home/workbench wordmark, adds a separate back button, keeps guides active in default selection mode, and adds pointer-anchored Ctrl+wheel zoom. The earlier specification push blocker remains recorded until the completed delivery is synchronized without rewriting local history. Model inference, export, complete X-AnyLabeling directory exchange, backup, and packaging remain on the roadmap.
+The revised step-four interaction slice and phases 3.2–3.5 are implemented. A0.8 aligns the static home/workbench wordmark, adds a separate back button, keeps guides active in default selection mode, and adds pointer-anchored Ctrl+wheel zoom. Three GitHub HTTPS push attempts failed or reset, so the complete delivery remains safely committed on local `main` until connectivity recovers; local history was not rewritten. Model inference, export, complete X-AnyLabeling directory exchange, backup, and packaging remain on the roadmap.
