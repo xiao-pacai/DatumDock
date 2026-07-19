@@ -1,6 +1,6 @@
 # DatumDock UI 与步骤四交付复验报告
 
-> 最终结论（2026-07-19）：DatumDock 步骤四真实标签与矩形标注闭环已完成，可以在普通模式管理数据集标签、绘制和编辑矩形框、立即自动保存 LabelMe JSON，并进行图片级人工复核；模型自动标注、YOLO 导出、完整 X-AnyLabeling 互操作和备份将在后续步骤接入。
+> 最终结论（2026-07-19）：DatumDock 步骤四标注交互整改、完整快捷键系统和双状态复核模型已经完成；普通模式支持一次性矩形创建、两点/拖拽画框、高倍率图片检查、响应式快速标签选择、可配置快捷键，以及人工编辑后自动完成复核。模型推理、YOLO 导出、完整 X-AnyLabeling 目录互操作和备份仍将在后续步骤接入。
 
 ## 1. 复验背景
 
@@ -126,7 +126,7 @@ $env:QT_QPA_PLATFORM = "offscreen"
 | 文档与工程质量 | 10 / 10 | 边界、启动、资料库、验收、路线图和图片池文档同步。 |
 | **总分** | **97 / 100** | 高于 90 分门槛，无已知 P0/P1，不以评分抵消未完成边界。 |
 
-## 11. 步骤四标签与标注实施证据
+## 11. 步骤四标签与标注实施证据（schema v2 历史）
 
 - 数据集标签使用稳定 UUID、类别 ID、英文训练名、中文别名、描述、同义词、唯一颜色、状态、修订号和时间；显示字段修改不会改写 JSON。
 - 训练名修改先预览图片/框影响，以备份迁移标准 `shape.label`；中断操作可从有限恢复目录回滚，类别 ID 修改不触碰 JSON。
@@ -135,10 +135,10 @@ $env:QT_QPA_PLATFORM = "offscreen"
 - 正式画布支持创建、选择、移动、八点缩放、删除、换标签、撤销/重做；右侧列表与画布双向同步。
 - 每个有效编辑排入串行自动保存；版本与磁盘摘要按样本 UUID 隔离。保存失败保留内存状态，离开前明确要求重试、放弃或取消。
 - 未复核、待审核、已完成、已完成（无目标）和有问题为互斥图片级状态；异常由图片健康与标注诊断派生。
-- 上述状态与截图是步骤四 schema v2 的历史复验证据。后续需求已在 `UX.md`、`ARCHITECTURE.md` 和 `ANNOTATION_WORKFLOW.md` 中简化为“待复核 / 已完成”双状态，当前尚未重新实现或截图验收。
+- 上述状态与截图仅是步骤四 schema v2 的历史复验证据；当前行为已经由第 16～18 节记录的 schema v3“待复核 / 已完成”双状态实现与截图取代。
 - 重命名和回收站恢复会同步 `imagePath`、文件名与摘要；故障注入证明可恢复原 JSON 字节和旧摘要。
 
-## 12. 步骤四 Python 3.11 结果
+## 12. 步骤四 Python 3.11 结果（schema v2 历史）
 
 最终命令：
 
@@ -157,7 +157,7 @@ $env:QT_QPA_PLATFORM = "offscreen"
 - 普通模式与 `--ui-preview` 的原生 Qt 事件循环均保持运行；普通临时根生成 2 个初始化文件，预览临时根生成 0 个文件。
 - 真实 `%LOCALAPPDATA%\DatumDock` 复验前后均为 7 个文件；按“相对路径 + 文件 SHA-256”计算的本轮树哈希保持 `A31F897611CF1541B7F0C354D92EFFC504AE487B850CFD912311A6818997A6F4`。
 
-## 13. 步骤四原生截图
+## 13. 步骤四原生截图（schema v2 历史）
 
 `scripts/capture_step4_review.py` 使用临时资料库创建两个数据集，导入三张图片，建立三个标签与三种复核状态，并保存真实矩形后截图。
 
@@ -167,7 +167,7 @@ $env:QT_QPA_PLATFORM = "offscreen"
 - 脚本在抓取前断言当前路由，并要求同一语言/尺寸的三个核心页面哈希互不相同。
 - 人工抽查修正了英文标签表头裁切、描述列挤压、检查页文件名裁切和原始 ISO 时间过长问题。
 
-## 14. 步骤四评分
+## 14. 步骤四评分（schema v2 历史）
 
 | 领域 | 得分 | 说明 |
 | --- | ---: | --- |
@@ -183,9 +183,43 @@ $env:QT_QPA_PLATFORM = "offscreen"
 - ONNX/PT 模型导入、CPU/GPU 推理和自动标注；
 - X-AnyLabeling 完整目录导入导出及独立应用实际打开验证；
 - YOLO Detection 导出、备份和跨数据集转移；
-- 完整快捷键设置、离线教程校订；
+- 离线教程最终校订；
 - PyInstaller/Inno Setup 安装、卸载和无 Python 环境验证。
+
+## 16. 步骤四整改复验证据
+
+- SQLite v2→v3 在显式事务中重建样本表：`unreviewed` 转空值，`pending_review` 保持，`completed / completed_negative` 合并为 `completed`，`issue` 转待复核并记录诊断；迁移不读取或改写 LabelMe JSON。
+- 人工有效编辑和 `completed` 在同一索引事务提交；模型来源写入真实 `pending_review`。JSON 已发布而 SQLite 失败时立即恢复旧 JSON，恢复也失败才进入 `recovery_required`。
+- `ActionRegistry` 登记 24 个操作，设置页自动枚举全部操作；支持修改、清空、冲突替换、单项/分组/全部恢复、Windows 保留组合拒绝、写盘失败回滚和即时刷新。
+- 出厂默认 `A / D / R / S / Delete` 已通过真实 Qt 键盘路径；文本框中的字母和 Delete 不会穿透。
+- 画布支持一次性拖拽与两点创建、零面积重试、图片内十字线、中键平移、滚轮纵向滚动、`Alt + 滚轮` 横向滚动和边界钳制。
+- 手动缩放范围为 1%–6400%，只维护单份原图与双精度视图变换；800% 起使用像素清晰模式，框线、控制柄和文字保持屏幕尺寸。
+- 快速标签窗使用虚拟响应式卡片网格，搜索别名/训练名/同义词/描述；尺寸全局记忆，快速新建标签与外层改派为独立事务。
+- 右侧列表与画布共用 shape UUID、删除命令、一个撤销节点和一个保存快照；`Ctrl+Z` 可恢复。
+
+## 17. 步骤四整改质量结果与截图
+
+- Python 3.11 完整结果：**166 passed、1 skipped、14 warnings**。唯一跳过项仍是当前 Windows 账户无符号链接权限；警告仍来自正式入口未调用的旧图片算法。
+- Ruff、格式检查、`compileall` 通过；普通模式和 `--ui-preview` 均进入真实 Qt 事件循环。
+- pytest 自动夹具会为每个测试设置独立绝对 `DATUMDOCK_DATA_DIR`。最终完整回归前后，真实资料库均为 705 个文件，树哈希均为 `0B44018242767B7E90BF4A78EEE3FA2D344300AB2200B1DC509C96B31B2A4CF8`，且测试结束后没有遗留 pytest 进程。
+- 初始只读快照为 703 个文件；任务期间检测到真实资料库新增两份标注，因而不能沿用初始树哈希。无法从文件事实安全归因该并发变化，收尾操作将其原样保留，没有擅自回滚。
+- `scripts/capture_step4_review.py` 在临时资料库生成 `build/ui-review/step4-revision/` 的 30 张原生 Windows 截图。
+- 中文/英文分别覆盖 1366×768、1440×900、1920×1080 的双状态工作台、全量快捷键页面和快速标签窗。
+- 1440×900 额外覆盖最小/扩大标签窗、搜索、6400% 边框/辅助线、恢复全部快捷键、标签迁移和保存失败保护。
+- 截图未提交 Git；脚本只写 Git 忽略的 `build/ui-review/`，资料库来自临时目录。
+
+## 18. 步骤四整改评分
+
+| 领域 | 得分 | 说明 |
+| --- | ---: | --- |
+| 需求覆盖 | 25 / 25 | 一次性矩形、快速标签窗、双状态和全量快捷键均真实接入。 |
+| 数据迁移与保存安全 | 24 / 25 | 迁移、回滚、摘要与跨数据集隔离通过；符号链接权限用例仍跳过。 |
+| 画布交互与视觉 | 20 / 20 | 两种创建方式、边界滚动、十字线、固定屏幕线宽和 6400% 通过。 |
+| 快捷键与设置体验 | 15 / 15 | 24 个动作、冲突替换、三级恢复、文本焦点保护和持久化通过。 |
+| 测试与稳定性 | 10 / 10 | 166 项、pytest-qt、万级查询、故障注入和 30 张截图通过。 |
+| 文档与工程质量 | 5 / 5 | 规范、架构、验收、路线图、清单和截图脚本同步。 |
+| **总分** | **99 / 100** | 高于 90 分门槛，无已知 P0/P1，不用评分掩盖后续范围。 |
 
 ## English Summary
 
-This file preserves the verified step-four schema-v2 review evidence and screenshots. A later, unimplemented requirement replaces its five visible review states with pending review and completed only; unannotated and unhealthy samples become separate conditions. The historical score and screenshots must not be treated as validation of the new two-state UI.
+This report preserves schema-v2 history and separately verifies the revised step-four delivery. Schema v3, atomic manual completion, 24 registered actions, one-shot/two-click rectangles, bounded 6400% inspection, list deletion, and the responsive quick-label selector are implemented. The Python 3.11 suite has 166 passing tests, with 30 native Windows screenshots. Model inference, exports, complete X-AnyLabeling directory exchange, backups, and packaging remain future work.

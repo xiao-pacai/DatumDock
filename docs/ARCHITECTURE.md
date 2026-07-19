@@ -6,7 +6,7 @@
 
 本文件中仍出现的 `Workspace`、`Project`、`WorkspaceService` 和“项目级”描述只用于标记旧实现来源；正式入口不再调用它们，新增代码不得继续扩大该层级。步骤三已将图片池、样本索引、缩略图、重命名与回收站迁入 `ManagedDataset`；步骤四已迁入标签、矩形标注、LabelMe、自动保存与图片级复核。模型和导出尚未迁移。
 
-当前模块边界为：`services.sample_repository` 是 SQLite v2 样本、标签反向索引和复核查询事实来源；`services.image_pool` 负责两阶段转码、哈希、缩略图与启动对账；`services.managed_labels` 负责标签和训练名迁移；`services.annotations` 与 `services.labelme` 负责有序 JSON、恢复和自动保存；`services.sample_governance` 负责重命名和删除事务；`ui.managed_gateway` 只向页面暴露数据对象或图片字节，不暴露受管路径。详见 [受管图片池](IMAGE_POOL.md) 与 [标注工作流](ANNOTATION_WORKFLOW.md)。
+当前模块边界为：`services.sample_repository` 是 SQLite v3 样本、标签反向索引和双状态复核查询事实来源；`services.image_pool` 负责两阶段转码、哈希、缩略图与启动对账；`services.managed_labels` 负责标签和训练名迁移；`services.annotations` 与 `services.labelme` 负责有序 JSON、可恢复提交和自动保存；`services.shortcuts` 负责全量动作注册和原子快捷键偏好；`services.sample_governance` 负责重命名和删除事务；`ui.managed_gateway` 只向页面暴露数据对象或图片字节，不暴露受管路径。详见 [受管图片池](IMAGE_POOL.md) 与 [标注工作流](ANNOTATION_WORKFLOW.md)。
 
 ## 1. 原则
 
@@ -129,13 +129,13 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 - `color` 是数据集标签定义的一部分。`LabelColorService` 使用预定义的可访问调色板及色差校验生成候选色；活动标签颜色不得重复，归档标签颜色可复用。
 - 全局应用设置保存 `ui_locale`（初始值 `zh_CN`）、`shortcut_overrides`、默认数据划分比例和回收站少量样本阈值，不保存在数据集元数据中；翻译资源随应用安装包提供，例如 `i18n/datumdock_zh_CN.qm` 与 `i18n/datumdock_en_US.qm`。
 - 每个模型在数据集 `models/{model-id}/` 中受管存放，`model.json` 记录 `{id, display_name, format, task_type, source_filename, runtime_config, model_classes, label_mapping, status}`。模型二进制和配置只属于其所在数据集；数据集备份只保留模型配置并在导入后标记二进制待重新导入。
-- `index.sqlite` 是单个受管数据集内万级样本的查询事实来源。schema v2 在 `samples` 维护标注摘要、版本、框数、更新时间和复核状态，并以 `sample_labels(sample_id, label_id, shape_id)` 支持标签使用量、筛选和跨页定位；v1→v2 不同步解析全部 JSON。
-- 图片级复核状态固定为 `unreviewed`、`pending_review`、`completed`、`completed_negative` 与 `issue`。加载失败另由图片健康或 `annotation_state` 表示；异常不允许用户手工设置。自动标注来源字段已在模型中预留，但模型推理仍未接入。
-- `completed` 不能由 shape 数量自动推导；零 shape 样本只可通过明确的负样本确认进入 `completed_negative`。删除最后一个框回到 `pending_review`，有问题图片编辑后保持 `issue`，直到用户重新确认。
+- `index.sqlite` 是单个受管数据集内万级样本的查询事实来源。schema v3 在 `samples` 维护标注摘要、版本、框数、更新时间和可空双状态复核值，并以 `sample_labels(sample_id, label_id, shape_id)` 支持标签使用量、筛选和跨页定位；升级不全量解析 JSON。
+- 图片级复核只允许空值、`pending_review` 与 `completed`。空值不显示第三种徽标；加载失败另由图片健康或 `annotation_state` 表示。正式保存边界已经支持人工/模型来源，模型推理本身仍未接入。
+- 零 shape 样本可由人工明确确认为 `completed`，并以框数为零表达负样本；不再保留 `completed_negative` 用户状态。
 
-### 7.1 待实施的双状态复核模型
+### 7.1 已实施的双状态复核模型
 
-> 上述五状态是步骤四当前 schema v2 的历史实现。下一轮统一整改将迁移为本节定义的双状态模型；迁移完成前不得改写历史验收结论。
+> 五状态只作为 schema v2 历史迁移输入保留。当前运行版本和新建数据集均使用本节 schema v3 模型。
 
 - schema v3 的 `review_status` 只允许空值、`pending_review` 和 `completed`。空值表示尚未产生复核状态，不作为第三种用户可见徽标。
 - 纯人工创建首个矩形时写入 `completed`；模型新增或改变任何预测框时写入 `pending_review`。待复核图片的第一次有效人工编辑在保存请求中同时携带目标状态 `completed`。
@@ -282,4 +282,4 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 
 ## English Summary
 
-The architecture now documents that the first effective manual annotation edit atomically completes a pending model result in the same autosave transaction. `review.mark_completed` remains for no-edit review, while view-only commands never affect status. Legacy migration and health separation remain as previously specified; implementation is pending.
+The architecture now implements schema v3 review state, recoverable JSON/SQLite commits, an exhaustive action registry, and isolated quick-label transactions. A successful manual edit atomically completes pending model work; `review.mark_completed` covers no-edit review, and view-only commands never affect status. Model inference and export pipelines remain future work.

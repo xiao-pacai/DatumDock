@@ -1,14 +1,14 @@
 # DatumDock UI 与步骤四页面清单
 
-> 状态：步骤四已将数据集标签、矩形编辑、LabelMe 自动保存、图片级复核和标签检查接入正式 UI。模型、导出、完整 X-AnyLabeling 目录交换和备份仍只提供界面或待接入提示。
+> 状态：步骤四整改已将一次性矩形、双状态复核、全量快捷键、6400% 视图和响应式快速标签窗接入正式 UI。模型、导出、完整 X-AnyLabeling 目录交换和备份仍只提供界面或待接入提示。
 
 ## 0. 本轮实现记录
 
 - 16 / 16 个 `RouteId` 已注册并完成遍历测试；预览专用组件页只在 `--ui-preview` 出现。
-- 28 / 28 个 `DialogId` 已集中注册，可打开、切换语言、校验、取消和关闭。
+- 29 / 29 个 `DialogId` 已集中注册，包括可缩放的 `QUICK_LABEL_SELECTOR`；均可发现、切换语言、校验、取消和关闭。
 - 普通模式使用 `ManagedDatasetGateway` 和真实内部资料库；仅在初始化失败时降级为 `UnavailableGateway`。预览模式始终使用独立 `PreviewGateway`。
-- `build/ui-review/step4-annotation/` 生成 22 张原生 Windows 截图：中英文均覆盖三种分辨率的真实标注工作台、标签管理和标签检查，1440×900 额外覆盖迁移编辑与保存失败。
-- 独立 Python 3.11 下 Ruff、格式、`compileall`、pytest-qt、153 项通过测试和普通/预览 GUI 启动冒烟均通过；1 项符号链接权限用例跳过。
+- `build/ui-review/step4-revision/` 生成 30 张原生 Windows 截图：中英文均覆盖三种分辨率的真实工作台、全量快捷键和快速标签窗，1440×900 额外覆盖 6400%、弹窗尺寸、搜索、恢复默认与保存失败。
+- 独立 Python 3.11 下 Ruff、格式、`compileall`、pytest-qt、166 项通过测试和普通/预览 GUI 启动冒烟均通过；1 项符号链接权限用例跳过。
 
 ## 1. 运行边界
 
@@ -89,17 +89,17 @@
 | `json_error` | 损坏 JSON | 普通模式保持原字节、只读异常和诊断详情 |
 | `unsupported_model` | 不支持模型 | 原因、支持范围和下一步 |
 
-### 3.1 待统一整改的新弹窗
+### 3.1 步骤四整改新增弹窗
 
-| 拟定标识 | 界面 | 目标交互 | 当前状态 |
+| 标识 | 界面 | 目标交互 | 当前状态 |
 | --- | --- | --- | --- |
-| `quick_label_selector` | 双击矩形后的快速更改标签小窗 | 可调尺寸、即时搜索、响应式标签卡片、快速新建、确认/取消 | 需求已记录；尚未加入 `DialogId`，不计入上方 28 个已注册弹窗 |
+| `quick_label_selector` | 双击矩形后的快速更改标签小窗 | 可调尺寸、即时搜索、响应式标签卡片、快速新建、确认/取消 | 已加入 `DialogId.QUICK_LABEL_SELECTOR`，计入上方 29 个已注册弹窗 |
 
-### 3.2 待统一整改的工作台操作
+### 3.2 步骤四整改新增工作台操作
 
-| 拟定操作 ID | 控件 | 目标交互 | 当前状态 |
+| 操作 ID | 控件 | 目标交互 | 当前状态 |
 | --- | --- | --- | --- |
-| `review.mark_completed` | “确认已完成”按钮及可配置快捷键 | 用于检查后无需修改的待复核图片；若发生有效人工编辑，则编辑保存成功时自动完成 | 需求已记录；schema v3 和真实操作尚未实现 |
+| `review.mark_completed` | “确认已完成”按钮及可配置快捷键 | 用于检查后无需修改的待复核图片；若发生有效人工编辑，则编辑保存成功时自动完成 | 已由 `ActionRegistry` 注册并接入 schema v3 真实状态操作 |
 
 ## 4. 可复用组件
 
@@ -123,4 +123,4 @@
 
 ## English Summary
 
-This inventory covers the verified step-four UI and pending revisions. The planned `review.mark_completed` action supports the new two-state review model but is not implemented, and the quick label selector remains unregistered. Settings must eventually enumerate all actions and support atomic restore-all defaults.
+This inventory covers the verified revised step-four UI. `review.mark_completed`, schema-v3 review state, all registered shortcuts, atomic restore-all defaults, one-shot rectangles, and the responsive quick-label selector are implemented. Model inference, exports, complete X-AnyLabeling directory exchange, backups, and packaging remain future work.

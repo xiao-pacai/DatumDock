@@ -7,14 +7,19 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from PIL import Image, ImageDraw
-from PySide6.QtCore import QThreadPool
+from PySide6.QtCore import QPointF, QThreadPool
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
 
 from datumdock.app import create_application
-from datumdock.domain.models import AnnotationDocument, RectangleShape, ReviewStatus
+from datumdock.domain.models import AnnotationDocument, RectangleShape
 from datumdock.i18n.catalog import LocaleService, tr
-from datumdock.services.annotations import AnnotationSaveRequest, AnnotationService
+from datumdock.services.annotations import (
+    AnnotationEditKind,
+    AnnotationEditOrigin,
+    AnnotationSaveRequest,
+    AnnotationService,
+)
 from datumdock.services.dataset_library import DatasetLibraryService
 from datumdock.services.image_pool import ImageImportPreflightRequest, ImageImportService
 from datumdock.services.managed_labels import LabelSetService
@@ -24,6 +29,7 @@ from datumdock.ui.managed_gateway import ManagedDatasetGateway
 from datumdock.ui.managed_label_pages import ManagedLabelEditDialog
 from datumdock.ui.prototype_models import UiCommand
 from datumdock.ui.prototype_pages import RouteId
+from datumdock.ui.quick_label_dialog import QuickLabelSelectorDialog
 
 SIZES = ((1366, 768), (1440, 900), (1920, 1080))
 LOCALES = ("zh_CN", "en_US")
@@ -68,6 +74,14 @@ def _prepare_library(root: Path, source_root: Path):
         alias="紧固件",
         description="需要检查位置的小型紧固件",
     )
+    for index in range(3, 18):
+        current = labels.add_label(
+            first.dataset.id,
+            class_id=index,
+            name=f"inspection_part_{index}",
+            alias=f"检查部件{index}",
+            description=f"用于验证大量标签响应式排列的部件 {index}",
+        )
     label_by_name = {label.name: label for label in current.labels}
     source_root.mkdir(parents=True, exist_ok=True)
     paths = service.dataset_repository.paths(first.dataset.id)
@@ -101,47 +115,59 @@ def _prepare_library(root: Path, source_root: Path):
     if len(report.imported_sample_ids) != 3:
         raise RuntimeError("截图资料库图片导入失败")
     annotations = AnnotationService(service, first.dataset.id)
-    statuses = (
-        ReviewStatus.COMPLETED,
-        ReviewStatus.PENDING_REVIEW,
-        ReviewStatus.COMPLETED_NEGATIVE,
-    )
-    for index, (sample_id, status) in enumerate(
-        zip(report.imported_sample_ids, statuses, strict=True)
-    ):
+    first_shape_id = ""
+    for index, sample_id in enumerate(report.imported_sample_ids):
         sample = repository.get_sample(sample_id)
         if sample is None:
             raise RuntimeError("截图样本索引丢失")
-        rectangles = []
-        if status != ReviewStatus.COMPLETED_NEGATIVE:
-            rectangles = [
-                RectangleShape(
-                    label_id=label_by_name["metal_part"].id,
-                    x1=115,
-                    y1=85,
-                    x2=485,
-                    y2=335,
-                ),
-                RectangleShape(
-                    label_id=label_by_name["connector"].id,
-                    x1=440,
-                    y1=155,
-                    x2=560,
-                    y2=270,
-                    confidence=0.94 if index == 1 else None,
-                ),
-            ]
+        if index == 2:
+            continue
+        rectangles = [
+            RectangleShape(
+                label_id=label_by_name["metal_part"].id,
+                x1=115,
+                y1=85,
+                x2=485,
+                y2=335,
+            ),
+            RectangleShape(
+                label_id=label_by_name["connector"].id,
+                x1=440,
+                y1=155,
+                x2=560,
+                y2=270,
+                confidence=0.94 if index == 1 else None,
+            ),
+        ]
+        if index == 0:
+            first_shape_id = rectangles[0].id
         document = AnnotationDocument(
             sample_id=sample.id,
             image_filename=sample.filename,
             image_width=sample.width,
             image_height=sample.height,
             rectangles=rectangles,
-            review_status=status,
         )
-        annotations.save(AnnotationSaveRequest(first.dataset.id, sample.id, 1, "", document))
+        origin = AnnotationEditOrigin.MODEL if index == 1 else AnnotationEditOrigin.MANUAL
+        kind = AnnotationEditKind.MODEL_WRITE if index == 1 else AnnotationEditKind.CREATE
+        annotations.save(
+            AnnotationSaveRequest(
+                first.dataset.id,
+                sample.id,
+                1,
+                "",
+                document,
+                origin,
+                kind,
+            )
+        )
     service.synchronize_statistics(first.dataset.id)
-    return first, label_by_name["metal_part"]
+    return (
+        first,
+        label_by_name["metal_part"],
+        report.imported_sample_ids[0],
+        first_shape_id,
+    )
 
 
 def _save_failure_dialog(locale: LocaleService, parent: QWidget) -> QMessageBox:
@@ -164,7 +190,9 @@ def capture(output_root: Path) -> int:
     with TemporaryDirectory(prefix="datumdock-step4-review-") as temporary:
         temporary_root = Path(temporary)
         library_root = temporary_root / "library"
-        first, editable_label = _prepare_library(library_root, temporary_root / "sources")
+        first, editable_label, sample_id, shape_id = _prepare_library(
+            library_root, temporary_root / "sources"
+        )
         restarted = DatasetLibraryService(library_root)
         assert len(restarted.list_datasets()) == 2
         for locale_name in LOCALES:
@@ -186,20 +214,68 @@ def capture(output_root: Path) -> int:
                 assert window.navigation.current == RouteId.ANNOTATION_WORKSPACE
                 workspace_hash = _save_widget(window, size_root / "annotation-workspace.png")
 
-                window.navigate(RouteId.LABEL_MANAGER.value)
+                window.navigate(RouteId.SETTINGS.value)
                 QTest.qWait(120)
-                assert window.navigation.current == RouteId.LABEL_MANAGER
-                labels_hash = _save_widget(window, size_root / "label-manager.png")
+                assert window.navigation.current == RouteId.SETTINGS
+                window.navigation.pages[RouteId.SETTINGS].sections.setCurrentRow(1)
+                application.processEvents()
+                settings_hash = _save_widget(window, size_root / "shortcut-settings.png")
 
-                window.navigate(RouteId.LABEL_INSPECTION.value)
+                window.navigate(f"{RouteId.ANNOTATION_WORKSPACE.value}:{first.dataset.id}")
                 QTest.qWait(120)
-                assert window.navigation.current == RouteId.LABEL_INSPECTION
-                inspection_hash = _save_widget(window, size_root / "label-inspection.png")
-                if len({workspace_hash, labels_hash, inspection_hash}) != 3:
+                workspace = window.navigation.pages[RouteId.ANNOTATION_WORKSPACE]
+                quick = QuickLabelSelectorDialog(
+                    locale,
+                    gateway,
+                    window.action_registry,
+                    first.dataset.id,
+                    sample_id,
+                    shape_id,
+                    editable_label.id,
+                    1,
+                    window,
+                )
+                quick.show()
+                QTest.qWait(120)
+                quick_hash = _save_widget(quick, size_root / "quick-label-selector.png")
+                quick.close()
+                if len({workspace_hash, settings_hash, quick_hash}) != 3:
                     raise RuntimeError(f"步骤四核心截图重复: {locale_name} {width}x{height}")
                 screenshot_count += 3
 
                 if (width, height) == (1440, 900):
+                    workspace.canvas.set_zoom_percent(6400)
+                    selected = workspace.canvas.annotations[0]
+                    selected_rect = workspace.canvas._annotation_rect(selected)
+                    center = QPointF(workspace.canvas.rect().center())
+                    workspace.canvas.pan_offset += center - selected_rect.topLeft()
+                    workspace.canvas._hover_point = center + QPointF(60, 40)
+                    workspace.canvas.update()
+                    QTest.qWait(120)
+                    _save_widget(window, size_root / "canvas-6400-percent.png")
+
+                    for name, dimensions, search in (
+                        ("quick-label-minimum.png", (560, 420), ""),
+                        ("quick-label-expanded-search.png", (1120, 700), "检查部件 12"),
+                    ):
+                        selector = QuickLabelSelectorDialog(
+                            locale,
+                            gateway,
+                            window.action_registry,
+                            first.dataset.id,
+                            sample_id,
+                            shape_id,
+                            editable_label.id,
+                            1,
+                            window,
+                        )
+                        selector.resize(*dimensions)
+                        selector.search.setText(search)
+                        selector.show()
+                        QTest.qWait(100)
+                        _save_widget(selector, size_root / name)
+                        selector.close()
+
                     edit = ManagedLabelEditDialog(
                         locale,
                         gateway,
@@ -212,12 +288,23 @@ def capture(output_root: Path) -> int:
                     _save_widget(edit, size_root / "label-migration-edit.png")
                     edit.close()
 
+                    restore = QMessageBox(window)
+                    restore.setWindowTitle(tr(locale, "settings.restore_defaults"))
+                    restore.setText(tr(locale, "settings.restore_all_confirm").format(count=5))
+                    restore.setStandardButtons(
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                    )
+                    restore.show()
+                    QTest.qWait(100)
+                    _save_widget(restore, size_root / "restore-all-shortcuts.png")
+                    restore.close()
+
                     failure = _save_failure_dialog(locale, window)
                     failure.show()
                     QTest.qWait(100)
                     _save_widget(failure, size_root / "save-failure.png")
                     failure.close()
-                    screenshot_count += 2
+                    screenshot_count += 6
 
                 window.close()
                 application.processEvents()
@@ -227,7 +314,7 @@ def capture(output_root: Path) -> int:
 def main() -> int:
     """命令行入口只写入 Git 忽略的视觉复验目录。"""
 
-    output_root = Path("build/ui-review/step4-annotation").resolve()
+    output_root = Path("build/ui-review/step4-revision").resolve()
     count = capture(output_root)
     print(f"已生成 {count} 张步骤四复验截图: {output_root}")
     return 0

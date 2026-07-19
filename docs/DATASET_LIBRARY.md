@@ -228,4 +228,4 @@ flowchart LR
 
 ## English Summary
 
-DatumDock's verified step-four library still uses schema v2. In the pending two-state target, the first effective manual edit completes a model-pending image in the same atomic save; no-edit review uses an explicit button or configurable shortcut. Unannotated samples and health errors remain separate. Implementation is pending.
+DatumDock's revised step-four library uses schema v3. The first effective manual edit completes a model-pending image in the same recoverable save operation; no-edit review uses an explicit button or configurable shortcut. Unannotated samples and health errors remain separate from the two user-visible review states.
