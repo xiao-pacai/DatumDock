@@ -259,6 +259,9 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "dialog.success_preview": "预览流程已完成，没有写入任何真实数据。",
         "dialog.ready_to_apply": "准备应用",
         "dialog.apply_after_confirm": "确认后才会执行；任何失败都会明确提示，不会伪造成功。",
+        "dialog.diagnostics.original_preserved": (
+            "DatumDock 只读取了诊断信息，原数据集目录和损坏文件均未被覆盖。"
+        ),
         "form.name": "名称",
         "form.description": "描述",
         "form.source_dataset": "源数据集",
@@ -274,6 +277,7 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "form.split": "划分比例",
         "form.backup": "备份包",
         "form.dataset": "数据集",
+        "form.dataset_id": "数据集 UUID",
         "form.validation": "完整性检查",
         "form.source": "来源",
         "form.target": "目标数据集",
@@ -334,7 +338,7 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "toast.dataset_restored": "数据集已恢复。",
         "toast.duplicate_dataset_name": "活动数据集中已存在同名数据集。",
         "toast.dataset_unavailable": "该数据集已归档或损坏，当前无法打开。",
-        "toast.library_operation_failed": "资料库操作失败，未留下半完成的数据集。",
+        "toast.library_operation_failed": "资料库操作失败；请查看诊断信息后重试。",
         "toast.library_unavailable": "内部资料库无法安全初始化；已进入只读安全模式。",
     },
     "en_US": {
@@ -654,6 +658,10 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
             "The action runs only after confirmation. Failures are reported and never "
             "presented as success."
         ),
+        "dialog.diagnostics.original_preserved": (
+            "DatumDock only read diagnostic information. The dataset directory and damaged "
+            "files were not overwritten."
+        ),
         "form.name": "Name",
         "form.description": "Description",
         "form.source_dataset": "Source Dataset",
@@ -669,6 +677,7 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "form.split": "Split",
         "form.backup": "Backup",
         "form.dataset": "Dataset",
+        "form.dataset_id": "Dataset UUID",
         "form.validation": "Validation",
         "form.source": "Source",
         "form.target": "Target",
@@ -736,7 +745,7 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
             "This dataset is archived or damaged and cannot be opened right now."
         ),
         "toast.library_operation_failed": (
-            "The library action failed and left no half-created dataset."
+            "The library action failed. Review diagnostics before trying again."
         ),
         "toast.library_unavailable": (
             "The internal library could not initialize safely; read-only safe mode is active."

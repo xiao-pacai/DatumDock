@@ -9,7 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QLabel
 
 from datumdock.app import create_application, parse_launch_options
 from datumdock.domain.models import ManagedDatasetConfiguration, NamingPolicy
@@ -331,6 +331,63 @@ def test_managed_gateway_rename_archive_restore_and_home_snapshot(tmp_path: Path
     assert service.dataset_directory(dataset_id) == directory
 
 
+def test_managed_gateway_never_propagates_unexpected_disk_error(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """任何底层磁盘异常都必须转换为 UI 结果，不能越过 Qt 信号边界。"""
+
+    service = DatasetLibraryService(tmp_path)
+    dataset = service.create_dataset("异常边界")
+    gateway = ManagedDatasetGateway(service)
+
+    def fail_save(_dataset) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(service.dataset_repository, "save_dataset", fail_save)
+    result = gateway.dispatch(
+        UiCommand("dataset.rename", {"dataset_id": dataset.dataset.id, "name": "新名称"})
+    )
+
+    assert result.status == CommandStatus.ERROR
+    assert result.message_key == "toast.library_operation_failed"
+
+
+def test_real_diagnostics_dialog_contains_no_preview_statistics(tmp_path: Path) -> None:
+    """普通模式损坏诊断只显示真实原因，不得混入原型统计。"""
+
+    application = _application()
+    service = DatasetLibraryService(tmp_path)
+    damaged = service.create_dataset("待诊断数据集")
+    service.dataset_repository.paths(damaged.dataset.id).metadata.write_bytes(b"{broken")
+    window = ApplicationShell(LocaleService(), ManagedDatasetGateway(service))
+    window.open_dialog(f"{DialogId.DATASET_DIAGNOSTICS.value}:{damaged.dataset.id}")
+    dialog = window._active_dialogs[0]
+    visible_text = "\n".join(
+        widget.text() for widget in dialog.findChildren(QLabel) if widget.text()
+    )
+
+    assert dialog.pages.count() == 1
+    assert "1,864" not in visible_text
+    assert "3,208" not in visible_text
+    assert "34" not in visible_text
+    assert dialog.context["diagnostic"] in dialog.description_input.toPlainText()
+    before = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    }
+    dialog.next_step()
+    application.processEvents()
+    after = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    }
+    assert before == after
+    window.close()
+
+
 def test_home_search_sort_and_archive_filter_use_real_snapshot(tmp_path: Path) -> None:
     """主页搜索、排序和归档筛选直接作用于真实资料库快照。"""
 
@@ -380,6 +437,72 @@ def test_preview_mode_ignores_even_a_corrupt_real_library(
     assert window.gateway.home_snapshot().datasets
     window.close()
     assert library.read_bytes() == original
+
+
+def test_preview_create_rename_switch_and_close_preserve_real_library_hash(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """完整预览会话只改内存，创建、改名和切换后真实资料库字节不变。"""
+
+    root = tmp_path / "real-library"
+    real_service = DatasetLibraryService(root)
+    real_service.create_dataset("真实数据集")
+    before = {
+        path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()
+    }
+    monkeypatch.setenv("DATUMDOCK_DATA_DIR", str(root))
+    application = _application()
+    window = ApplicationShell.for_mode(LocaleService(), True)
+    create_result = window.gateway.dispatch(UiCommand("dataset.create", {"name": "预览新建"}))
+    assert create_result.affected_id
+    window.gateway.dispatch(
+        UiCommand(
+            "dataset.rename",
+            {"dataset_id": create_result.affected_id, "name": "预览改名"},
+        )
+    )
+    window.navigate(f"{RouteId.ANNOTATION_WORKSPACE.value}:{create_result.affected_id}")
+    application.processEvents()
+    window.close()
+    after = {
+        path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()
+    }
+
+    assert before == after
+
+
+def test_every_unconnected_normal_dialog_preserves_managed_library(tmp_path: Path) -> None:
+    """普通模式所有后续阶段弹窗入口都只提示，不打开原型流程或写入文件。"""
+
+    application = _application()
+    service = DatasetLibraryService(tmp_path)
+    service.create_dataset("安全边界")
+    window = ApplicationShell(LocaleService(), ManagedDatasetGateway(service))
+    before = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    }
+    allowed = {
+        DialogId.CREATE_DATASET,
+        DialogId.CREATE_FROM_TEMPLATE,
+        DialogId.DATASET_DIAGNOSTICS,
+        DialogId.RENAME_DATASET,
+        DialogId.ARCHIVE_DATASET,
+    }
+    for dialog_id in set(DialogId) - allowed:
+        window.open_dialog(dialog_id.value)
+        application.processEvents()
+        assert window._active_dialogs == []
+    after = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    }
+
+    assert before == after
+    window.close()
 
 
 def test_language_switch_does_not_modify_real_dataset_content(tmp_path: Path) -> None:

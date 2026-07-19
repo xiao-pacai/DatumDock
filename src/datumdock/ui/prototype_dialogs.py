@@ -142,17 +142,19 @@ class PreviewFlowDialog(QDialog):
         root.addWidget(self.notice)
         self.steps = QHBoxLayout()
         self.step_chips: list[FilterChip] = []
-        for _ in range(3):
-            chip = FilterChip("")
-            chip.setEnabled(False)
-            self.steps.addWidget(chip)
-            self.step_chips.append(chip)
-        self.steps.addStretch()
-        root.addLayout(self.steps)
+        if self.dialog_id != DialogId.DATASET_DIAGNOSTICS:
+            for _ in range(3):
+                chip = FilterChip("")
+                chip.setEnabled(False)
+                self.steps.addWidget(chip)
+                self.step_chips.append(chip)
+            self.steps.addStretch()
+            root.addLayout(self.steps)
         self.pages = QStackedWidget()
         self.pages.addWidget(self._build_configure_page())
-        self.pages.addWidget(self._build_preview_page())
-        self.pages.addWidget(self._build_result_page())
+        if self.dialog_id != DialogId.DATASET_DIAGNOSTICS:
+            self.pages.addWidget(self._build_preview_page())
+            self.pages.addWidget(self._build_result_page())
         root.addWidget(self.pages, 1)
         controls = QHBoxLayout()
         self.cancel_button = GhostButton()
@@ -166,6 +168,9 @@ class PreviewFlowDialog(QDialog):
         controls.addWidget(self.previous_button)
         controls.addWidget(self.next_button)
         root.addLayout(controls)
+        if self.dialog_id == DialogId.DATASET_DIAGNOSTICS:
+            self.cancel_button.hide()
+            self.previous_button.hide()
         self._refresh_step_state()
 
     def _build_configure_page(self) -> QWidget:
@@ -201,6 +206,11 @@ class PreviewFlowDialog(QDialog):
             self.description_input.setPlainText(self.context.get("diagnostic", ""))
             self.description_input.setReadOnly(True)
         page.body.addLayout(self.form)
+        if self.dialog_id == DialogId.DATASET_DIAGNOSTICS:
+            self.diagnostic_preservation = QLabel()
+            self.diagnostic_preservation.setObjectName("mutedText")
+            self.diagnostic_preservation.setWordWrap(True)
+            page.body.addWidget(self.diagnostic_preservation)
         if self.dialog_id == DialogId.DUPLICATE_COMPARE:
             compare = QHBoxLayout()
             compare.addWidget(self._comparison_card("compare.pending", 5))
@@ -237,6 +247,17 @@ class PreviewFlowDialog(QDialog):
             self._add_form_row("form.new_dataset", self.name_input)
             self._add_form_row("form.description", self.description_input)
             self._add_form_row("form.copy", self.copy_check)
+        elif self.dialog_id == DialogId.DATASET_DIAGNOSTICS:
+            self.dataset_name_value = QLabel(self.context.get("name", ""))
+            self.dataset_id_value = QLabel(self.context.get("dataset_id", ""))
+            self.dataset_id_value.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse
+            )
+            self.status_value = QLabel()
+            self._add_form_row("form.dataset", self.dataset_name_value)
+            self._add_form_row("form.dataset_id", self.dataset_id_value)
+            self._add_form_row("form.status", self.status_value)
+            self._add_form_row("form.details", self.description_input)
         elif self.dialog_id == DialogId.AUTO_ANNOTATION:
             self.backend_combo = QComboBox()
             self._add_form_row("form.model", self.source_combo)
@@ -462,53 +483,63 @@ class PreviewFlowDialog(QDialog):
         for chip, key in zip(
             self.step_chips,
             ("dialog.step.configure", "dialog.step.preview", "dialog.step.result"),
-            strict=True,
+            strict=False,
         ):
             chip.setText(tr(self.locale, key))
         self.cancel_button.setText(tr(self.locale, "action.cancel"))
         self.previous_button.setText(tr(self.locale, "action.previous"))
-        self.next_button.setText(
-            tr(
-                self.locale,
-                ("action.finish_preview" if self.preview_mode else "action.apply")
-                if self.pages.currentIndex() == self.pages.count() - 1
-                else "action.next",
+        if self.dialog_id == DialogId.DATASET_DIAGNOSTICS:
+            self.next_button.setText(tr(self.locale, "action.close"))
+        else:
+            self.next_button.setText(
+                tr(
+                    self.locale,
+                    ("action.finish_preview" if self.preview_mode else "action.apply")
+                    if self.pages.currentIndex() == self.pages.count() - 1
+                    else "action.next",
+                )
             )
-        )
-        self.preview_title.setText(tr(self.locale, "dialog.step.preview"))
+        if hasattr(self, "preview_title"):
+            self.preview_title.setText(tr(self.locale, "dialog.step.preview"))
         for key, label in self.form_labels.items():
             label.setText(tr(self.locale, key))
         for label, key in self.comparison_labels:
             label.setText(tr(self.locale, key))
-        self.preview_table.setHorizontalHeaderLabels(
-            [tr(self.locale, key) for key in self.preview_header_keys]
-        )
-        for row in range(self.preview_table.rowCount()):
-            for column in range(self.preview_table.columnCount()):
-                item = self.preview_table.item(row, column)
-                key = item.data(Qt.ItemDataRole.UserRole)
-                if key:
-                    item.setText(tr(self.locale, key))
+        if hasattr(self, "preview_table"):
+            self.preview_table.setHorizontalHeaderLabels(
+                [tr(self.locale, key) for key in self.preview_header_keys]
+            )
+            for row in range(self.preview_table.rowCount()):
+                for column in range(self.preview_table.columnCount()):
+                    item = self.preview_table.item(row, column)
+                    key = item.data(Qt.ItemDataRole.UserRole)
+                    if key:
+                        item.setText(tr(self.locale, key))
         self._retranslate_options()
-        if self.dialog_id == DialogId.YOLO_EXPORT:
-            explanation_key = "dialog.ratio"
-        elif self.dialog_id in {DialogId.BACKUP_EXPORT, DialogId.BACKUP_IMPORT}:
-            explanation_key = "dialog.models_excluded"
-        else:
-            explanation_key = "dialog.integrity"
-        self.preview_explanation.setText(tr(self.locale, explanation_key))
-        self.result_title.setText(
-            tr(
-                self.locale,
-                "dialog.step.result" if self.preview_mode else "dialog.ready_to_apply",
+        if hasattr(self, "preview_explanation"):
+            if self.dialog_id == DialogId.YOLO_EXPORT:
+                explanation_key = "dialog.ratio"
+            elif self.dialog_id in {DialogId.BACKUP_EXPORT, DialogId.BACKUP_IMPORT}:
+                explanation_key = "dialog.models_excluded"
+            else:
+                explanation_key = "dialog.integrity"
+            self.preview_explanation.setText(tr(self.locale, explanation_key))
+            self.result_title.setText(
+                tr(
+                    self.locale,
+                    "dialog.step.result" if self.preview_mode else "dialog.ready_to_apply",
+                )
             )
-        )
-        self.result_body.setText(
-            tr(
-                self.locale,
-                "dialog.success_preview" if self.preview_mode else "dialog.apply_after_confirm",
+            self.result_body.setText(
+                tr(
+                    self.locale,
+                    "dialog.success_preview" if self.preview_mode else "dialog.apply_after_confirm",
+                )
             )
-        )
+        if hasattr(self, "diagnostic_preservation"):
+            self.diagnostic_preservation.setText(
+                tr(self.locale, "dialog.diagnostics.original_preserved")
+            )
 
     def _retranslate_options(self) -> None:
         """刷新表单值和组合框选项，同时保留当前选择。"""
