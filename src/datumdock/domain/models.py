@@ -47,6 +47,40 @@ class ReviewStatus(StrEnum):
     ISSUE = "issue"
 
 
+class SampleHealth(StrEnum):
+    """样本文件健康状态与人工复核状态相互独立。"""
+
+    READY = "ready"
+    MISSING = "missing"
+    CORRUPT = "corrupt"
+
+
+class ThumbnailState(StrEnum):
+    """缩略图是可重建缓存，状态不改变原图事实。"""
+
+    MISSING = "missing"
+    READY = "ready"
+    STALE = "stale"
+    ERROR = "error"
+
+
+class SimilarityStatus(StrEnum):
+    """近似候选只有人工确认后才约束后续数据划分。"""
+
+    PENDING = "pending"
+    CONFIRMED = "confirmed"
+    IGNORED = "ignored"
+
+
+class SampleSort(StrEnum):
+    """SQLite 可直接执行的稳定样本排序。"""
+
+    FILENAME_ASC = "filename_asc"
+    FILENAME_DESC = "filename_desc"
+    IMPORTED_NEWEST = "imported_newest"
+    IMPORTED_OLDEST = "imported_oldest"
+
+
 class LabelStatus(StrEnum):
     """归档标签仍可读取历史标注，但不能创建新标注。"""
 
@@ -406,19 +440,47 @@ class AppSettings(BaseModel):
 
 
 class DatasetSample(BaseModel):
-    """SQLite 索引中的受管样本记录。"""
+    """SQLite 中的受管图片事实；路径只允许由 Repository 解析。"""
+
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     id: str = Field(default_factory=new_id)
     dataset_id: str
-    filename: str
+    filename: str = Field(min_length=1, max_length=255)
+    original_filename: str = Field(default="", max_length=255)
     image_path: str
-    annotation_path: str
+    annotation_path: str = ""
     width: int = Field(ge=1)
     height: int = Field(ge=1)
-    content_hash: str
-    perceptual_hash: str
+    image_mode: str = Field(default="RGB", pattern=r"^(L|LA|RGB|RGBA)$")
+    managed_format: str = Field(default="PNG", pattern=r"^PNG$")
+    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    file_hash: str = Field(default="", pattern=r"^$|^[0-9a-f]{64}$")
+    perceptual_hash: str = Field(pattern=r"^[0-9a-f]{22}$")
+    perceptual_hash_version: str = Field(default="dhash64-rgb-v1", pattern=r"^dhash64-rgb-v1$")
     review_status: ReviewStatus = ReviewStatus.UNREVIEWED
+    health: SampleHealth = SampleHealth.READY
+    thumbnail_state: ThumbnailState = ThumbnailState.MISSING
+    thumbnail_path: str = ""
+    is_trashed: bool = False
+    duplicate_group_id: str | None = None
+    similarity_group_id: str | None = None
     imported_at: str
+
+    _validate_id = field_validator("id")(_validate_uuid)
+    _validate_dataset_id = field_validator("dataset_id")(_validate_uuid)
+
+    @field_validator("filename", "original_filename")
+    @classmethod
+    def validate_sample_filename(cls, value: str) -> str:
+        """文件名不得携带目录片段，避免展示值成为文件操作目标。"""
+
+        if not value:
+            return value
+        path = PurePosixPath(value.replace("\\", "/"))
+        if path.name != value or value in {".", ".."}:
+            raise ValueError("样本文件名不能包含目录")
+        return value
 
 
 class ModelEntry(BaseModel):
