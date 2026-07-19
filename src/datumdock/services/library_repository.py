@@ -12,7 +12,12 @@ from uuid import UUID, uuid4
 from pydantic import ValidationError
 
 from datumdock.domain.models import AppLibrary, LabelSet, ManagedDataset
-from datumdock.services.storage import ProjectIndexRepository, read_json_model, write_json_atomic
+from datumdock.services.storage import (
+    ProjectIndexRepository,
+    read_json_model,
+    write_json_atomic,
+    write_json_model_atomic_verified,
+)
 
 
 class LibraryRepositoryError(RuntimeError):
@@ -320,7 +325,7 @@ class DatasetRepository:
         if not paths.root.is_dir():
             raise DatasetRepositoryError("数据集目录不存在")
         try:
-            write_json_atomic(paths.label_set, validated)
+            write_json_model_atomic_verified(paths.label_set, validated, LabelSet)
         except OSError as error:
             raise DatasetRepositoryError(f"标签集写入失败: {error}") from error
 

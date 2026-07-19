@@ -41,6 +41,35 @@ def write_json_atomic(path: Path, payload: BaseModel | dict[str, Any]) -> None:
         raise
 
 
+def write_json_model_atomic_verified(
+    path: Path,
+    payload: ModelT,
+    model_type: type[ModelT],
+) -> ModelT:
+    """替换前后都重读模型，确保受管 JSON 可验证且完整落盘。"""
+
+    validated = model_type.model_validate(payload.model_dump(mode="json"))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.stem}-",
+        suffix=".tmp",
+        dir=path.parent,
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8", newline="\n") as stream:
+            json.dump(validated.model_dump(mode="json"), stream, ensure_ascii=False, indent=2)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        read_json_model(temporary_path, model_type)
+        os.replace(temporary_path, path)
+        return read_json_model(path, model_type)
+    except Exception:
+        temporary_path.unlink(missing_ok=True)
+        raise
+
+
 def read_json_model(path: Path, model_type: type[ModelT]) -> ModelT:
     """读取受控 JSON；调用方可将异常转换为可读的 UI 错误。"""
 

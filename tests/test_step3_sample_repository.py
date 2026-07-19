@@ -79,8 +79,8 @@ def _replace_with_v0_index(path: Path) -> None:
     connection.close()
 
 
-def test_empty_step2_index_migrates_to_v1(tmp_path: Path) -> None:
-    """步骤二创建的 user_version=0 空索引应无损升级。"""
+def test_empty_step2_index_migrates_to_latest_schema(tmp_path: Path) -> None:
+    """步骤二创建的 user_version=0 空索引应无损升级到当前版本。"""
 
     service = DatasetLibraryService(tmp_path / "library")
     bundle = service.create_dataset("迁移")
@@ -93,7 +93,7 @@ def test_empty_step2_index_migrates_to_v1(tmp_path: Path) -> None:
     repository = DatasetSampleRepository(paths, bundle.dataset.id)
 
     connection = sqlite3.connect(paths.index)
-    assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+    assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
     tables = {
         row[0]
         for row in connection.execute(

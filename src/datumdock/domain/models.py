@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import PurePosixPath
@@ -42,9 +43,23 @@ class ReviewStatus(StrEnum):
     """以整张图片为单位保存的复核状态。"""
 
     UNREVIEWED = "unreviewed"
+    PENDING_REVIEW = "pending_review"
+    COMPLETED = "completed"
+    COMPLETED_NEGATIVE = "completed_negative"
+    # 以下两个值仅用于读取步骤三以前的索引，正式仓库会在 v2 迁移时规范化。
     AUTO_PENDING_REVIEW = "auto_pending_review"
     REVIEWED = "reviewed"
     ISSUE = "issue"
+
+
+class AnnotationState(StrEnum):
+    """标注文件的独立健康状态，异常状态不由用户手工设置。"""
+
+    MISSING = "missing"
+    READY = "ready"
+    CORRUPT = "corrupt"
+    UNKNOWN_LABEL = "unknown_label"
+    RECOVERY_REQUIRED = "recovery_required"
 
 
 class SampleHealth(StrEnum):
@@ -103,6 +118,26 @@ class RectangleShape(BaseModel):
     confidence: float | None = None
     compatibility_payload: dict[str, Any] = Field(default_factory=dict)
 
+    _validate_id = field_validator("id")(_validate_uuid)
+
+    @field_validator("x1", "y1", "x2", "y2")
+    @classmethod
+    def validate_finite_coordinate(cls, value: float) -> float:
+        """拒绝无法可靠序列化和绘制的非有限坐标。"""
+
+        if not math.isfinite(value):
+            raise ValueError("矩形坐标必须是有限数值")
+        return value
+
+    @field_validator("confidence")
+    @classmethod
+    def validate_confidence(cls, value: float | None) -> float | None:
+        """模型置信度存在时必须落在标准概率范围。"""
+
+        if value is not None and (not math.isfinite(value) or not 0 <= value <= 1):
+            raise ValueError("置信度必须位于 0 到 1 之间")
+        return value
+
     @model_validator(mode="after")
     def normalize_corners(self) -> RectangleShape:
         """统一矩形两角顺序，避免反向拖拽写入无效框。"""
@@ -133,10 +168,27 @@ class AnnotationDocument(BaseModel):
     image_filename: str
     image_width: int
     image_height: int
+    labelme_version: str = "5.4.1"
+    image_data: str | None = None
+    document_version: int = Field(default=0, ge=0)
+    review_status: ReviewStatus = ReviewStatus.UNREVIEWED
     rectangles: list[RectangleShape] = Field(default_factory=list)
     image_flags: dict[str, Any] = Field(default_factory=dict)
     unsupported_shapes: list[dict[str, Any]] = Field(default_factory=list)
+    shape_order: list[str] = Field(default_factory=list)
     root_payload: dict[str, Any] = Field(default_factory=dict)
+
+    _validate_sample_id = field_validator("sample_id")(_validate_uuid)
+
+    @model_validator(mode="after")
+    def validate_document(self) -> AnnotationDocument:
+        """确保图片尺寸有效，且形状顺序不包含重复引用。"""
+
+        if self.image_width < 1 or self.image_height < 1:
+            raise ValueError("标注图片尺寸必须大于零")
+        if len(self.shape_order) != len(set(self.shape_order)):
+            raise ValueError("标注形状顺序包含重复引用")
+        return self
 
 
 class Label(BaseModel):
@@ -152,8 +204,28 @@ class Label(BaseModel):
     synonyms: list[str] = Field(default_factory=list)
     color: str = Field(pattern=r"^#[0-9A-Fa-f]{6}$")
     status: LabelStatus = LabelStatus.ACTIVE
+    created_at: datetime = Field(default_factory=utc_now)
+    modified_at: datetime = Field(default_factory=utc_now)
 
     _validate_id = field_validator("id")(_validate_uuid)
+
+    @field_validator("name", "alias")
+    @classmethod
+    def strip_required_text(cls, value: str) -> str:
+        """训练名和别名不得仅由空白组成。"""
+
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("标签训练名和别名不能为空")
+        return stripped
+
+    @model_validator(mode="after")
+    def validate_timestamps(self) -> Label:
+        """标签修改时间不能早于创建时间。"""
+
+        if self.modified_at < self.created_at:
+            raise ValueError("标签修改时间不能早于创建时间")
+        return self
 
     @field_validator("synonyms")
     @classmethod
@@ -169,6 +241,9 @@ class LabelSet(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str = Field(default_factory=new_id)
+    format_version: int = Field(default=2, ge=1)
+    revision: int = Field(default=0, ge=0)
+    updated_at: datetime = Field(default_factory=utc_now)
     labels: list[Label] = Field(default_factory=list)
 
     _validate_id = field_validator("id")(_validate_uuid)
@@ -459,6 +534,11 @@ class DatasetSample(BaseModel):
     perceptual_hash: str = Field(pattern=r"^[0-9a-f]{22}$")
     perceptual_hash_version: str = Field(default="dhash64-rgb-v1", pattern=r"^dhash64-rgb-v1$")
     review_status: ReviewStatus = ReviewStatus.UNREVIEWED
+    annotation_count: int = Field(default=0, ge=0)
+    annotation_state: AnnotationState = AnnotationState.MISSING
+    annotation_version: int = Field(default=0, ge=0)
+    annotation_sha256: str = Field(default="", pattern=r"^$|^[0-9a-f]{64}$")
+    annotation_updated_at: str = ""
     health: SampleHealth = SampleHealth.READY
     thumbnail_state: ThumbnailState = ThumbnailState.MISSING
     thumbnail_path: str = ""

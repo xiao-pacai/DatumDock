@@ -1,4 +1,4 @@
-"""受管数据集图片的 SQLite v1 索引、分页查询与恢复日志。"""
+"""受管数据集图片的 SQLite v2 索引、分页查询与标注摘要。"""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from typing import Any
 from uuid import UUID
 
 from datumdock.domain.models import (
+    AnnotationState,
     DatasetSample,
     ReviewStatus,
     SampleHealth,
@@ -40,6 +41,7 @@ class SampleQuery:
     label_id: str | None = None
     sort: SampleSort = SampleSort.FILENAME_ASC
     include_trashed: bool = False
+    annotation_state: AnnotationState | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,7 +102,7 @@ class SampleReconciliationReport:
 class DatasetSampleRepository:
     """单个受管数据集的图片查询事实来源。"""
 
-    SCHEMA_VERSION = 1
+    SCHEMA_VERSION = 2
 
     def __init__(self, paths: DatasetPaths, dataset_id: str) -> None:
         self.paths = paths
@@ -139,7 +141,7 @@ class DatasetSampleRepository:
             raise SampleRepositoryError("样本索引越过数据集目录") from error
 
     def _initialize(self) -> None:
-        """升级 v0 空索引并创建 v1 表；迁移失败由 SQLite 完整回滚。"""
+        """逐级升级索引；任一步失败都由 SQLite 完整回滚。"""
 
         try:
             with self._connection() as connection:
@@ -149,9 +151,14 @@ class DatasetSampleRepository:
                 if version == 0:
                     self._migrate_v0(connection)
                     self._create_v1_schema(connection)
-                    connection.execute(f"PRAGMA user_version = {self.SCHEMA_VERSION}")
-                else:
+                    self._migrate_v1_to_v2(connection)
+                    connection.execute("PRAGMA user_version = 2")
+                elif version == 1:
                     self._validate_v1_schema(connection)
+                    self._migrate_v1_to_v2(connection)
+                    connection.execute("PRAGMA user_version = 2")
+                else:
+                    self._validate_v2_schema(connection)
         except SampleRepositoryError:
             raise
         except sqlite3.Error as error:
@@ -182,6 +189,7 @@ class DatasetSampleRepository:
                 "ALTER TABLE similarity_members RENAME TO legacy_similarity_members_v0"
             )
         self._create_v1_schema(connection)
+        self._migrate_v1_to_v2(connection)
         rows = connection.execute("SELECT * FROM legacy_samples_v0").fetchall()
         migrated_ids: set[str] = set()
         for row in rows:
@@ -425,6 +433,60 @@ class DatasetSampleRepository:
         if missing:
             raise SampleRepositoryError(f"数据集 v1 索引缺少表: {', '.join(missing)}")
 
+    @classmethod
+    def _migrate_v1_to_v2(cls, connection: sqlite3.Connection) -> None:
+        """增加标注摘要列，并规范化步骤三使用的旧复核状态。"""
+
+        cls._validate_v1_schema(connection)
+        columns = {
+            str(row[1]) for row in connection.execute("PRAGMA table_info(samples)").fetchall()
+        }
+        additions = {
+            "annotation_count": "INTEGER NOT NULL DEFAULT 0 CHECK(annotation_count >= 0)",
+            "annotation_state": "TEXT NOT NULL DEFAULT 'missing'",
+            "annotation_version": "INTEGER NOT NULL DEFAULT 0 CHECK(annotation_version >= 0)",
+            "annotation_sha256": "TEXT NOT NULL DEFAULT ''",
+            "annotation_updated_at": "TEXT NOT NULL DEFAULT ''",
+        }
+        for name, declaration in additions.items():
+            if name not in columns:
+                connection.execute(f"ALTER TABLE samples ADD COLUMN {name} {declaration}")
+        connection.execute(
+            "UPDATE samples SET review_status = ? WHERE review_status = ?",
+            (ReviewStatus.PENDING_REVIEW.value, ReviewStatus.AUTO_PENDING_REVIEW.value),
+        )
+        connection.execute(
+            "UPDATE samples SET review_status = ? WHERE review_status = ?",
+            (ReviewStatus.COMPLETED.value, ReviewStatus.REVIEWED.value),
+        )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_samples_annotation_state "
+            "ON samples(dataset_id, is_trashed, annotation_state)"
+        )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_samples_annotation_updated "
+            "ON samples(dataset_id, annotation_updated_at)"
+        )
+
+    @classmethod
+    def _validate_v2_schema(cls, connection: sqlite3.Connection) -> None:
+        """验证 v2 表和标注摘要列，绝不在普通打开时暗中修补。"""
+
+        cls._validate_v1_schema(connection)
+        columns = {
+            str(row[1]) for row in connection.execute("PRAGMA table_info(samples)").fetchall()
+        }
+        required = {
+            "annotation_count",
+            "annotation_state",
+            "annotation_version",
+            "annotation_sha256",
+            "annotation_updated_at",
+        }
+        missing = sorted(required - columns)
+        if missing:
+            raise SampleRepositoryError(f"数据集 v2 索引缺少列: {', '.join(missing)}")
+
     def validate_relative_path(self, value: str, required_prefix: str) -> str:
         """只接受固定目录下的 POSIX 相对路径，拒绝符号链接与逃逸。"""
 
@@ -479,6 +541,11 @@ class DatasetSampleRepository:
             sample.perceptual_hash,
             sample.perceptual_hash_version,
             sample.review_status.value,
+            sample.annotation_count,
+            sample.annotation_state.value,
+            sample.annotation_version,
+            sample.annotation_sha256,
+            sample.annotation_updated_at,
             sample.health.value,
             sample.thumbnail_state.value,
             sample.thumbnail_path,
@@ -488,7 +555,14 @@ class DatasetSampleRepository:
             sample.imported_at,
         )
         connection.execute(
-            "INSERT INTO samples VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO samples("
+            "id, dataset_id, filename, original_filename, image_path, annotation_path, "
+            "width, height, image_mode, managed_format, content_hash, file_hash, "
+            "perceptual_hash, perceptual_hash_version, review_status, annotation_count, "
+            "annotation_state, annotation_version, annotation_sha256, annotation_updated_at, "
+            "health, thumbnail_state, thumbnail_path, is_trashed, duplicate_group_id, "
+            "similarity_group_id, imported_at) VALUES ("
+            "?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             values,
         )
         connection.executemany(
@@ -577,6 +651,9 @@ class DatasetSampleRepository:
         if query.review_status is not None:
             clauses.append("samples.review_status = ?")
             parameters.append(query.review_status.value)
+        if query.annotation_state is not None:
+            clauses.append("samples.annotation_state = ?")
+            parameters.append(query.annotation_state.value)
         if query.label_id:
             join = "JOIN sample_labels ON sample_labels.sample_id = samples.id"
             clauses.append("sample_labels.label_id = ?")
@@ -597,10 +674,116 @@ class DatasetSampleRepository:
         with self._connection() as connection:
             row = connection.execute(
                 "SELECT COUNT(*) FROM samples WHERE dataset_id = ? AND is_trashed = 0 "
-                "AND review_status = ?",
-                (self.dataset_id, ReviewStatus.REVIEWED.value),
+                "AND review_status IN (?, ?)",
+                (
+                    self.dataset_id,
+                    ReviewStatus.COMPLETED.value,
+                    ReviewStatus.COMPLETED_NEGATIVE.value,
+                ),
             ).fetchone()
         return int(row[0])
+
+    def update_annotation_index(
+        self,
+        sample_id: str,
+        *,
+        annotation_path: str,
+        annotation_count: int,
+        annotation_state: AnnotationState,
+        annotation_version: int,
+        annotation_sha256: str,
+        annotation_updated_at: str,
+        review_status: ReviewStatus,
+        shape_labels: Sequence[tuple[str, str]],
+    ) -> None:
+        """在单个 SQLite 事务内提交标注摘要与框到标签的反向索引。"""
+
+        _canonical_uuid(sample_id)
+        if annotation_path:
+            self.validate_relative_path(annotation_path, "pool/annotations")
+        if annotation_count != len(shape_labels) or annotation_count < 0:
+            raise SampleRepositoryError("标注框数量与标签索引不一致")
+        if annotation_sha256 and len(annotation_sha256) != 64:
+            raise SampleRepositoryError("标注摘要格式无效")
+        try:
+            with self._connection() as connection:
+                cursor = connection.execute(
+                    "UPDATE samples SET annotation_path = ?, annotation_count = ?, "
+                    "annotation_state = ?, annotation_version = ?, annotation_sha256 = ?, "
+                    "annotation_updated_at = ?, review_status = ? "
+                    "WHERE id = ? AND dataset_id = ? AND is_trashed = 0",
+                    (
+                        annotation_path,
+                        annotation_count,
+                        annotation_state.value,
+                        annotation_version,
+                        annotation_sha256,
+                        annotation_updated_at,
+                        review_status.value,
+                        sample_id,
+                        self.dataset_id,
+                    ),
+                )
+                if cursor.rowcount != 1:
+                    raise SampleRepositoryError("待更新标注摘要的样本不存在")
+                connection.execute("DELETE FROM sample_labels WHERE sample_id = ?", (sample_id,))
+                connection.executemany(
+                    "INSERT INTO sample_labels(sample_id, label_id, shape_id) VALUES (?, ?, ?)",
+                    ((sample_id, label_id, shape_id) for shape_id, label_id in shape_labels),
+                )
+        except SampleRepositoryError:
+            raise
+        except sqlite3.Error as error:
+            raise SampleRepositoryError(f"标注索引提交失败: {error}") from error
+
+    def label_usage_counts(self) -> dict[str, tuple[int, int]]:
+        """返回每个标签的图片数和矩形数，不解析任何 JSON。"""
+
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT sample_labels.label_id, COUNT(DISTINCT sample_labels.sample_id), "
+                "COUNT(*) FROM sample_labels JOIN samples ON samples.id = sample_labels.sample_id "
+                "WHERE samples.dataset_id = ? AND samples.is_trashed = 0 "
+                "GROUP BY sample_labels.label_id",
+                (self.dataset_id,),
+            ).fetchall()
+        return {str(row[0]): (int(row[1]), int(row[2])) for row in rows}
+
+    def locate_sample(self, sample_id: str, query: SampleQuery) -> int | None:
+        """按当前筛选和排序返回样本零基位置，供跨页高亮跳转。"""
+
+        page = self.query(
+            SampleQuery(
+                dataset_id=query.dataset_id,
+                offset=0,
+                limit=500,
+                search=query.search,
+                review_status=query.review_status,
+                annotation_state=query.annotation_state,
+                label_id=query.label_id,
+                sort=query.sort,
+                include_trashed=query.include_trashed,
+            )
+        )
+        # 数据库每页上限为 500；大集合使用窗口函数避免加载所有样本。
+        if page.total <= 500:
+            return next(
+                (index for index, item in enumerate(page.items) if item.id == sample_id), None
+            )
+        where, parameters, join = self._query_parts(query)
+        order = {
+            SampleSort.FILENAME_ASC: "samples.filename COLLATE NOCASE ASC, samples.id ASC",
+            SampleSort.FILENAME_DESC: "samples.filename COLLATE NOCASE DESC, samples.id ASC",
+            SampleSort.IMPORTED_NEWEST: "samples.imported_at DESC, samples.id ASC",
+            SampleSort.IMPORTED_OLDEST: "samples.imported_at ASC, samples.id ASC",
+        }[query.sort]
+        with self._connection() as connection:
+            row = connection.execute(
+                "SELECT position FROM (SELECT samples.id, ROW_NUMBER() OVER (ORDER BY "
+                f"{order}) - 1 AS position FROM samples {join} WHERE {where}) WHERE id = ?",
+                [*parameters, sample_id],
+            ).fetchone()
+        return int(row[0]) if row else None
 
     def all_active_samples(self) -> tuple[DatasetSample, ...]:
         """仅供启动对账逐项验证文件；普通页面仍必须使用分页查询。"""
@@ -989,6 +1172,12 @@ class DatasetSampleRepository:
 
     @staticmethod
     def _sample_from_row(row: sqlite3.Row) -> DatasetSample:
+        keys = set(row.keys())
+        review_value = str(row["review_status"])
+        review_status = {
+            ReviewStatus.AUTO_PENDING_REVIEW.value: ReviewStatus.PENDING_REVIEW,
+            ReviewStatus.REVIEWED.value: ReviewStatus.COMPLETED,
+        }.get(review_value, ReviewStatus(review_value))
         return DatasetSample(
             id=str(row["id"]),
             dataset_id=str(row["dataset_id"]),
@@ -1004,7 +1193,22 @@ class DatasetSampleRepository:
             file_hash=str(row["file_hash"]),
             perceptual_hash=str(row["perceptual_hash"]),
             perceptual_hash_version=str(row["perceptual_hash_version"]),
-            review_status=ReviewStatus(str(row["review_status"])),
+            review_status=review_status,
+            annotation_count=int(row["annotation_count"]) if "annotation_count" in keys else 0,
+            annotation_state=(
+                AnnotationState(str(row["annotation_state"]))
+                if "annotation_state" in keys
+                else AnnotationState.MISSING
+            ),
+            annotation_version=(
+                int(row["annotation_version"]) if "annotation_version" in keys else 0
+            ),
+            annotation_sha256=(
+                str(row["annotation_sha256"]) if "annotation_sha256" in keys else ""
+            ),
+            annotation_updated_at=(
+                str(row["annotation_updated_at"]) if "annotation_updated_at" in keys else ""
+            ),
             health=SampleHealth(str(row["health"])),
             thumbnail_state=ThumbnailState(str(row["thumbnail_state"])),
             thumbnail_path=str(row["thumbnail_path"]),
