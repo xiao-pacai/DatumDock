@@ -1,14 +1,14 @@
-# DatumDock UI 与步骤二页面清单
+# DatumDock UI 与步骤三页面清单
 
-> 状态：步骤一全量 UI 原型和步骤二内部数据集资料库均已实现。下表中的资料库创建/打开/切换/重命名/归档/恢复/配置复制为真实功能；图片、标注、模型、导出和备份仍只提供界面或待接入提示。
+> 状态：步骤三已将受管图片池接入正式 UI。资料库、图片导入、真实缩略图/画布、相似图、重命名、回收站和删除为真实功能；标注、模型、导出和备份仍只提供界面或待接入提示。
 
 ## 0. 本轮实现记录
 
 - 16 / 16 个 `RouteId` 已注册并完成遍历测试；预览专用组件页只在 `--ui-preview` 出现。
 - 28 / 28 个 `DialogId` 已集中注册，可打开、切换语言、校验、取消和关闭。
 - 普通模式使用 `ManagedDatasetGateway` 和真实内部资料库；仅在初始化失败时降级为 `UnavailableGateway`。预览模式始终使用独立 `PreviewGateway`。
-- 步骤一保留 15 张核心审核截图；步骤二严格复验另生成 12 张真实资料库截图，覆盖中英文主页/空工作台与 1366×768、1440×900、1920×1080。
-- 独立 Python 3.11 下 Ruff、格式、`compileall`、pytest-qt、88 项通过测试和普通/预览 GUI 启动冒烟均通过；1 项符号链接权限用例跳过。
+- `build/ui-review/step3-image-pool/` 生成 20 张原生 Windows 截图：中英文均覆盖三种分辨率的主页/真实图片工作台，1440×900 额外覆盖导入、相似图、回收站和设置。
+- 独立 Python 3.11 下 Ruff、格式、`compileall`、pytest-qt、127 项通过测试和普通/预览 GUI 启动冒烟均通过；1 项符号链接权限用例跳过。
 
 ## 1. 运行边界
 
@@ -17,7 +17,7 @@
 - 新界面不调用旧 `WorkspaceService`；页面不直接访问文件系统或 SQLite。
 - 所有页面通过稳定路由访问，所有弹窗通过统一注册表创建。
 
-### 步骤二真实 UI 操作
+### 普通模式真实 UI 操作
 
 | 入口 | 普通模式结果 | 预览模式结果 |
 | --- | --- | --- |
@@ -27,7 +27,11 @@
 | 顶部数据集下拉 | 切换真实数据集并清空旧上下文 | 切换演示卡片 |
 | 重命名 | 更新元数据和主页摘要，不改变 UUID 目录 | 只更新内存名称 |
 | 归档/恢复 | 只切换状态，不删除任何内容 | 只更新内存状态 |
-| 图片/标注/模型/导出入口 | 明确提示后续接入，不写文件 | 展示可交互视觉流程 |
+| 图片导入 | 真实文件/目录选择、PNG 预检、重复决策、任务进度和报告 | 展示内存视觉流程 |
+| 图片列表/网格与画布 | SQLite 分页、真实缩略图、真实 PNG、缩放/平移 | 保留演示图片与内存矩形 |
+| 相似图检查 | 显示真实候选组、文件名、缩略图和相似度，可确认/忽略 | 只更新内存状态 |
+| 重命名/回收站/删除 | 真实预览和受管事务，恢复与永久删除有明确确认 | 只更新内存状态 |
+| 标注/模型/导出/备份入口 | 明确提示后续接入，不伪造成功 | 展示可交互视觉流程 |
 
 ## 2. 页面路由
 
@@ -67,12 +71,12 @@
 | `auto_annotation` | 自动标注配置 | 模型、范围、阈值和后端 |
 | `cpu_fallback` | CPU 回退说明 | 继续和打开 GPU 指引 |
 | `gpu_guide` | GPU 配置说明 | 环境检查步骤和故障排查 |
-| `image_import` | 图片导入 | 来源外观、支持格式、统一 PNG 说明 |
-| `duplicate_compare` | 完全重复图片比较 | 并排预览、跳过或保留 |
-| `import_report` | 导入进度与报告 | 阶段进度、取消、成功/重复/失败统计 |
-| `rename_samples` | 批量重命名 | 规则、旧名/新名和冲突预览 |
-| `delete_current` | 删除当前图片 | 关联项、回收站和永久删除说明 |
-| `delete_batch` | 批量删除 | 数量、阈值、恢复性和影响范围 |
+| `image_import` | 图片导入 | 普通模式为真实文件/递归目录、预检、进度和报告 |
+| `duplicate_compare` | 完全重复图片比较 | 真实并排预览全部匹配，逐项跳过或保留 |
+| `import_report` | 导入进度与报告 | 真实阶段进度、取消、成功/重复/失败统计 |
+| `rename_samples` | 批量重命名 | 真实规则、旧名/新名和冲突预览与提交 |
+| `delete_current` | 删除当前图片 | 真实关联项、回收站或两步永久删除确认 |
+| `delete_batch` | 批量删除 | 真实数量、阈值、恢复性和影响范围 |
 | `yolo_export` | YOLO Detection 导出 | 范围、比例、种子、统计和目录结构预览 |
 | `xany_exchange` | X-AnyLabeling 导入/导出 | 方向选择、兼容 shape 和目录说明 |
 | `backup_export` | 数据集备份导出 | 包含项、模型二进制排除说明 |
@@ -98,11 +102,11 @@
 - 路由注册测试遍历全部页面并验证可创建、进入和返回。
 - 对话框注册测试遍历全部弹窗并验证可打开和关闭。
 - 中英文键集合一致，切换语言不改写演示数据内容。
-- 普通模式只为真实数据集创建元数据、固定子目录和空 `index.sqlite`；未接入入口不创建图片、模型或导出文件。预览模式不接触资料库。
+- 普通模式的图片池仅在用户明确导入/重命名/删除后修改受管文件；标注、模型、导出和备份入口不产生副作用。预览模式不接触资料库。
 - 普通模式启动会对账资料库索引与 UUID 目录；恢复、写盘故障和 Gateway 最终异常边界均有正式回归。
 - 1366×768、1440×900、1920×1080 与 100%、125%、150% DPI 完成布局和截图检查。
-- 核心截图包含主页、工作台、标签、模型、设置、YOLO 向导和危险确认。
+- 步骤三核心截图包含主页、真实图片工作台、导入、相似图、回收站和设置。
 
 ## English Summary
 
-This inventory covers the completed UI prototype and the strictly revalidated step-two managed-library integration. Normal mode performs real UUID-backed create, persistence, open, switch, rename, archive, restore, configuration cloning, and startup reconciliation through repository/service/gateway boundaries. The ordinary diagnostic dialog is read-only and contains no demo statistics. The isolated Python 3.11 suite passes 88 tests plus pytest-qt interaction checks; preview mode remains disposable and isolated. Image, annotation, model, export, and backup actions are still unconnected in normal mode.
+This inventory covers the step-three managed image-pool UI. Normal mode now performs real image/folder ingestion, explicit duplicate decisions, paged thumbnails, managed-PNG canvas browsing, similarity review, batch rename, trash/restore, permanent deletion, settings persistence, and task reporting through gateway/service boundaries. The Python 3.11 suite passes 127 tests and twenty native bilingual screenshots; preview mode remains disposable and isolated. Annotation, model, export, and backup actions remain unconnected in normal mode.

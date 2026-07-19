@@ -1,12 +1,12 @@
 # DatumDock 架构说明
 
-## 0. 目标架构覆盖说明（步骤二已接入资料库核心）
+## 0. 目标架构覆盖说明（步骤三已接入受管图片池）
 
 2026-07-19 已将正式入口从用户可见的 `Workspace -> Project -> Dataset` 改为 [内部数据集主页与存档式管理方案](DATASET_LIBRARY.md) 定义的 `AppLibrary -> ManagedDataset`。步骤二已实现资料库初始化、UUID 目录、事务创建、启动对账恢复、打开/切换、重命名、归档/恢复、损坏项隔离和模板配置复制。
 
-本文件中仍出现的 `Workspace`、`Project`、`WorkspaceService` 和“项目级”描述只用于标记旧实现来源；正式入口不再调用它们，新增代码不得继续扩大该层级。图片池、真实标注、模型和导出服务尚未迁移完成；旧结构迁移仍必须先提供只读预检和可回滚转换。
+本文件中仍出现的 `Workspace`、`Project`、`WorkspaceService` 和“项目级”描述只用于标记旧实现来源；正式入口不再调用它们，新增代码不得继续扩大该层级。步骤三已将图片池、样本索引、缩略图、重命名与回收站迁入 `ManagedDataset`；真实标注、模型和导出尚未迁移。
 
-步骤二实际模块边界为：`domain.models` 定义资料库对象，`services.library_repository` 负责原子 JSON、UUID 路径和结构验证，`services.dataset_library` 负责编排事务，`ui.managed_gateway` 只向页面暴露快照和命令结果。页面不得直接访问这些路径。
+当前模块边界为：`services.sample_repository` 是 SQLite v1 样本查询事实来源；`services.image_pool` 负责两阶段转码、哈希、缩略图与启动对账；`services.sample_governance` 负责重命名和删除事务；`ui.managed_gateway` 只向页面暴露数据对象或图片字节，不暴露受管路径。详见 [受管图片池](IMAGE_POOL.md)。
 
 ## 1. 原则
 
@@ -56,7 +56,7 @@ src/datumdock/
 | `Dataset` | 现有代码名称；目标重构后由独立拥有标签、模型、索引和受管池的 `ManagedDataset` 取代。 |
 | `NamingPolicy` | 数据集的图片命名模板、前缀、起始编号、补零位数和扩展名保留规则。 |
 | `ImageImportProfile` | MVP 导入图片的支持格式和统一 PNG 转码规则；后续可扩展其他受管格式策略。 |
-| `DatasetSample` | 样本稳定 ID、原图路径、标注路径、尺寸、导入时间、状态和可选标签。 |
+| `DatasetSample` | 样本稳定 UUID、数据集 UUID、受管相对路径、原文件名、尺寸/模式、内容/文件/感知哈希、导入时间、图片/健康/缩略图/回收站状态。 |
 | `ImageDocument` | 当前打开图片及其标注集合和脏状态。 |
 | `RectangleShape` | 类别、两个图像坐标点、可选属性。 |
 | `Label` | 单个数据集标签的稳定 ID、英文训练名、中文别名、描述、同义词、颜色和状态。 |
@@ -69,7 +69,7 @@ src/datumdock/
 | `ImageImportService` | 在后台复制或转码常见静态图片，生成导入报告并原子写入受管池与数据集索引。 |
 | `DuplicateDetectionService` | 基于最终像素内容哈希检测完全相同图片，并在导入前提供已有样本的对比与确认信息。 |
 | `SimilarityGroupService` | 在后台以感知哈希生成近似图片候选组，维护用户确认的相似组并为分组划分提供约束。 |
-| `DatasetIndexRepository` | 使用 SQLite 维护单个数据集的样本、标签关联、状态、路径和统计索引，为万级样本筛选与标签检查提供查询；现有 `ProjectIndexRepository` 在迁移期提供兼容读取。 |
+| `DatasetSampleRepository` | 步骤三正式 SQLite v1 边界，维护样本、感知哈希分桶、相似组、回收站、可恢复操作和命名计数器；旧 `ProjectIndexRepository` 不在正式入口使用。 |
 | `ThumbnailService` | 在后台按需生成和缓存缩略图，以稳定样本 ID 为键，并提供可取消的优先级队列。 |
 | `SampleRenameService` | 预览并安全执行池内样本批量重命名，同步 LabelMe、索引、缓存和路径引用。 |
 | `SampleDeletionService` | 预检并以受管事务删除样本的图片、标注、索引与派生信息。 |
@@ -162,15 +162,15 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 
 ### 图片导入与转码
 
-- `ImageImportService` 接受 JPG/JPEG、PNG、BMP、WebP、TIFF 等静态图片，并将外部源文件复制后统一转码为池内 PNG；源文件路径仅记录用于可追溯，不参与后续写入。
+- `ImageImportService` 接受 JPG/JPEG、PNG、BMP、WebP、TIFF 等静态图片，并将外部源文件复制后统一转码为池内 PNG；外部绝对路径只存在当次预检会话，索引只保留原始文件名。
 - 转码过程在后台进行，先写入临时 PNG 并验证可读性、尺寸和像素内容哈希后再原子放入池内和索引；透明通道原样保留。
 - `DuplicateDetectionService` 在最终 PNG 哈希与已有样本相同时，向 UI 提供两图预览、来源路径和已存在样本信息；用户明确继续后仍创建两个稳定样本 ID。
 - 失败、重复、取消和成功结果写入导入报告，已完成项保持一致，未完成项不创建索引记录。
 
 ### 近似图片与分组划分
 
-- `SimilarityGroupService` 在后台为受管 PNG 生成感知哈希，先以保守阈值产出候选对/候选组；不阻塞导入、浏览或标注。
-- 高置信度候选可自动建立相似组，边界候选进入人工检查队列。用户可确认组、把误报图片移出组或忽略候选；不会自动删除或合并任何样本。
+- `ImageImportService` 为受管 PNG 生成版本化 dHash 和平均 RGB，先按感知哈希分桶产生候选，再执行 Hamming/颜色距离复核。
+- 所有候选组都以 `pending` 登记，只能由用户确认或忽略；不会自动删除、合并、确认或拆分任何样本。
 - `SplitPlanner` 使用已确认相似组作为不可拆分单元：组内样本必须分配到同一 train/val/test 集合。它以组为最小粒度优化比例，结果允许因组大小而与目标比例存在已解释的少量偏差。
 
 ## 8. 国际化
@@ -263,4 +263,4 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 
 ## English Summary
 
-Step two implements the core `AppLibrary -> ManagedDataset` architecture for the official entry point. Atomic repositories, a transactional dataset-library service, startup reconciliation, and `ManagedDatasetGateway` support UUID-backed create, reopen, switch, rename, archive, restore, corruption isolation, and independent configuration cloning. `dataset.json` is authoritative for summary recovery; unknown directories and symlinks are only reported. Repository, service, and gateway error boundaries prevent raw disk exceptions from reaching Qt. Image ingestion, annotation persistence, models, exports, backups, and legacy migration are still future layers.
+Step three extends the official `AppLibrary -> ManagedDataset` architecture with `DatasetSampleRepository`, two-phase normalized PNG ingestion, perceptual-hash candidates, paged real media, batch rename, dataset trash, and restart-recoverable operation journals. UI pages receive query objects or media bytes through `ManagedDatasetGateway`, never managed paths. Persistent annotations, models, exports, backups, and legacy migration remain future layers.

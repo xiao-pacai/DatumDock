@@ -1,6 +1,6 @@
 # DatumDock 内部数据集主页与存档式管理方案
 
-> 步骤二状态（2026-07-19，严格复验通过）：内部资料库、UUID 数据集目录、事务创建、缺失登记自动对账、主页打开与切换、重命名、归档/恢复、损坏数据集诊断和配置复制已经实现。图片导入、真实标注、模型、导出、备份和旧结构迁移仍待后续步骤接入。
+> 步骤三状态（2026-07-19）：步骤二内部资料库基础上，真实受管图片池、SQLite v1、PNG 转码、重复/近似图、分页缩略图、批量重命名和回收站已经实现。真实标注、模型、导出、备份和旧结构迁移仍待后续步骤接入。详细事实边界见 [受管图片池](IMAGE_POOL.md)。
 
 > 状态：2026-07-19 已确认产品方向；本文件仅整理需求与实现边界，当前不修改应用代码。
 >
@@ -141,6 +141,7 @@ flowchart LR
 - `pool/annotations`：内部可交换的 LabelMe JSON 标注。
 - `models`：该数据集导入的模型及其可编辑配置；数据集备份默认不包含模型二进制。
 - `trash`：符合阈值的少量删除样本包，用于恢复。
+- `cache/thumbnails`：由样本 UUID 与内容哈希版本命名的可重建缩略图；图片重命名不会改变缓存键。
 
 ### 6.1 启动对账与恢复规则
 
@@ -195,9 +196,9 @@ flowchart LR
 2. [已完成] 实现资料库服务、数据集创建事务、重启恢复、缺失索引/孤儿目录对账与错误边界；旧结构迁移预检属于后续独立工作。
 3. [已完成] 实现主页、数据集卡片、新建数据集向导和异常卡片状态。
 4. [已完成] 将正式标注工作台上下文收敛为单一当前数据集；旧代码只保留作迁移参考。
-5. 将标签、模型、索引、备份、导出和跨数据集操作全部接入新边界。
+5. [部分完成] 样本索引、图片池、回收站已迁入新边界；标签、模型、备份、导出和跨数据集操作待接入。
 6. [部分完成] 移除正式入口中用户可见的工作区、项目树和打开目录文案；旧代码翻译键随迁移继续清理。
-7. 完成重启恢复、数据隔离、升级保留、万张图片和 GUI 回归验收后，才可宣称重构完成。
+7. [部分完成] 重启恢复、数据隔离、10,000 条索引和步骤三 GUI 回归已验收；升级/安装包保留仍待发布阶段。
 
 ## 10. 验收清单
 
@@ -207,8 +208,8 @@ flowchart LR
 - [x] 点击已有卡片直接进入正确数据集的标注工作台。
 - [x] 重启软件后可恢复数据集卡片、元数据、配置和标签定义；缺失索引与未登记 UUID 目录也可安全对账。图片、标注与复核状态将在相应功能接入后验收。
 - [x] 中文和英文界面均不出现“打开工作区”“选择项目根目录”等过时主流程。
-- [ ] 导入图片会复制并转为受管 PNG，删除受管样本不会修改外部来源。
-- [x] 两个数据集使用独立 UUID 目录、元数据、标签文件、索引、池、模型和回收站目录；真实样本隔离将在图片导入后继续压力验收。
+- [x] 导入图片会复制并转为受管 PNG，删除受管样本不会修改外部来源。
+- [x] 两个数据集使用独立 UUID 目录、元数据、标签文件、索引、池、模型和回收站目录；真实样本导入、切换、任务和缓存隔离回归已通过。
 - [x] 新建数据集可复制其他数据集的标签集等配置，但不复制样本、标注、缩略图、模型或回收站。
 - [x] 单个数据集元数据损坏不会导致其他数据集或主页整体无法使用。
 - [ ] 软件升级保留内部资料库；卸载默认不删除用户数据。
@@ -226,4 +227,4 @@ flowchart LR
 
 ## English Summary
 
-DatumDock step two implements the game-save-like managed dataset library under the per-user Windows application-data directory. Normal mode can create, persist, reopen, switch, rename, archive, restore, and clone configuration for UUID-backed datasets. Startup reconciliation restores valid orphan directories from `dataset.json`, keeps damaged orphans visible for diagnosis, and only reports unknown directories or symlinks without following or changing them. Preview mode remains memory-only. Image ingestion, persistent annotations, models, exports, backups, and legacy-data migration remain planned.
+DatumDock step three extends the game-save-like managed library with a real SQLite-backed image pool. Normal mode can ingest normalized PNG copies, review exact and near-image candidates, page through real thumbnails, rename samples, and use per-dataset trash without changing external sources. Startup reconciliation repairs interrupted managed operations or retains ambiguous evidence for diagnosis. Preview mode remains memory-only. Persistent annotations, models, exports, backups, installer preservation, and legacy-data migration remain planned.

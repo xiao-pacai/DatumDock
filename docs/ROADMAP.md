@@ -26,7 +26,7 @@
 - [x] 实现空数据集与从已有数据集复制配置的真实创建流程；复制标签和配置，不复制图片、标注、模型、缩略图或回收站。
 - [x] 将正式标注工作台上下文收敛为单一当前数据集，并移除用户可见的工作区、项目树和打开目录入口；旧代码保留但不再由正式入口启动。
 - [-] 按 UX 固定标注工作台布局：顶部数据集/导入/导出操作栏、左侧标注与 AI 工具、中央画布、右侧当前标注和带状态的图片列表；内存画布交互完成，持久化待接入。
-- [ ] 将标签、模型、索引、回收站、备份、导出和跨数据集操作迁移为数据集级边界。
+- [-] 将标签、模型、索引、回收站、备份、导出和跨数据集操作迁移为数据集级边界：步骤三已完成索引与回收站，其余保持未接入。
 - [ ] 提供旧 `Workspace -> Project -> Dataset` 结构的只读迁移预检、备份、校验、提交与失败回滚。
 - [-] 完成正式入口中英文旧术语清理，以及首次启动、启动对账、双数据集隔离和损坏元数据的 GUI / 自动化回归；旧代码词条、安装升级保留与旧结构迁移仍待后续验证。
 - [x] 步骤二子阶段严格复验达到 97 分，无 P0/P1；阶段 0.5 其余教程、旧迁移和后续业务任务按各自条目继续推进。
@@ -53,18 +53,20 @@
 
 ## 阶段 2：数据集池与图片浏览
 
-- [ ] 实现导入文件夹到当前数据集受管池、样本索引与去重提示。
-- [ ] 实现 JPG/JPEG、PNG、BMP、WebP、TIFF 导入与统一 PNG 转码、重复图对比确认、进度和失败报告。
+> 2026-07-19 步骤三状态：图片池主线已完成并通过 10,000 条索引压力、操作中断恢复和原生双语截图复验。X-AnyLabeling 导入、标注预览和导出划分约束属于后续步骤。
+
+- [x] 实现导入文件/递归文件夹到当前数据集受管池、样本索引与去重提示；不跟随符号链接。
+- [x] 实现 JPG/JPEG、PNG、BMP、WebP、TIFF 导入与统一 PNG 转码、EXIF 校正、重复图对比确认、进度、取消和失败报告。
 - [ ] 实现 X-AnyLabeling/LabelMe 目录导入：递归配对图片和同名 JSON、将矩形框转换为当前数据集可编辑标注、保留暂不支持的 shape 与扩展字段。
-- [ ] 实现近似图片候选扫描、相似组人工确认/拆分，以及导出时相似组不可拆分的分组划分。
-- [ ] 实现 SQLite 数据集索引、虚拟样本列表、延迟缩略图和可取消后台任务，支持单数据集万张图片。
-- [ ] 实现数据集池列表、搜索、基础筛选与当前图片加载。
-- [ ] 实现右侧虚拟图片列表/网格、固定行末状态徽标，以及未标注/待审核/已完成/有问题/异常筛选。
-- [ ] 实现数据集命名规则、重命名预览和安全批量重命名；同步 LabelMe、索引和缓存引用。
-- [ ] 实现标注页面的样本删除确认、回收站恢复/清空与大批量永久删除。
-- [ ] 实现全局回收站少量样本阈值、设置项悬停帮助与删除影响范围说明。
-- [ ] 实现上一张/下一张导航。
-- [ ] 实现画布图片缩放、平移和适配窗口。
+- [-] 实现近似图片候选扫描、相似组人工确认/忽略，并提供已确认组稳定查询；组内编辑/拆分和导出 `SplitPlanner` 约束待后续实现。
+- [x] 实现 SQLite v1 数据集索引、虚拟样本列表、按需缩略图和可取消后台任务，10,000 条压力测试不全量实例化。
+- [x] 实现数据集池列表/网格、搜索、基础状态筛选、排序、分页与当前图片后台加载。
+- [-] 实现右侧虚拟图片列表/网格和图片级状态文字；标注数、图标徽标和可编辑复核状态待标注阶段接入。
+- [x] 实现数据集命名规则、重命名预览和安全批量重命名；若未来同名 LabelMe 已存在，同步文件名与 `imagePath`。
+- [x] 实现标注工作台的样本删除确认、回收站恢复/清空与大批量永久删除。
+- [x] 实现全局回收站少量样本阈值原子持久化、帮助说明与删除影响范围。
+- [x] 实现可跨页的上一张/下一张导航。
+- [x] 实现真实受管 PNG 画布缩放、滚轮缩放、平移和适配窗口。
 
 ## 阶段 3：矩形框标注
 
@@ -132,10 +134,10 @@
   - 影响范围：修复、测试、复验脚本和文档提交完整保存在本地 `main`；远端仍停留在 `e7e8aa9`，不影响本地运行和验收，但 GitHub 暂时看不到本轮严格复验结果。
   - 恢复条件：当前设备恢复到 GitHub HTTPS 443 端口的稳定连接。
   - 下一步：网络恢复后在仓库执行 `git push origin main`，再以 `git status -sb` 确认本地与 `origin/main` 同步；本轮不再继续重试。
-- [x] Python 3.11 独立环境的步骤二依赖与 GUI 复验已恢复。
+- [x] Python 3.11 独立环境的步骤二/三依赖与 GUI 复验已恢复。
   - 原阻塞：Python 3.11 自带旧 pip 在构建隔离子进程中访问 PyPI 时出现 TLS `SSLEOFError`；未关闭 TLS 校验。
   - 安全恢复：使用已正常联网的新版 pip 从官方 PyPI 下载明确面向 CPython 3.11 / Windows x64 的 wheels，再由 `.venv` 以 `--no-index` 本地安装 `PySide6`、Pydantic、Pillow、PyYAML、pytest、pytest-qt、Ruff、PyInstaller 等步骤二与开发依赖。
-  - 验证结果：独立 Python 3.11 下 Ruff、格式、`compileall`、88 项通过测试、3 项 pytest-qt 控件回归、普通/预览事件循环和 12 张原生截图均通过；1 项符号链接测试因当前账户缺少 Windows 权限跳过。
+  - 验证结果：独立 Python 3.11 下 Ruff、格式、`compileall`、127 项通过测试、pytest-qt 真实控件回归、普通/预览事件循环和 20 张步骤三原生截图均通过；1 项符号链接测试因当前账户缺少 Windows 权限跳过。
   - 剩余边界：ONNX Runtime、Ultralytics 和真实模型推理依赖未在本步骤安装，因为模型功能不属于步骤二；正式 PyInstaller/Inno Setup 隔离安装验收仍属于安装包阶段。
 - [-] Windows 符号链接自动回归权限受限。
   - 原因：当前账户创建测试目录符号链接时返回 `WinError 1314`，未取得所需特权。
@@ -145,4 +147,4 @@
 
 ## English Summary
 
-Step two has passed strict revalidation at 97/100 with no P0 or P1 issues. Startup reconciliation restores valid orphan directories and stale summaries from `dataset.json`, while damaged or unknown entries remain preserved and diagnosable. The isolated Python 3.11 environment now passes Ruff, formatting, compilation, 88 tests, pytest-qt interaction checks, normal/preview event-loop smoke tests, and twelve native screenshots. All delivery commits are complete on local `main`; three GitHub pushes failed because port 443 was unavailable, so remote synchronization is recorded above. Image ingestion, persistent annotations, models, exports, backups, migration, and installer verification remain later phases.
+Step three completes the managed image-pool slice: normalized six-format PNG ingestion, exact-duplicate decisions, manual near-image groups, SQLite v1 paging, real thumbnails/canvas, batch rename, trash/restore, permanent deletion, operation recovery, and a 10,000-row index regression. Python 3.11 passes 127 tests plus quality checks and twenty native bilingual screenshots; one symlink test remains skipped because this Windows account lacks symlink privileges. Persistent annotations, X-AnyLabeling, models, exports, backups, migration, and installer verification remain later phases.

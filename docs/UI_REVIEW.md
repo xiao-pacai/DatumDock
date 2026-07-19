@@ -1,6 +1,6 @@
-# DatumDock UI 与步骤二严格复验报告
+# DatumDock UI 与步骤三交付复验报告
 
-> 最终结论（2026-07-19）：DatumDock 步骤二内部数据集资料库已完成，可以在普通模式创建、保存、打开和切换数据集；图片导入、真实标注持久化、模型和导出逻辑将在后续步骤接入。
+> 最终结论（2026-07-19）：DatumDock 步骤三受管图片池已完成，可以在普通模式导入、转换、浏览、筛选、重命名和安全删除图片；真实标注持久化、模型和导出逻辑将在后续步骤接入。
 
 ## 1. 复验背景
 
@@ -36,7 +36,7 @@
 
 - `python -m datumdock` 使用 `ManagedDatasetGateway` 与 `%LOCALAPPDATA%\DatumDock` 真实资料库；只有初始化无法安全完成时才降级为 `UnavailableGateway`。
 - `python -m datumdock --ui-preview` 始终使用独立 `PreviewGateway`，创建、改名、切换和关闭都不读取或修改真实资料库。
-- 普通模式没有演示图片、标签、模型或统计。图片导入、标注持久化、AI、模型、YOLO/X-AnyLabeling、备份和永久删除入口统一返回“后续步骤接入”，不产生文件副作用。
+- 普通模式不使用演示图片、标签、模型或统计。步骤三已将图片导入、画布浏览、重命名、回收站和永久删除接为真实功能；标注持久化、AI、模型、YOLO/X-AnyLabeling 与备份仍明确提示后续接入。
 - 新建和已有空数据集进入同一个真实工作台；顶部切换会重建当前数据集上下文，不会串入另一个数据集的数据。
 
 ## 4. Python 3.11 与自动化证据
@@ -82,15 +82,58 @@ $env:QT_QPA_PLATFORM = "offscreen"
 | 文档与工程质量 | 9 / 10 | 架构、资料库、验收、路线图、视觉状态、启动说明和复验脚本同步；安装包隔离验证不属于步骤二。 |
 | **总分** | **97 / 100** | 高于 90 分门槛，无 P0/P1；未用评分抵消任何硬性失败。 |
 
-## 7. 尚未完成的产品能力
+## 7. 步骤三图片池实施证据
 
-- 真实图片导入、PNG 转码、完全重复与近似图处理；
+- 图片经两阶段导入：后台预检生成验证过的临时 PNG/缩略图，用户完成完全重复决策后再逐张原子提交。
+- SQLite v1 保存样本、哈希分桶、相似组、回收站和操作日志；v0 迁移失败回滚，不安全路径只诊断。
+- 普通工作台使用每页 200 条的 Qt 虚拟模型、真实缩略图与受管 PNG 画布；预览模式保留内存矩形演示。
+- 重命名、移入回收站、恢复和永久删除均有可恢复日志；索引与文件状态不能共同证明时保留现场，不猜测覆盖。
+- 双数据集导入/切换/缓存隔离、Gateway 异常边界、来源树哈希不变与 10,000 条索引压力已转为正式回归。
+
+## 8. 步骤三 Python 3.11 结果
+
+最终命令：
+
+```powershell
+.\.venv\Scripts\python.exe -m ruff check src tests scripts
+.\.venv\Scripts\python.exe -m ruff format --check src tests scripts
+.\.venv\Scripts\python.exe -m compileall -q src
+$env:QT_QPA_PLATFORM = "offscreen"
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
+- Ruff、格式检查和 `compileall` 通过。
+- **127 passed、1 skipped、14 warnings**；跳过项仅因当前 Windows 账户没有创建测试符号链接的权限。
+- 14 条警告仍来自步骤三正式入口未调用的旧 `services.dataset` 代码中 Pillow `getdata()` 未来弃用提示，不影响当前图片池结果。
+
+## 9. 步骤三原生截图
+
+`scripts/capture_step3_review.py` 使用临时资料库创建两个数据集，导入三张图，将一张移入回收站并重启 Service 后截图。
+
+- `build/ui-review/step3-image-pool/` 共 20 张原生 Windows 截图。
+- 中英文均覆盖 1366×768、1440×900、1920×1080 的主页和真实图片工作台。
+- 1440×900 额外覆盖真实导入对话框、相似图检查、回收站和设置页。
+- 截图使用 Windows 原生 Qt 平台；`offscreen` 只用于自动测试，因其在当前机器上不能正确渲染系统字体。
+
+## 10. 步骤三评分
+
+| 领域 | 得分 | 说明 |
+| --- | ---: | --- |
+| 需求覆盖 | 29 / 30 | 图片池主线完整；近似组内拆分留待后续产品交互。 |
+| 数据正确性与安全 | 30 / 30 | 外部来源保护、路径边界、事务、操作日志和故障恢复回归通过。 |
+| GUI 接入与体验 | 14 / 15 | 真实分页/画布/治理页已接入；标注数与图片状态编辑属于步骤四。 |
+| 测试与稳定性 | 14 / 15 | 127 项通过，10,000 条压力与 20 张截图通过；1 项符号链接用例受权限跳过。 |
+| 文档与工程质量 | 10 / 10 | 边界、启动、资料库、验收、路线图和图片池文档同步。 |
+| **总分** | **97 / 100** | 高于 90 分门槛，无已知 P0/P1，不以评分抵消未完成边界。 |
+
+## 11. 尚未完成的产品能力
+
 - 矩形标注持久化、自动保存和图片级复核；
 - 标签管理真实写入与 LabelMe/X-AnyLabeling 交换；
 - ONNX/PT 模型导入、CPU/GPU 推理和自动标注；
-- YOLO Detection 导出、备份、跨数据集转移和万张图片压力；
+- YOLO Detection 导出、备份和跨数据集转移；
 - PyInstaller/Inno Setup 安装、卸载和无 Python 环境验证。
 
 ## English Summary
 
-DatumDock step two has passed strict independent revalidation at 97/100 with no P0 or P1 issues. Startup reconciliation restores missing registrations and stale summaries from valid `dataset.json` files, keeps damaged orphans visible for diagnosis, and only reports unknown directories or symlinks. Repository, service, gateway, and shell boundaries keep raw disk failures out of Qt. The isolated Python 3.11 matrix passes Ruff, formatting, compilation, 88 tests, three pytest-qt interaction checks, normal/preview event-loop smoke tests, and twelve route-asserted native screenshots; one symlink test is skipped because the current Windows account lacks the required privilege. Image ingestion, persistent annotations, models, exports, backups, scale tests, and installer delivery remain future work.
+DatumDock step three completes the real managed image-pool slice and scores 97/100 with no known P0/P1 issues. Six-format EXIF-aware normalized PNG ingestion, exact-duplicate decisions, reviewable near-image groups, SQLite v1 paging, real thumbnails/canvas, batch rename, trash/restore, permanent deletion, task cancellation, and restart reconciliation are implemented behind the gateway. Python 3.11 passes 127 tests; one symlink test is skipped for Windows account permissions. Twenty native bilingual screenshots cover the three target resolutions and step-three governance pages. Persistent annotations, X-AnyLabeling, models, exports, backups, and installer delivery remain future work.

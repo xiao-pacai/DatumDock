@@ -56,7 +56,25 @@
 - [x] 1366×768、1440×900、1920×1080 的中英文主页和空工作台已完成原生截图检查。
 - [x] 独立 Python 3.11 环境下 Ruff、格式、`compileall`、pytest-qt 和完整测试通过：88 passed、1 skipped；普通/预览 Qt 事件循环启动通过，真实用户资料库前后哈希一致。
 
-步骤二不勾选图片导入、标注持久化、模型、导出、备份、万张图片和安装包相关 A0/A–I 条目；这些能力仍需后续阶段真实实现和验收。
+步骤二当时未勾选的图片池条目已由下方步骤三记录覆盖；标注持久化、模型、导出、备份和安装包仍需后续阶段真实实现。
+
+### A0.2 步骤三验收记录（2026-07-19）
+
+- [x] 可从文件或递归目录导入 JPG/JPEG、PNG、BMP、WebP、TIFF 静态图，不跟随符号链接；多帧与损坏图进入失败报告。
+- [x] 所有来源经 EXIF 校正、颜色模式规范化和二次打开校验后写为受管 PNG；外部文件树哈希前后不变。
+- [x] 完全重复以规范化像素 SHA-256 判定，已有/同批次重复均要求用户逐项跳过或保留。
+- [x] 近似候选使用分桶 dHash、Hamming 和颜色距离，初始只为待确认；确认/忽略可重启恢复，不自动删除样本。
+- [x] `index.sqlite` 原子迁移到 v1，保留可安全转换的 v0 记录；不安全路径只诊断、不删文件。
+- [x] 工作台使用每页 200 条的虚拟模型，支持列表/网格、搜索、状态筛选、排序、翻页、真实缩略图与当前 PNG 画布。
+- [x] 画布支持适合窗口、按钮/滚轮缩放、平移和序号/尺寸状态；普通模式不伪造可保存标注。
+- [x] 批量重命名先预览冲突，使用两段文件名解决交换，样本 UUID/内容哈希/缩略图键不变。
+- [x] 删除阈值按本次数量判定并持久化；回收站恢复冲突时安全改名，永久删除经过两步确认且只触碰受管内容。
+- [x] 导入、重命名、回收站、恢复与永久删除使用可恢复操作日志；断电窗口回归验证索引与文件一致。
+- [x] 后台任务不依赖 Qt，有稳定 ID、进度、取消令牌、错误和部分结果；关闭时等待当前原子步骤和 Qt 读取任务释放文件句柄。
+- [x] 10,000 条合成索引分页、搜索、状态和排序通过，当前页最多 200 个领域对象，不创建 10,000 个 QWidget。
+- [x] Python 3.11 完整回归为 127 passed、1 skipped；20 张原生 Windows 截图覆盖中英文、三种分辨率与图片池核心页面。
+
+步骤三不勾选 X-AnyLabeling 目录导入、矩形标注持久化、图片级复核编辑、模型、YOLO 导出、备份或安装包条目。
 
 ## A. 启动与界面
 
@@ -200,4 +218,4 @@
 
 ## English Summary
 
-The acceptance gate records the independently revalidated step-two managed-library slice separately from the remaining MVP. Startup reconciliation recovers missing registrations and stale summaries from valid `dataset.json` files, keeps damaged orphans diagnosable, and only reports unknown directories or symlinks. Repository, service, and gateway boundaries keep raw disk errors out of Qt. The isolated Python 3.11 matrix passes with 88 tests and one privilege-dependent symlink test skipped. Image ingestion, annotation persistence, models, exports, backups, scale testing, and installer delivery remain unchecked and must not be claimed as complete.
+The acceptance gate now records both the revalidated managed library and step-three managed image pool. Six-format normalized PNG ingestion, explicit duplicate decisions, reviewable near-image groups, SQLite v1 paging, real thumbnails/canvas, rename, trash/restore, permanent deletion, operation recovery, and a 10,000-row index regression are verified. Python 3.11 passes 127 tests; one symlink test is skipped because this Windows account lacks the required privilege. Persistent annotations, models, exports, backups, and installer delivery remain unchecked and must not be claimed as complete.
