@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import UTC, datetime
 from enum import StrEnum
+from pathlib import PurePosixPath
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -15,6 +17,25 @@ def new_id() -> str:
     """生成不依赖文件名和排序顺序的稳定对象标识。"""
 
     return str(uuid4())
+
+
+def utc_now() -> datetime:
+    """生成带时区的 UTC 时间，避免本地时区变化破坏排序。"""
+
+    return datetime.now(UTC)
+
+
+def _validate_uuid(value: str) -> str:
+    """只接受规范 UUID 文本，阻止把路径片段伪装成稳定标识。"""
+
+    try:
+        parsed = UUID(value)
+    except (TypeError, ValueError) as error:
+        raise ValueError("标识必须是有效 UUID") from error
+    canonical = str(parsed)
+    if value != canonical:
+        raise ValueError("标识必须使用规范 UUID 格式")
+    return value
 
 
 class ReviewStatus(StrEnum):
@@ -154,6 +175,138 @@ class NamingPolicy(BaseModel):
         """基于规则产生统一 PNG 文件名。"""
 
         return f"{self.prefix}_{index:0{self.padding}d}.png"
+
+
+class DatasetDisplaySettings(BaseModel):
+    """单个数据集的显示偏好，复制配置时生成独立副本。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    show_annotation_preview: bool = True
+    image_list_mode: str = Field(default="list", pattern=r"^(list|grid)$")
+
+
+class DatasetImportSettings(BaseModel):
+    """本阶段只记录未来图片导入会采用的受管格式策略。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    managed_format: str = Field(default="PNG", pattern=r"^PNG$")
+    keep_source_trace: bool = True
+
+
+class ManagedDatasetConfiguration(BaseModel):
+    """可从其他数据集复制、但不与源对象共享引用的配置。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    naming_policy: NamingPolicy = Field(default_factory=NamingPolicy)
+    import_settings: DatasetImportSettings = Field(default_factory=DatasetImportSettings)
+    display_settings: DatasetDisplaySettings = Field(default_factory=DatasetDisplaySettings)
+    default_split: tuple[int, int, int] = (80, 10, 10)
+
+    @field_validator("default_split")
+    @classmethod
+    def validate_default_split(cls, value: tuple[int, int, int]) -> tuple[int, int, int]:
+        """训练、验证、测试比例必须完整覆盖一次导出。"""
+
+        if any(item < 0 for item in value) or sum(value) != 100:
+            raise ValueError("训练、验证、测试比例之和必须为 100")
+        return value
+
+
+class DatasetStatistics(BaseModel):
+    """主页使用的数据集摘要，不替代未来 SQLite 样本事实。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    image_count: int = Field(default=0, ge=0)
+    label_count: int = Field(default=0, ge=0)
+    reviewed_count: int = Field(default=0, ge=0)
+
+    @property
+    def reviewed_percent(self) -> int:
+        """空数据集复核进度为零，避免产生除零错误。"""
+
+        if self.image_count == 0:
+            return 0
+        return round(self.reviewed_count * 100 / self.image_count)
+
+
+class ManagedDataset(BaseModel):
+    """软件内部独立受管的数据集存档元数据。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    format_version: int = Field(default=1, ge=1)
+    id: str = Field(default_factory=new_id)
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=2000)
+    created_at: datetime = Field(default_factory=utc_now)
+    modified_at: datetime = Field(default_factory=utc_now)
+    archived: bool = False
+    label_set_id: str
+    configuration: ManagedDatasetConfiguration = Field(default_factory=ManagedDatasetConfiguration)
+    statistics: DatasetStatistics = Field(default_factory=DatasetStatistics)
+
+    _validate_id = field_validator("id")(_validate_uuid)
+    _validate_label_set_id = field_validator("label_set_id")(_validate_uuid)
+
+    @field_validator("name")
+    @classmethod
+    def trim_name(cls, value: str) -> str:
+        """元数据中不保存数据集名称两端的无意义空白。"""
+
+        trimmed = value.strip()
+        if not trimmed:
+            raise ValueError("数据集名称不能为空")
+        return trimmed
+
+
+class DatasetLibraryEntry(BaseModel):
+    """资料库首页索引中的轻量数据集登记项。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    relative_path: str
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=2000)
+    created_at: datetime
+    modified_at: datetime
+    archived: bool = False
+    statistics: DatasetStatistics = Field(default_factory=DatasetStatistics)
+
+    _validate_id = field_validator("id")(_validate_uuid)
+
+    @model_validator(mode="after")
+    def validate_managed_path(self) -> DatasetLibraryEntry:
+        """登记路径只能是当前 UUID 对应的固定内部相对目录。"""
+
+        path = PurePosixPath(self.relative_path)
+        if path.is_absolute() or path.parts != ("datasets", self.id):
+            raise ValueError("数据集登记路径必须指向固定 UUID 目录")
+        return self
+
+
+class AppLibrary(BaseModel):
+    """DatumDock 当前 Windows 用户的软件内部资料库索引。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    format_version: int = Field(default=1, ge=1)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+    datasets: list[DatasetLibraryEntry] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_unique_dataset_ids(self) -> AppLibrary:
+        """资料库不能把同一个稳定 ID 登记到多个位置。"""
+
+        identifiers = [item.id for item in self.datasets]
+        if len(identifiers) != len(set(identifiers)):
+            raise ValueError("资料库包含重复的数据集 UUID")
+        return self
 
 
 class Dataset(BaseModel):
