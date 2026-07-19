@@ -129,11 +129,10 @@
 
 - [x] GitHub `main` 推送阻塞已恢复：2026-07-19 已将现代视觉设计规范提交 `f28dc79` 成功推送到远端 `main`。
 - [x] 步骤一与步骤二推送阻塞已恢复：早前连接重置、`curl 55` 和 `github.com:443` 失败均为临时网络问题；2026-07-19 已成功将 `f28dc79..e7e8aa9` 推送到远端 `main`，包含步骤一 UI 与步骤二内部资料库提交。
-- [-] 步骤二严格复验提交等待远端同步。
-  - 原因：2026-07-19 在全部质量门通过后连续三次执行 `git push origin main`；第一次连接被重置，后两次均无法连接 `github.com:443`，已达到本轮重试上限。
-  - 影响范围：修复、测试、复验脚本和文档提交完整保存在本地 `main`；远端仍停留在 `e7e8aa9`，不影响本地运行和验收，但 GitHub 暂时看不到本轮严格复验结果。
-  - 恢复条件：当前设备恢复到 GitHub HTTPS 443 端口的稳定连接。
-  - 下一步：网络恢复后在仓库执行 `git push origin main`，再以 `git status -sb` 确认本地与 `origin/main` 同步；本轮不再继续重试。
+- [x] 步骤二严格复验与步骤三提交已恢复远端同步。
+  - 原阻塞：步骤二复验时 GitHub HTTPS 443 连接连续失败三次，因此严格停止重试并保留本地历史。
+  - 恢复结果：2026-07-19 步骤三全部质量门通过后，首次执行 `git push origin main` 成功，已将 `e7e8aa9..c028710` 同步到远端 `main`。
+  - 影响范围：无剩余交付阻塞；本地历史未重写。
 - [x] Python 3.11 独立环境的步骤二/三依赖与 GUI 复验已恢复。
   - 原阻塞：Python 3.11 自带旧 pip 在构建隔离子进程中访问 PyPI 时出现 TLS `SSLEOFError`；未关闭 TLS 校验。
   - 安全恢复：使用已正常联网的新版 pip 从官方 PyPI 下载明确面向 CPython 3.11 / Windows x64 的 wheels，再由 `.venv` 以 `--no-index` 本地安装 `PySide6`、Pydantic、Pillow、PyYAML、pytest、pytest-qt、Ruff、PyInstaller 等步骤二与开发依赖。
