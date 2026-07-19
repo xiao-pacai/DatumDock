@@ -288,6 +288,7 @@ class PreviewAnnotationCanvas(QWidget):
             new_rect.top() + image_center.y() * new_rect.height() / self.image.height,
         )
         self.pan_offset += viewport_center - projected
+        self._clamp_pan_offset()
         self.zoom_changed.emit(round(self.zoom * 100))
         self.update()
 
@@ -401,6 +402,7 @@ class PreviewAnnotationCanvas(QWidget):
         if self._middle_panning or self._left_panning:
             if self._drag_origin is not None:
                 self.pan_offset = self._pan_start + point - self._drag_origin
+                self._clamp_pan_offset()
             self._hover_point = None
             self.update()
             return
@@ -516,6 +518,7 @@ class PreviewAnnotationCanvas(QWidget):
             self.pan_offset.setX(self.pan_offset.x() + delta)
         else:
             self.pan_offset.setY(self.pan_offset.y() + delta)
+        self._clamp_pan_offset()
         event.accept()
         self.update()
 
@@ -539,6 +542,27 @@ class PreviewAnnotationCanvas(QWidget):
             width,
             height,
         )
+
+    def _clamp_pan_offset(self) -> None:
+        """把滚动限制在图片四边，禁止图片无限漂离可视区域。"""
+
+        if self.image is None:
+            self.pan_offset = QPointF()
+            return
+        available = QRectF(self.rect()).adjusted(32, 28, -32, -28)
+        width = self.image.width * self.zoom
+        height = self.image.height * self.zoom
+        if width <= available.width():
+            x = 0.0
+        else:
+            limit = (width - available.width()) / 2
+            x = max(-limit, min(limit, self.pan_offset.x()))
+        if height <= available.height():
+            y = 0.0
+        else:
+            limit = (height - available.height()) / 2
+            y = max(-limit, min(limit, self.pan_offset.y()))
+        self.pan_offset = QPointF(x, y)
 
     def _paint_demo_image(self, painter: QPainter, rect: QRectF, seed: int) -> None:
         """绘制工业零件风格的自有抽象演示图片。"""

@@ -210,6 +210,19 @@ def test_two_click_rectangle_zero_area_retry_and_high_zoom_navigation(
     canvas.wheelEvent(horizontal)
     assert canvas.pan_offset.x() != old_x
 
+    canvas.pan_offset = QPointF(1e9, 1e9)
+    canvas._clamp_pan_offset()
+    positive_limit = QPointF(canvas.pan_offset)
+    canvas.wheelEvent(vertical)
+    canvas.wheelEvent(horizontal)
+    assert canvas.pan_offset == positive_limit
+
+    canvas.pan_offset = QPointF(-1e9, -1e9)
+    canvas._clamp_pan_offset()
+    negative_limit = QPointF(canvas.pan_offset)
+    assert negative_limit.x() < 0
+    assert negative_limit.y() < 0
+
 
 def test_quick_label_dialog_searches_resizes_and_remembers_size(
     qtbot, monkeypatch, tmp_path: Path
