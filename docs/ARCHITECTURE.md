@@ -2,7 +2,7 @@
 
 ## 0. 目标架构覆盖说明（步骤二已接入资料库核心）
 
-2026-07-19 已将正式入口从用户可见的 `Workspace -> Project -> Dataset` 改为 [内部数据集主页与存档式管理方案](DATASET_LIBRARY.md) 定义的 `AppLibrary -> ManagedDataset`。步骤二已实现资料库初始化、UUID 目录、事务创建、重启恢复、打开/切换、重命名、归档/恢复、损坏项隔离和模板配置复制。
+2026-07-19 已将正式入口从用户可见的 `Workspace -> Project -> Dataset` 改为 [内部数据集主页与存档式管理方案](DATASET_LIBRARY.md) 定义的 `AppLibrary -> ManagedDataset`。步骤二已实现资料库初始化、UUID 目录、事务创建、启动对账恢复、打开/切换、重命名、归档/恢复、损坏项隔离和模板配置复制。
 
 本文件中仍出现的 `Workspace`、`Project`、`WorkspaceService` 和“项目级”描述只用于标记旧实现来源；正式入口不再调用它们，新增代码不得继续扩大该层级。图片池、真实标注、模型和导出服务尚未迁移完成；旧结构迁移仍必须先提供只读预检和可回滚转换。
 
@@ -34,7 +34,8 @@ src/datumdock/
 | --- | --- |
 | `AppLibrary` | 软件内部资料库，登记所有受管数据集的稳定 ID、目录、摘要和资料库版本；不作为用户可见的工作区。 |
 | `ManagedDataset` | 用户可见的唯一顶层数据对象，独立拥有元数据、标签集、图片池、标注、索引、模型配置、回收站和缓存。 |
-| `DatasetLibraryService` | 初始化内部资料库，以事务创建、登记、打开和恢复受管数据集，并向主页提供分页摘要。 |
+| `DatasetLibraryService` | 初始化内部资料库，以事务创建、登记、打开和恢复受管数据集；启动时对账索引与 UUID 目录，并向主页提供安全摘要。 |
+| `LibraryRecoveryReport` | 只读报告已恢复、损坏、已刷新和被忽略的目录；不得借报告自动删除、移动或跟随未知入口。 |
 | `Workspace` | 旧实现对象，仅用于迁移读取；目标产品不再创建或打开用户工作区。 |
 | `LocaleService` | 读取和保存全局界面语言，加载 Qt 翻译资源并通知可见界面重新翻译。 |
 | `HelpContentService` | 按应用版本与界面语言加载安装包内可信教程目录、正文和插图，解析页面跳转；不依赖远程内容完成核心阅读。 |
@@ -118,7 +119,9 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
          └─ thumbnails\
 ```
 
-- `library.json` 只登记受管数据集和主页摘要；它不复制每个数据集的标签或标注事实。资料库损坏时应能通过逐个扫描 `datasets/{dataset-uuid}/dataset.json` 安全重建。
+- `library.json` 只登记受管数据集和主页摘要；它不复制每个数据集的标签或标注事实。索引缺失或目录未登记时，启动对账逐个扫描规范 UUID 目录，以有效 `dataset.json` 原子恢复摘要；现有索引自身损坏时不得自动覆盖。
+- `dataset.json` 是恢复摘要的事实来源。标签文件、SQLite 或固定目录损坏时仍可使用有效元数据展示真实诊断卡片；元数据也损坏时使用 UUID 派生占位名称。
+- 扫描只查看 `datasets/` 的直接子项。非 UUID 名称、普通文件和符号链接进入 `LibraryRecoveryReport`，不得跟随、删除或移动。
 - `label-set.json` 是单个受管数据集的标签事实来源。标签记录建议为 `{id, class_id, name, alias, description, synonyms, color, status}`；`id`、`class_id` 与 `name` 要受到变更保护。
 - 标签集同时生成两类签名：`training_signature` 覆盖稳定标签 ID、类别 ID、英文训练名与状态，用于判断能否安全复制、移动或合并数据；`display_signature` 覆盖别名、描述、同义词和颜色，用于展示差异。签名与版本记录在数据集元数据中。
 - `color` 是数据集标签定义的一部分。`LabelColorService` 使用预定义的可访问调色板及色差校验生成候选色；活动标签颜色不得重复，归档标签颜色可复用。
@@ -254,9 +257,10 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 - 图片无法加载：在文件列表标记错误，并允许继续浏览其他图片。
 - JSON 解析失败：提示文件名与原因，不自动覆盖原文件。
 - 保存失败：保留内存修改和脏状态，并提供重试入口。
+- 资料库元数据写入失败：Repository 转换底层 I/O 异常，Service 保证公开变更只抛业务异常，Gateway 最终保证返回 `UiCommandResult`；回滚也失败时同时报告原始错误与回滚错误。
 - 导出前校验失败：列出未标注、损坏或不支持的样本，并明确让用户选择跳过或取消；绝不静默遗漏。
 - 教程正文或插图缺失：保留主页和数据集入口，显示可恢复的内容错误，不得因帮助资源损坏阻止应用启动。
 
 ## English Summary
 
-Step two implements the core `AppLibrary -> ManagedDataset` architecture for the official entry point. Atomic repositories, a transactional dataset-library service, and `ManagedDatasetGateway` now support UUID-backed create, reopen, switch, rename, archive, restore, corruption isolation, and independent configuration cloning. Visual design v2 and the four-zone workspace remain in place. Image ingestion, annotation persistence, models, exports, backups, and legacy migration are still future layers.
+Step two implements the core `AppLibrary -> ManagedDataset` architecture for the official entry point. Atomic repositories, a transactional dataset-library service, startup reconciliation, and `ManagedDatasetGateway` support UUID-backed create, reopen, switch, rename, archive, restore, corruption isolation, and independent configuration cloning. `dataset.json` is authoritative for summary recovery; unknown directories and symlinks are only reported. Repository, service, and gateway error boundaries prevent raw disk exceptions from reaching Qt. Image ingestion, annotation persistence, models, exports, backups, and legacy migration are still future layers.

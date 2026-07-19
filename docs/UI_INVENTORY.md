@@ -7,8 +7,8 @@
 - 16 / 16 个 `RouteId` 已注册并完成遍历测试；预览专用组件页只在 `--ui-preview` 出现。
 - 28 / 28 个 `DialogId` 已集中注册，可打开、切换语言、校验、取消和关闭。
 - 普通模式使用 `ManagedDatasetGateway` 和真实内部资料库；仅在初始化失败时降级为 `UnavailableGateway`。预览模式始终使用独立 `PreviewGateway`。
-- 已生成 15 张核心审核截图，覆盖安全空主页、中英文、1366×768 / 1440×900 / 1920×1080 和 100% / 125% / 150% DPI。
-- Ruff、格式检查、Python 3.11 `compileall`、61 项 pytest 和普通/预览 GUI 启动冒烟均通过。
+- 步骤一保留 15 张核心审核截图；步骤二严格复验另生成 12 张真实资料库截图，覆盖中英文主页/空工作台与 1366×768、1440×900、1920×1080。
+- 独立 Python 3.11 下 Ruff、格式、`compileall`、pytest-qt、88 项通过测试和普通/预览 GUI 启动冒烟均通过；1 项符号链接权限用例跳过。
 
 ## 1. 运行边界
 
@@ -56,7 +56,7 @@
 | --- | --- | --- |
 | `create_dataset` | 新建空数据集 | 名称校验、描述、创建摘要 |
 | `create_from_template` | 从数据集复制配置 | 源选择、复制范围、不会复制样本提示 |
-| `dataset_diagnostics` | 损坏数据集诊断 | 问题摘要与后续恢复入口 |
+| `dataset_diagnostics` | 损坏数据集诊断 | 单页只读真实名称、UUID、原因与原文件保护说明；普通模式不显示演示统计 |
 | `rename_dataset` | 重命名数据集 | 名称校验和预览 |
 | `archive_dataset` | 归档数据集 | 影响说明与确认 |
 | `label_editor` | 标签创建/编辑 | 英文名、别名、描述、同义词、类别 ID |
@@ -99,9 +99,10 @@
 - 对话框注册测试遍历全部弹窗并验证可打开和关闭。
 - 中英文键集合一致，切换语言不改写演示数据内容。
 - 普通模式只为真实数据集创建元数据、固定子目录和空 `index.sqlite`；未接入入口不创建图片、模型或导出文件。预览模式不接触资料库。
+- 普通模式启动会对账资料库索引与 UUID 目录；恢复、写盘故障和 Gateway 最终异常边界均有正式回归。
 - 1366×768、1440×900、1920×1080 与 100%、125%、150% DPI 完成布局和截图检查。
 - 核心截图包含主页、工作台、标签、模型、设置、YOLO 向导和危险确认。
 
 ## English Summary
 
-This inventory covers the completed UI prototype and the step-two managed-library integration. Normal mode now performs real UUID-backed dataset create, persistence, open, switch, rename, archive, restore, and configuration cloning through a gateway/service boundary. Preview mode remains disposable and isolated. Image, annotation, model, export, and backup actions are still unconnected in normal mode.
+This inventory covers the completed UI prototype and the strictly revalidated step-two managed-library integration. Normal mode performs real UUID-backed create, persistence, open, switch, rename, archive, restore, configuration cloning, and startup reconciliation through repository/service/gateway boundaries. The ordinary diagnostic dialog is read-only and contains no demo statistics. The isolated Python 3.11 suite passes 88 tests plus pytest-qt interaction checks; preview mode remains disposable and isolated. Image, annotation, model, export, and backup actions are still unconnected in normal mode.

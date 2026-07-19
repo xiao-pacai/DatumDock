@@ -9,16 +9,16 @@
 - [x] 建立产品、架构、交互、验收与协作规范文档。
 - [x] 已确认首发仅支持 Windows 10/11 x64、立即自动保存，以及默认导出已标注样本的 YOLO Detection 格式。
 
-## 阶段 0.5：入口与存储模型重构（步骤二核心已完成）
+## 阶段 0.5：入口与存储模型重构（步骤二严格复验通过）
 
-> 2026-07-19 状态：步骤二已完成内部资料库、真实创建/打开/切换、重命名、归档/恢复、配置复制和空工作台接入。旧数据迁移、图片池和后续业务服务仍按本阶段边界继续推进。
+> 2026-07-19 状态：步骤二已完成内部资料库、真实创建/打开/切换、重命名、归档/恢复、配置复制、启动对账和空工作台接入。独立修复复验已消除写盘异常越过 Gateway 与孤儿目录隐藏两个 P1；旧数据迁移、图片池和后续业务服务仍按本阶段边界继续推进。
 
 - [x] 记录“主页 + 受管数据集存档”的产品心智、内部目录、迁移原则、UX 和验收标准。
 - [x] 建立现代视觉设计规范 v2：主页借鉴 Scratch 的友好引导，标注页借鉴 X-AnyLabeling 的紧凑效率，明确自有品牌、组件和禁止项。
 - [x] 完成步骤一全量 GUI 原型：安全空主页、独立内存预览网关、16 个路由、28 个弹窗、组件样例页和集中导航；不接入真实资料库。
 - [x] 冻结 `AppLibrary`、`ManagedDataset`、`DatasetLibraryService` 和内部路径解析接口，并补齐领域单元测试。
 - [x] 将默认数据根目录设为 `%LOCALAPPDATA%\DatumDock`，首次启动自动创建资料库，不显示目录选择器。
-- [-] 实现资料库登记、数据集事务创建和异常数据集隔离；损坏索引原件保护已完成，显式安全重建工具仍待后续维护功能接入。
+- [x] 实现资料库登记、数据集事务创建、异常数据集隔离和启动自动对账；索引缺失、未登记 UUID 目录和过期摘要可安全恢复，损坏现有索引保持原件不覆盖。
 - [x] 完成现代视觉 v2 组件样例页和中英文、100%/125%/150% DPI 截图基线，确认不再呈现旧式 Qt 管理软件观感；截图位于忽略提交的 `build/ui-review/`。
 - [-] 实现带完整 Logo、真实数据集卡片、搜索、排序、设置、“新建数据集”、快速开始和学习中心的主页：资料库已接入，教程进度持久化仍待实现。
 - [ ] 实现 `HelpContentService`、`TutorialProgressRepository` 和应用内教程阅读器；核心中英文内容随安装包离线提供，进度不进入数据集。
@@ -28,8 +28,8 @@
 - [-] 按 UX 固定标注工作台布局：顶部数据集/导入/导出操作栏、左侧标注与 AI 工具、中央画布、右侧当前标注和带状态的图片列表；内存画布交互完成，持久化待接入。
 - [ ] 将标签、模型、索引、回收站、备份、导出和跨数据集操作迁移为数据集级边界。
 - [ ] 提供旧 `Workspace -> Project -> Dataset` 结构的只读迁移预检、备份、校验、提交与失败回滚。
-- [-] 完成中英文旧术语清理，以及首次启动、重启恢复、双数据集隔离和损坏元数据的 GUI / 自动化回归；安装升级保留与旧结构迁移仍待发布环境验证。
-- [ ] 阶段 0.5 全部验收并达到 90 分以上后，才恢复推进后续功能阶段。
+- [-] 完成正式入口中英文旧术语清理，以及首次启动、启动对账、双数据集隔离和损坏元数据的 GUI / 自动化回归；旧代码词条、安装升级保留与旧结构迁移仍待后续验证。
+- [x] 步骤二子阶段严格复验达到 97 分，无 P0/P1；阶段 0.5 其余教程、旧迁移和后续业务任务按各自条目继续推进。
 
 ## 阶段 1：可启动的项目与应用骨架
 
@@ -127,18 +127,17 @@
 
 - [x] GitHub `main` 推送阻塞已恢复：2026-07-19 已将现代视觉设计规范提交 `f28dc79` 成功推送到远端 `main`。
 - [x] 步骤一与步骤二推送阻塞已恢复：早前连接重置、`curl 55` 和 `github.com:443` 失败均为临时网络问题；2026-07-19 已成功将 `f28dc79..e7e8aa9` 推送到远端 `main`，包含步骤一 UI 与步骤二内部资料库提交。
-- [-] 最终状态文档同步：核心交付 `e7e8aa9` 推送成功后，本地状态提交 `8255d5b` 的两次后续推送均因无法连接 `github.com:443` 失败，已达到本轮三次总尝试上限。
-  - 原因：当前设备到 GitHub HTTPS 的网络连接再次中断；代码、测试和本地 Git 对象正常。
-  - 影响范围：仅“远端已绑定/阻塞已恢复”的状态文字及本条记录仍在本地 `main`；步骤二功能、测试和主要交付文档已经位于远端 `e7e8aa9`。
-  - 恢复条件：设备可重新连接 GitHub 443 端口。
-  - 下一步：网络恢复后执行一次 `git push origin main`，再用 `git status -sb` 确认同步；本轮不再重试。
-- [-] Python 3.11 独立环境的依赖安装：当前网络环境在访问 PyPI 时出现 TLS `SSLEOFError`，因此尚未能在该环境安装 PySide6、pytest-qt、ONNX Runtime、Ultralytics、PyInstaller 与其 CPU 推理依赖。
-  - 最近复测：2026-07-19 在全新 `.venv` 执行 `python -m pip install -e ".[dev]"`，仍在获取 `setuptools` 构建依赖时因 PyPI TLS `SSLEOFError` 失败。
-  - 影响范围：Python 3.11 运行验证、pytest-qt 回归、ONNX/PT 真模型导入、自动标注和正式 PyInstaller 打包验证。
-  - 已完成的替代验证：使用已有 PySide6 的开发环境完成 Ruff、格式检查、61 项 pytest、普通/预览 GUI 启动和 Windows 原生多分辨率截图；Python 3.11 `compileall` 通过。这不替代 Python 3.11 依赖与发布验证。
-  - 恢复条件：可用的受信任 PyPI 镜像、离线 wheel 包或已配置的企业证书。
-  - 下一步：恢复依赖后锁定 Python 3.11 环境，执行完整测试矩阵、安装包构建及隔离环境验收。
+- [x] Python 3.11 独立环境的步骤二依赖与 GUI 复验已恢复。
+  - 原阻塞：Python 3.11 自带旧 pip 在构建隔离子进程中访问 PyPI 时出现 TLS `SSLEOFError`；未关闭 TLS 校验。
+  - 安全恢复：使用已正常联网的新版 pip 从官方 PyPI 下载明确面向 CPython 3.11 / Windows x64 的 wheels，再由 `.venv` 以 `--no-index` 本地安装 `PySide6`、Pydantic、Pillow、PyYAML、pytest、pytest-qt、Ruff、PyInstaller 等步骤二与开发依赖。
+  - 验证结果：独立 Python 3.11 下 Ruff、格式、`compileall`、88 项通过测试、3 项 pytest-qt 控件回归、普通/预览事件循环和 12 张原生截图均通过；1 项符号链接测试因当前账户缺少 Windows 权限跳过。
+  - 剩余边界：ONNX Runtime、Ultralytics 和真实模型推理依赖未在本步骤安装，因为模型功能不属于步骤二；正式 PyInstaller/Inno Setup 隔离安装验收仍属于安装包阶段。
+- [-] Windows 符号链接自动回归权限受限。
+  - 原因：当前账户创建测试目录符号链接时返回 `WinError 1314`，未取得所需特权。
+  - 影响范围：仅符号链接“不跟随、不登记”自动用例跳过；同一扫描分支先调用 `is_symlink()`，非 UUID 未知目录保留用例已通过，正常资料库功能不受影响。
+  - 恢复条件：在启用 Windows 开发者模式或具备符号链接权限的 CI/测试账户中运行。
+  - 下一步：在满足权限的 Windows 环境重跑 `test_uuid_symlink_is_reported_without_being_followed_or_registered`，通过后将本项标为完成。
 
 ## English Summary
 
-Step two now completes the persistent managed-library core: normal mode uses UUID-backed internal datasets and supports real create, reopen, switch, rename, archive, restore, independent configuration cloning, corruption isolation, and genuine empty workspaces. Preview mode remains memory-only. Image ingestion, persistent annotations, models, exports, backups, migration, and installer verification remain later phases. Python 3.11 dependency installation is still blocked by a PyPI TLS error, while GitHub push status is tracked above.
+Step two has passed strict revalidation at 97/100 with no P0 or P1 issues. Startup reconciliation restores valid orphan directories and stale summaries from `dataset.json`, while damaged or unknown entries remain preserved and diagnosable. The isolated Python 3.11 environment now passes Ruff, formatting, compilation, 88 tests, pytest-qt interaction checks, normal/preview event-loop smoke tests, and twelve native screenshots. Image ingestion, persistent annotations, models, exports, backups, migration, and installer verification remain later phases.

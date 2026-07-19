@@ -45,10 +45,16 @@
 - [x] 配置复制不复制图片、标注、缩略图、模型、回收站或导出记录。
 - [x] `library.json` 与数据集 JSON 使用同目录临时文件、刷新和原子替换；创建登记失败不会留下活动半成品。
 - [x] 损坏资料库索引不会被覆盖；单个损坏数据集显示诊断卡片且不阻止健康数据集打开。
+- [x] `library.json` 缺失、有效 UUID 目录未登记或主页摘要过期时，启动以有效 `dataset.json` 自动恢复登记；损坏孤儿保留为诊断卡片。
+- [x] 非 UUID 目录和符号链接只报告、不跟随、不删除、不移动；当前 Windows 账户无符号链接创建权限，因此自动符号链接用例明确跳过，未知目录保留用例通过。
+- [x] 元数据写盘、资料库写盘、回滚和恢复区转移失败均转换为业务错误；`ManagedDatasetGateway.dispatch()` 不向 Qt 抛出裸磁盘异常。
+- [x] 标签、标签集稳定 ID 使用规范 UUID；类别 ID 全局唯一，活动训练名和颜色唯一，复核数量不得超过图片数量；Repository 写盘前重新验证可变模型。
+- [x] 普通模式损坏诊断为单页只读界面，只显示真实名称、UUID 和原因，不含步骤一演示统计，关闭时不写入资料库。
 - [x] 普通模式不显示演示数据或预览横幅；未接入入口只提示且不产生文件副作用。
 - [x] `--ui-preview` 不读取或修改真实资料库，关闭后内存修改丢失。
 - [x] 中英文切换不改变数据集名称、描述或资料库文件。
 - [x] 1366×768、1440×900、1920×1080 的中英文主页和空工作台已完成原生截图检查。
+- [x] 独立 Python 3.11 环境下 Ruff、格式、`compileall`、pytest-qt 和完整测试通过：88 passed、1 skipped；普通/预览 Qt 事件循环启动通过，真实用户资料库前后哈希一致。
 
 步骤二不勾选图片导入、标注持久化、模型、导出、备份、万张图片和安装包相关 A0/A–I 条目；这些能力仍需后续阶段真实实现和验收。
 
@@ -194,4 +200,4 @@
 
 ## English Summary
 
-The acceptance gate now records the completed step-two managed-library slice separately from the remaining MVP. Normal mode initializes a per-user UUID-backed library and supports real create, persistence, open, switch, rename, archive, restore, configuration cloning, corruption isolation, and a genuine empty workspace. Preview mode remains isolated. Image ingestion, annotation persistence, models, exports, backups, scale testing, and installer delivery are still unchecked and must not be claimed as complete.
+The acceptance gate records the independently revalidated step-two managed-library slice separately from the remaining MVP. Startup reconciliation recovers missing registrations and stale summaries from valid `dataset.json` files, keeps damaged orphans diagnosable, and only reports unknown directories or symlinks. Repository, service, and gateway boundaries keep raw disk errors out of Qt. The isolated Python 3.11 matrix passes with 88 tests and one privilege-dependent symlink test skipped. Image ingestion, annotation persistence, models, exports, backups, scale testing, and installer delivery remain unchecked and must not be claimed as complete.

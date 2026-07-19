@@ -16,7 +16,6 @@ from datumdock.ui.application_shell import ApplicationShell
 from datumdock.ui.managed_gateway import ManagedDatasetGateway
 from datumdock.ui.prototype_pages import RouteId
 
-
 SIZES = ((1366, 768), (1440, 900), (1920, 1080))
 LOCALES = ("zh_CN", "en_US")
 

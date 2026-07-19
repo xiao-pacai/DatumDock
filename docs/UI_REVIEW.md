@@ -1,96 +1,96 @@
-# DatumDock UI 与步骤二交付自检报告
+# DatumDock UI 与步骤二严格复验报告
 
-> 当前结论：DatumDock 步骤二内部数据集资料库已完成，可以在普通模式创建、保存、打开和切换数据集；图片导入、真实标注持久化、模型和导出逻辑将在后续步骤接入。
+> 最终结论（2026-07-19）：DatumDock 步骤二内部数据集资料库已完成，可以在普通模式创建、保存、打开和切换数据集；图片导入、真实标注持久化、模型和导出逻辑将在后续步骤接入。
 
-## 1. 交付范围
+## 1. 复验背景
 
-- 正式入口已切换到 `ApplicationShell`；普通模式提供无副作用空主页，预览模式使用一次性内存数据。
-- 已实现 16 个稳定路由、28 个集中注册弹窗、现代组件库、自有 SVG 图标和中英文资源。
-- 标注工作台提供纯内存矩形创建、选择、移动、八点缩放、标签同步、缩放、适配、撤销和重做。
-- 设置页提供语言即时切换、快捷键录入/冲突检查/恢复默认、回收站阈值问号帮助和其他配置外观。
-- `UiGateway` 隔离新界面与旧业务服务；本轮不会创建数据集、图片、SQLite、模型、导出目录或偏好文件。
+步骤二首次交付后的独立审计把状态暂时降为“部分完成”，评分 78 / 100，并确认两个 P1：底层写盘异常可能越过 Service/Gateway；`library.json` 缺失或进程在“发布目录—登记索引”窗口中中断后，有效数据集目录可能从主页隐藏。普通损坏诊断还会混入步骤一演示统计，稳定标签映射与统计关系验证不足，Python 3.11 和 pytest-qt 也尚未实际运行。
 
-## 2. 自动验证
+本轮先把这些复现固化为失败回归，再修改实现。旧实现上新增选择性测试出现 17 项失败；修复后相同测试与扩展用例全部通过。本报告只记录证据已经覆盖的事实，不把图片、标注、模型、导出、备份或安装包描述为完成。
+
+## 2. 已完成修复
+
+### 2.1 启动对账与孤儿恢复
+
+- `dataset.json` 是主页摘要恢复的事实来源，`library.json` 是登记和排序索引。
+- 索引缺失、有效 UUID 目录未登记或摘要过期时，`DatasetLibraryService` 启动后自动验证并原子恢复登记。
+- 标签文件、SQLite 或固定目录损坏但元数据有效时，诊断卡片保留真实名称与描述；元数据也损坏时使用 UUID 派生的中立占位名称。
+- 非 UUID 目录、普通文件与符号链接只进入 `LibraryRecoveryReport`，不跟随、不删除、不移动。
+- 已存在但损坏的 `library.json` 保持原始字节并触发安全降级，不自动重建覆盖。
+
+### 2.2 Repository、Service 与 Gateway 错误边界
+
+- Repository 在保存资料库、数据集元数据和标签集前重新执行完整模型验证，并把 I/O/验证错误转换为仓库异常。
+- Service 公开变更方法只向上抛业务异常；写盘、资料库登记、回滚和恢复区转移同时失败时，错误消息保留原始原因和恢复失败原因。
+- `ManagedDatasetGateway.dispatch()` 对业务异常和未预期异常都有最终安全边界，始终返回 `UiCommandResult`；`ApplicationShell` 另有防御性边界。
+- Toast 不再承诺无法证明的“未留下半成品”，只说明操作失败并要求查看诊断后重试。
+
+### 2.3 领域验证与真实诊断
+
+- `Label.id` 与 `LabelSet.id` 必须是规范 UUID。
+- 标签 ID、类别 ID 全局唯一；活动训练名按大小写不敏感规则唯一；活动颜色按大小写不敏感规则唯一。
+- `reviewed_count` 不得大于 `image_count`，主页不会再产生超过 100% 的损坏复核比例。
+- 损坏数据集诊断改为单页只读对话框，仅显示真实名称、UUID、原因与原文件未覆盖说明；关闭不会修改资料库。
+
+## 3. 普通模式与预览模式边界
+
+- `python -m datumdock` 使用 `ManagedDatasetGateway` 与 `%LOCALAPPDATA%\DatumDock` 真实资料库；只有初始化无法安全完成时才降级为 `UnavailableGateway`。
+- `python -m datumdock --ui-preview` 始终使用独立 `PreviewGateway`，创建、改名、切换和关闭都不读取或修改真实资料库。
+- 普通模式没有演示图片、标签、模型或统计。图片导入、标注持久化、AI、模型、YOLO/X-AnyLabeling、备份和永久删除入口统一返回“后续步骤接入”，不产生文件副作用。
+- 新建和已有空数据集进入同一个真实工作台；顶部切换会重建当前数据集上下文，不会串入另一个数据集的数据。
+
+## 4. Python 3.11 与自动化证据
+
+Python 3.11 自带旧 pip 在构建隔离子进程中曾出现 PyPI TLS `SSLEOFError`。本轮没有关闭证书校验，而是使用已正常联网的新版 pip 从官方 PyPI 下载 CPython 3.11 / Windows x64 wheels，再由仓库 `.venv` 使用 `--no-index` 离线安装步骤二和开发依赖。
+
+最终命令：
 
 ```powershell
-python -m ruff check src tests
-python -m ruff format --check src tests
-py -3.11 -m compileall -q src
+.\.venv\Scripts\python.exe -m ruff check src tests
+.\.venv\Scripts\python.exe -m ruff format --check src tests
+.\.venv\Scripts\python.exe -m compileall -q src
 $env:QT_QPA_PLATFORM = "offscreen"
-python -m pytest -q
+.\.venv\Scripts\python.exe -m pytest -q
 ```
 
-本轮结果：Ruff 通过、格式检查通过、Python 3.11 编译检查通过、31 项 pytest 通过。普通模式与 `--ui-preview` 均完成进程级启动冒烟；16 个路由和 28 个弹窗完成遍历。
+结果：
 
-## 3. 视觉验证
+- Python 3.11.0、PySide6 6.11.1、pytest-qt 4.5.0；
+- Ruff 与格式检查通过，53 个 Python 文件格式一致；
+- `compileall` 通过；
+- **88 passed、1 skipped、14 warnings**；
+- 3 项 pytest-qt 真实控件回归覆盖创建并切换、写盘错误 Toast、语言切换与内容隔离；
+- 唯一跳过项是当前 Windows 账户缺少创建符号链接所需权限；未知目录保留用例通过，符号链接代码分支明确拒绝跟随；
+- 14 条警告均来自 Pillow 对旧 `getdata()` API 的未来弃用提示，不影响步骤二资料库结果，已留待图片处理阶段升级。
 
-本地截图位于忽略提交的 `build/ui-review/`，共 15 张，覆盖：
+## 5. GUI、截图与真实资料库隔离
 
-- 中文 1440×900：安全空主页、预览主页、标注工作台、标签管理、模型管理、设置、组件样例、YOLO 导出、危险删除；
-- 英文 1366×768：主页、设置；
-- 中文 125% / 1440×900：主页、标注工作台；
-- 中文 150% / 1920×1080：主页、标注工作台。
+- 普通模式和 `--ui-preview` 均在 Python 3.11 下保持 Qt 事件循环存活；普通临时根只初始化一个 `library.json`，预览根产生 0 个资料库文件。
+- `scripts/capture_step2_review.py` 在临时资料库创建两个数据集、重新构造 Service 后再截图；每张截图前断言当前路由，并等待启动页定时导航完成。
+- `build/ui-review/step2-revalidation/` 包含 12 张原生 Windows 截图：简体中文和英文分别覆盖 1366×768、1440×900、1920×1080 的主页与空工作台。
+- 每组主页/工作台 SHA-256 均不同，修复了旧证据中英文 1440×900 工作台误抓主页的问题；抽查未发现关键操作裁切。
+- 完整测试前后真实 `%LOCALAPPDATA%\DatumDock` 文件树哈希均为 `2643171C90EAC3176D4E05C8A8FE0DC32BC597E88E69DE90304E9A8A16BEC6DF`。
 
-检查并修正了动态卡片残留遮挡、工作台品牌区裁切、矩形控制柄重复位移、中文状态中的英文单位和危险删除范围未翻译等问题。
-
-## 4. 自检评分
+## 6. 重新评分
 
 | 领域 | 得分 | 说明 |
 | --- | ---: | --- |
-| UI 页面与流程覆盖 | 25 / 25 | 路由、管理页、状态页和 28 个弹窗均可发现与创建。 |
-| 视觉质量与一致性 | 27 / 30 | 现代冷白/浅蓝灰、品牌色、深色画布和自有图标统一；教程正文仍为演示内容。 |
-| 导航与演示交互 | 19 / 20 | 页面跳转、对话框、画布、筛选、语言和快捷键均可交互；业务结果仅为内存演示。 |
-| 响应式、DPI 与中英文 | 13 / 15 | 三种分辨率与三档 DPI 已检查；更极端窗口尺寸不属于本轮基线。 |
-| 测试与工程质量 | 10 / 10 | 静态检查、格式、31 项回归、CLI 启动和安全边界均通过。 |
-| **总分** | **94 / 100** | 达到不低于 90 分的步骤一交付要求。 |
+| 需求覆盖 | 30 / 30 | 步骤二真实资料库、主页、空工作台、切换和元数据操作完整；未越界宣称后续功能。 |
+| 数据正确性与安全 | 29 / 30 | 原子写入、启动对账、孤儿诊断、模型复验、回滚信息和资料库哈希证据通过；符号链接自动用例受当前账户权限限制。 |
+| GUI 接入与体验 | 15 / 15 | 真实创建直达空工作台，卡片、筛选、只读诊断、顶部切换和双语页面可用。 |
+| 测试与稳定性 | 14 / 15 | Python 3.11 完整矩阵、pytest-qt、事件循环和 12 张路由截图通过；保留 1 项权限相关跳过。 |
+| 文档与工程质量 | 9 / 10 | 架构、资料库、验收、路线图、视觉状态、启动说明和复验脚本同步；安装包隔离验证不属于步骤二。 |
+| **总分** | **97 / 100** | 高于 90 分门槛，无 P0/P1；未用评分抵消任何硬性失败。 |
 
-硬性安全验收通过：普通模式和预览模式都未调用真实数据集服务，未把任何未接入业务操作伪装为成功。
+## 7. 尚未完成的产品能力
 
-## 5. 已知边界
-
-- Python 3.11 新虚拟环境因 PyPI TLS `SSLEOFError` 无法安装依赖；已完成 3.11 `compileall`，但依赖与发布环境验证仍需网络恢复。
-- 教程阅读器使用内置演示正文，不代表最终教程已经校订。
-- 旧业务服务与旧界面代码仍保留，但正式入口不再使用；后续应通过 `UiGateway` 逐项迁移，不应让页面直接访问文件或 SQLite。
-- 本轮不是安装包、真实导入、真实标注持久化、模型推理或 YOLO/X-AnyLabeling 导出交付。
-
-## 6. 步骤二真实资料库交付
-
-- 普通模式改用 `ManagedDatasetGateway`，首次启动自动建立 `%LOCALAPPDATA%\DatumDock`；资料库初始化失败时才降级到安全的 `UnavailableGateway`。
-- 数据集以 UUID 作为目录名；名称只保存在元数据中。创建按“预检 → 临时目录 → 元数据/标签/索引 → 结构验证 → 原子发布 → 原子登记”执行。
-- 主页已真实接入创建、搜索、排序、卡片打开、重命名、归档、恢复、损坏诊断和从其他数据集复制配置。
-- 新建和已有空数据集均进入同一工作台，显示当前名称、0 张图片、空画布、空图片池与清晰导入入口。
-- 顶部数据集下拉使用真实资料库快照，切换时重新加载标签、图片、模型和画布上下文；当前步骤的空数据集不会混入演示内容。
-- `--ui-preview` 仍是独立内存模式，即使真实 `library.json` 损坏也不会读取或改写它。
-
-步骤二新增或扩展的自动验证覆盖：首次初始化、重启恢复、两个数据集隔离、名称判重、Windows 非法名称和路径逃逸、UUID 目录稳定、重命名、归档/恢复、模板深复制、复制排除项、创建登记失败恢复、损坏索引保护、单项损坏隔离、真实 GUI 向导、卡片打开、顶部切换、普通模式未接入副作用、预览隔离、双语内容保护和三种窗口尺寸。
-
-## 7. 步骤二视觉与运行验证
-
-原生 Windows 截图位于忽略提交的 `build/ui-review/step2/`，共 12 张：简体中文和英文分别覆盖 1366×768、1440×900、1920×1080 的真实主页与空工作台。截图使用临时资料库创建两个数据集，重新构造 Service 后再渲染，因此同时验证重启恢复；临时资料库在流程结束后删除。
-
-最终质量命令：
-
-```powershell
-python -m ruff check src tests
-python -m ruff format --check src tests
-py -3.11 -m compileall -q src
-$env:QT_QPA_PLATFORM = "offscreen"
-python -m pytest -q
-```
-
-本轮完整结果：61 项 pytest 通过；Ruff、格式检查和 Python 3.11 编译检查通过；普通模式与 `--ui-preview` 均完成真实 Qt 事件循环启动/关闭冒烟。Python 3.11 独立环境依赖安装仍受 PyPI TLS 阻塞，因此 GUI 运行使用当前已安装 PySide6 的开发解释器，未把该项描述为 Python 3.11 发布环境验证。
-
-## 8. 步骤二自检评分
-
-| 领域 | 得分 | 说明 |
-| --- | ---: | --- |
-| 需求覆盖 | 30 / 30 | 完成步骤二要求的真实资料库、主页、空工作台、切换和元数据操作；未越界宣称后续功能。 |
-| 数据正确性与安全 | 29 / 30 | 原子 JSON、固定 UUID 路径、事务创建、回滚/恢复、损坏隔离和副作用测试通过；显式资料库重建工具仍属后续维护功能。 |
-| GUI 接入与体验 | 15 / 15 | 保留步骤一视觉，真实创建后直达空工作台，卡片、筛选、诊断和顶部切换可用。 |
-| 测试与稳定性 | 15 / 15 | 61 项完整回归、真实 GUI 路径、多分辨率、中英文及重启场景通过。 |
-| 文档与工程质量 | 9 / 10 | 代码边界、中文注释、文档和启动说明已同步；Python 3.11 独立依赖环境仍受外部 TLS 阻塞。 |
-| **总分** | **98 / 100** | 高于步骤二 90 分交付门槛，无安全或页面覆盖硬性失败。 |
+- 真实图片导入、PNG 转码、完全重复与近似图处理；
+- 矩形标注持久化、自动保存和图片级复核；
+- 标签管理真实写入与 LabelMe/X-AnyLabeling 交换；
+- ONNX/PT 模型导入、CPU/GPU 推理和自动标注；
+- YOLO Detection 导出、备份、跨数据集转移和万张图片压力；
+- PyInstaller/Inno Setup 安装、卸载和无 Python 环境验证。
 
 ## English Summary
 
-DatumDock step two completes the persistent internal dataset library and scores 98/100. Normal mode now creates, saves, reopens, switches, renames, archives, restores, diagnoses, and independently clones configuration for UUID-backed datasets. New and existing empty datasets open in the real annotation workspace without demo content. Preview mode remains isolated. Ruff, formatting, Python 3.11 compilation, 61 tests, GUI smoke checks, bilingual content protection, and 12 native multi-resolution screenshots pass. Image import, annotation persistence, models, exports, backups, and installer delivery remain future work.
+DatumDock step two has passed strict independent revalidation at 97/100 with no P0 or P1 issues. Startup reconciliation restores missing registrations and stale summaries from valid `dataset.json` files, keeps damaged orphans visible for diagnosis, and only reports unknown directories or symlinks. Repository, service, gateway, and shell boundaries keep raw disk failures out of Qt. The isolated Python 3.11 matrix passes Ruff, formatting, compilation, 88 tests, three pytest-qt interaction checks, normal/preview event-loop smoke tests, and twelve route-asserted native screenshots; one symlink test is skipped because the current Windows account lacks the required privilege. Image ingestion, persistent annotations, models, exports, backups, scale tests, and installer delivery remain future work.
