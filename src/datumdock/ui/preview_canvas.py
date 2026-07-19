@@ -378,20 +378,25 @@ class PreviewAnnotationCanvas(QWidget):
         self._refresh_snap_projection()
         self.update()
 
-    def _set_zoom(self, value: float) -> None:
+    def _set_zoom(self, value: float, anchor: QPointF | None = None) -> None:
+        """设置倍率，并尽量保持锚点对应的原图像素停留在指针下方。"""
+
         if self.image is None:
             return
         target = max(0.01, min(64.0, float(value)))
         viewport_center = QRectF(self.rect()).center()
         old_rect = self._image_rect()
-        image_center = self._canvas_to_image(viewport_center, old_rect)
+        anchor_point = (
+            QPointF(anchor) if anchor is not None and old_rect.contains(anchor) else viewport_center
+        )
+        image_anchor = self._canvas_to_image(anchor_point, old_rect)
         self.zoom = target
         new_rect = self._image_rect()
         projected = QPointF(
-            new_rect.left() + image_center.x() * new_rect.width() / self.image.width,
-            new_rect.top() + image_center.y() * new_rect.height() / self.image.height,
+            new_rect.left() + image_anchor.x() * new_rect.width() / self.image.width,
+            new_rect.top() + image_anchor.y() * new_rect.height() / self.image.height,
         )
-        self.pan_offset += viewport_center - projected
+        self.pan_offset += anchor_point - projected
         self._clamp_pan_offset()
         self.zoom_changed.emit(round(self.zoom * 100))
         self._refresh_snap_projection()
@@ -651,20 +656,28 @@ class PreviewAnnotationCanvas(QWidget):
         super().keyPressEvent(event)
 
     def wheelEvent(self, event: QWheelEvent) -> None:
-        """滚轮纵向滚动，Alt+滚轮横向滚动；Ctrl 本轮不绑定。"""
+        """Ctrl 缩放优先于 Alt 横移；普通滚轮继续纵向滚动。"""
 
-        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+        self._hover_point = event.position()
+        angle_delta = event.angleDelta().y()
+        pixel_delta = event.pixelDelta().y()
+        delta = angle_delta or pixel_delta
+        if not delta:
             event.ignore()
             return
-        delta = event.angleDelta().y() or event.pixelDelta().y()
-        if event.modifiers() & Qt.KeyboardModifier.AltModifier:
+        modifiers = event.modifiers()
+        if modifiers & Qt.KeyboardModifier.ControlModifier:
+            steps = delta / (120.0 if angle_delta else 240.0)
+            self._set_zoom(self.zoom * (1.2**steps), event.position())
+        elif modifiers & Qt.KeyboardModifier.AltModifier:
             self.pan_offset.setX(self.pan_offset.x() + delta)
         else:
             self.pan_offset.setY(self.pan_offset.y() + delta)
-        self._clamp_pan_offset()
-        self._refresh_snap_projection()
+        if not (modifiers & Qt.KeyboardModifier.ControlModifier):
+            self._clamp_pan_offset()
+            self._refresh_snap_projection()
+            self.update()
         event.accept()
-        self.update()
 
     def leaveEvent(self, event: object) -> None:
         self._hover_point = None
