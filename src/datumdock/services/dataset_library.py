@@ -385,14 +385,14 @@ class DatasetLibraryService:
                 expected = self._entry_from_dataset(dataset)
             except DatasetRepositoryError:
                 damaged.append(dataset_id)
-                if dataset_id not in registered:
-                    try:
-                        metadata = self.dataset_repository.load_metadata_for_recovery(dataset_id)
-                        expected = self._entry_from_dataset(metadata)
-                    except DatasetRepositoryError:
+                try:
+                    metadata = self.dataset_repository.load_metadata_for_recovery(dataset_id)
+                    expected = self._entry_from_dataset(metadata)
+                except DatasetRepositoryError:
+                    if dataset_id not in registered:
                         expected = self._placeholder_entry(dataset_id)
-                else:
-                    continue
+                    else:
+                        continue
 
             index = registered.get(dataset_id)
             if index is None:

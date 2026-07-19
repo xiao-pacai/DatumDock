@@ -330,6 +330,26 @@ def test_damaged_orphan_uses_valid_metadata_for_home_summary(tmp_path: Path) -> 
     assert record.diagnostic
 
 
+def test_registered_damaged_dataset_refreshes_summary_from_valid_metadata(tmp_path: Path) -> None:
+    """已登记目录的索引损坏时，过期摘要仍应由有效 dataset.json 修正。"""
+
+    service = DatasetLibraryService(tmp_path)
+    created = service.create_dataset("损坏但可识别", "真实诊断摘要")
+    stale = service.library.model_copy(deep=True)
+    stale.datasets[0].name = "错误旧名称"
+    stale.datasets[0].description = "错误旧描述"
+    service.library_repository.save(stale)
+    service.dataset_repository.paths(created.dataset.id).index.write_bytes(b"broken-index")
+
+    restarted = DatasetLibraryService(tmp_path)
+    record = restarted.list_datasets()[0]
+
+    assert record.entry.name == "损坏但可识别"
+    assert record.entry.description == "真实诊断摘要"
+    assert record.bundle is None
+    assert restarted.recovery_report.refreshed_dataset_ids == (created.dataset.id,)
+
+
 def test_reconciliation_refreshes_stale_library_summary(tmp_path: Path) -> None:
     """dataset.json 是摘要事实来源，启动对账应原子刷新过期主页索引。"""
 
