@@ -1,4 +1,4 @@
-"""步骤三受管样本 SQLite v1 的迁移、分页和安全边界回归。"""
+"""受管样本 SQLite v3 的迁移、分页和安全边界回归。"""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ def _repository(tmp_path: Path) -> tuple[DatasetLibraryService, DatasetSampleRep
     return service, DatasetSampleRepository(paths, bundle.dataset.id), bundle.dataset.id
 
 
-def _sample(dataset_id: str, number: int, *, status: ReviewStatus = ReviewStatus.UNREVIEWED):
+def _sample(dataset_id: str, number: int, *, status: ReviewStatus | None = None):
     return DatasetSample(
         dataset_id=dataset_id,
         filename=f"image_{number:06d}.png",
@@ -93,7 +93,7 @@ def test_empty_step2_index_migrates_to_latest_schema(tmp_path: Path) -> None:
     repository = DatasetSampleRepository(paths, bundle.dataset.id)
 
     connection = sqlite3.connect(paths.index)
-    assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+    assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
     tables = {
         row[0]
         for row in connection.execute(
@@ -128,7 +128,7 @@ def test_valid_managed_v0_row_is_preserved_during_migration(tmp_path: Path) -> N
             sample.height,
             sample.content_hash,
             sample.perceptual_hash,
-            sample.review_status.value,
+            "unreviewed",
             sample.imported_at,
         ),
     )
@@ -154,7 +154,7 @@ def test_repository_pages_searches_sorts_and_filters_without_full_load(tmp_path:
 
     _service, repository, dataset_id = _repository(tmp_path)
     for number in range(450):
-        status = ReviewStatus.ISSUE if number % 20 == 0 else ReviewStatus.UNREVIEWED
+        status = ReviewStatus.PENDING_REVIEW if number % 20 == 0 else None
         repository.add_sample(_sample(dataset_id, number, status=status))
 
     page = repository.query(
@@ -165,7 +165,9 @@ def test_repository_pages_searches_sorts_and_filters_without_full_load(tmp_path:
             sort=SampleSort.FILENAME_ASC,
         )
     )
-    issues = repository.query(SampleQuery(dataset_id, review_status=ReviewStatus.ISSUE, limit=200))
+    issues = repository.query(
+        SampleQuery(dataset_id, review_status=ReviewStatus.PENDING_REVIEW, limit=200)
+    )
     searched = repository.query(SampleQuery(dataset_id, search="source-44", limit=200))
 
     assert page.total == 450

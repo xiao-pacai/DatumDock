@@ -297,7 +297,11 @@ class SampleBrowser(QWidget):
     def _sample_caption(self, sample: DatasetSample) -> str:
         """文件名下展示整图复核状态，且不将项目内容交给翻译服务改写。"""
 
-        status_key = f"review.{sample.review_status.value}"
+        status_key = (
+            f"review.{sample.review_status.value}"
+            if sample.review_status is not None
+            else "review.none"
+        )
         return f"● {tr(self.locale_service, status_key)}\n{sample.filename}"
 
     def _emit_selected(self) -> None:

@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from datumdock.domain.models import AnnotationState, NamingPolicy, ReviewStatus
+from datumdock.domain.models import AnnotationState, NamingPolicy
 from datumdock.services.dataset_library import DatasetLibraryService
 from datumdock.services.image_pool import ImageImportPreflightRequest, ImageImportService
 from datumdock.services.sample_governance import (
@@ -222,7 +222,7 @@ def test_rename_sqlite_failure_restores_annotation_bytes_and_digest(
         annotation_version=1,
         annotation_sha256=hashlib.sha256(original_bytes).hexdigest(),
         annotation_updated_at="2026-07-19T00:00:00+00:00",
-        review_status=ReviewStatus.UNREVIEWED,
+        review_status=None,
         shape_labels=(),
     )
     original_rename = repository.rename_sample_paths

@@ -40,16 +40,10 @@ def _validate_uuid(value: str) -> str:
 
 
 class ReviewStatus(StrEnum):
-    """以整张图片为单位保存的复核状态。"""
+    """用户可见的图片级双状态；空值表示尚无人工或模型结论。"""
 
-    UNREVIEWED = "unreviewed"
     PENDING_REVIEW = "pending_review"
     COMPLETED = "completed"
-    COMPLETED_NEGATIVE = "completed_negative"
-    # 以下两个值仅用于读取步骤三以前的索引，正式仓库会在 v2 迁移时规范化。
-    AUTO_PENDING_REVIEW = "auto_pending_review"
-    REVIEWED = "reviewed"
-    ISSUE = "issue"
 
 
 class AnnotationState(StrEnum):
@@ -171,7 +165,6 @@ class AnnotationDocument(BaseModel):
     labelme_version: str = "5.4.1"
     image_data: str | None = None
     document_version: int = Field(default=0, ge=0)
-    review_status: ReviewStatus = ReviewStatus.UNREVIEWED
     rectangles: list[RectangleShape] = Field(default_factory=list)
     image_flags: dict[str, Any] = Field(default_factory=dict)
     unsupported_shapes: list[dict[str, Any]] = Field(default_factory=list)
@@ -503,6 +496,7 @@ class AppSettings(BaseModel):
     default_split: tuple[int, int, int] = (80, 10, 10)
     trash_sample_threshold: int = Field(default=30, ge=0)
     shortcut_overrides: dict[str, str] = Field(default_factory=dict)
+    quick_label_dialog_size: tuple[int, int] = (760, 520)
 
     @field_validator("default_split")
     @classmethod
@@ -511,6 +505,16 @@ class AppSettings(BaseModel):
 
         if sum(value) != 100:
             raise ValueError("训练、验证、测试比例之和必须为 100")
+        return value
+
+    @field_validator("quick_label_dialog_size")
+    @classmethod
+    def validate_quick_label_dialog_size(cls, value: tuple[int, int]) -> tuple[int, int]:
+        """限制持久化窗口尺寸，避免损坏设置把对话框放到屏幕之外。"""
+
+        width, height = value
+        if not 560 <= width <= 4096 or not 420 <= height <= 2160:
+            raise ValueError("快速标签窗口尺寸超出安全范围")
         return value
 
 
@@ -533,7 +537,7 @@ class DatasetSample(BaseModel):
     file_hash: str = Field(default="", pattern=r"^$|^[0-9a-f]{64}$")
     perceptual_hash: str = Field(pattern=r"^[0-9a-f]{22}$")
     perceptual_hash_version: str = Field(default="dhash64-rgb-v1", pattern=r"^dhash64-rgb-v1$")
-    review_status: ReviewStatus = ReviewStatus.UNREVIEWED
+    review_status: ReviewStatus | None = None
     annotation_count: int = Field(default=0, ge=0)
     annotation_state: AnnotationState = AnnotationState.MISSING
     annotation_version: int = Field(default=0, ge=0)

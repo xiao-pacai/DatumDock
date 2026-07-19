@@ -197,7 +197,12 @@ class LabelInspectionDialog(QDialog):
                 self.dataset_names.get(sample.dataset_id, sample.dataset_id),
                 sample.filename,
                 str(shape_count),
-                tr(self.locale_service, f"review.{sample.review_status.value}"),
+                tr(
+                    self.locale_service,
+                    f"review.{sample.review_status.value}"
+                    if sample.review_status is not None
+                    else "review.none",
+                ),
             ]
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)

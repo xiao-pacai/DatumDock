@@ -15,7 +15,6 @@ from datumdock.domain.models import (
     AnnotationDocument,
     LabelSet,
     RectangleShape,
-    ReviewStatus,
     new_id,
 )
 
@@ -142,11 +141,8 @@ class LabelMeRepository:
             width = int(payload.get("imageWidth") or fallback_size[0])
             height = int(payload.get("imageHeight") or fallback_size[1])
             document_version = int(payload.get("datumdock_document_version") or 0)
-            review_status = ReviewStatus(
-                str(payload.get("datumdock_review_status") or ReviewStatus.UNREVIEWED.value)
-            )
         except (TypeError, ValueError) as error:
-            raise LabelMeError(f"LabelMe 图片尺寸或 DatumDock 状态无效: {error}") from error
+            raise LabelMeError(f"LabelMe 图片尺寸或文档版本无效: {error}") from error
         root_payload = {
             key: copy.deepcopy(value) for key, value in payload.items() if key not in self.ROOT_KEYS
         }
@@ -159,7 +155,6 @@ class LabelMeRepository:
                 labelme_version=str(payload.get("version") or "5.4.1"),
                 image_data=payload.get("imageData"),
                 document_version=document_version,
-                review_status=review_status,
                 rectangles=rectangles,
                 image_flags=copy.deepcopy(payload.get("flags") or {}),
                 unsupported_shapes=unsupported_shapes,
@@ -265,7 +260,6 @@ class LabelMeRepository:
             "imageHeight": document.image_height,
             "imageWidth": document.image_width,
             "datumdock_document_version": document.document_version,
-            "datumdock_review_status": document.review_status.value,
         }
         if for_export:
             return _strip_private_fields(payload)

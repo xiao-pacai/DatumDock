@@ -170,7 +170,7 @@ class ProjectIndexRepository:
                     sample.height,
                     sample.content_hash,
                     sample.perceptual_hash,
-                    sample.review_status.value,
+                    sample.review_status.value if sample.review_status is not None else "",
                     sample.imported_at,
                 ),
             )
@@ -467,7 +467,7 @@ class ProjectIndexRepository:
             height=row["height"],
             content_hash=row["content_hash"],
             perceptual_hash=row["perceptual_hash"],
-            review_status=ReviewStatus(row["review_status"]),
+            review_status=(ReviewStatus(row["review_status"]) if row["review_status"] else None),
             imported_at=row["imported_at"],
         )
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import shutil
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
@@ -17,6 +19,7 @@ from datumdock.domain.models import (
     AnnotationState,
     LabelSet,
     ReviewStatus,
+    new_id,
 )
 from datumdock.services.dataset_library import DatasetLibraryService, DatasetLibraryServiceError
 from datumdock.services.labelme import (
@@ -47,6 +50,43 @@ class AutosaveState(StrEnum):
     RECOVERING = "recovering"
 
 
+class AnnotationEditOrigin(StrEnum):
+    """区分人工和模型写入，复核状态只能由该来源驱动。"""
+
+    MANUAL = "manual"
+    MODEL = "model"
+
+
+class AnnotationEditKind(StrEnum):
+    """标注内容发生变化的稳定操作类型。"""
+
+    CREATE = "create"
+    MOVE = "move"
+    RESIZE = "resize"
+    DELETE = "delete"
+    REASSIGN = "reassign"
+    UNDO = "undo"
+    REDO = "redo"
+    MODEL_WRITE = "model_write"
+
+
+class ReviewStateMachine:
+    """统一计算双状态，页面和模型服务不得自行拼装状态。"""
+
+    @staticmethod
+    def after_edit(
+        current: ReviewStatus | None,
+        origin: AnnotationEditOrigin,
+        *,
+        changed: bool,
+    ) -> ReviewStatus | None:
+        if not changed:
+            return current
+        if origin == AnnotationEditOrigin.MODEL:
+            return ReviewStatus.PENDING_REVIEW
+        return ReviewStatus.COMPLETED
+
+
 @dataclass(frozen=True, slots=True)
 class AnnotationSaveRequest:
     """一次不可变保存快照及其并发前提。"""
@@ -56,6 +96,9 @@ class AnnotationSaveRequest:
     document_version: int
     expected_disk_sha256: str
     document: AnnotationDocument
+    edit_origin: AnnotationEditOrigin = AnnotationEditOrigin.MANUAL
+    edit_kind: AnnotationEditKind = AnnotationEditKind.CREATE
+    base_document_version: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +111,7 @@ class AnnotationSaveResult:
     sqlite_synced: bool
     recovery_required: bool
     warnings: tuple[str, ...] = ()
+    review_status: ReviewStatus | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +125,7 @@ class AnnotationLoadResult:
     disk_sha256: str
     editable: bool
     annotation_state: AnnotationState
+    review_status: ReviewStatus | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,7 +175,6 @@ class AnnotationService:
                 image_width=sample.width,
                 image_height=sample.height,
                 document_version=sample.annotation_version,
-                review_status=_formal_review_status(sample.review_status),
             )
             return AnnotationLoadResult(
                 sample.id,
@@ -140,6 +184,7 @@ class AnnotationService:
                 "",
                 sample.health.value == "ready",
                 AnnotationState.MISSING,
+                sample.review_status,
             )
         try:
             digest = _sha256(path)
@@ -162,6 +207,7 @@ class AnnotationService:
                 digest,
                 sample.health.value == "ready",
                 AnnotationState.READY,
+                sample.review_status,
             )
         except UnknownLabelReferenceError as error:
             self._mark_diagnostic(sample.id, AnnotationState.UNKNOWN_LABEL)
@@ -173,6 +219,7 @@ class AnnotationService:
                 _safe_sha256(path),
                 False,
                 AnnotationState.UNKNOWN_LABEL,
+                sample.review_status,
             )
         except (LabelMeError, OSError, ValueError) as error:
             self._mark_diagnostic(sample.id, AnnotationState.CORRUPT)
@@ -184,6 +231,7 @@ class AnnotationService:
                 _safe_sha256(path),
                 False,
                 AnnotationState.CORRUPT,
+                sample.review_status,
             )
 
     def save(self, request: AnnotationSaveRequest) -> AnnotationSaveResult:
@@ -194,6 +242,11 @@ class AnnotationService:
         sample = self.samples.get_sample(request.sample_id)
         if sample is None:
             raise AnnotationServiceError("待保存标注的样本不存在")
+        if (
+            request.base_document_version is not None
+            and request.base_document_version != sample.annotation_version
+        ):
+            raise AnnotationConflictError("标注文档基准版本已变化，请重新加载后再保存")
         document = request.document.model_copy(
             deep=True,
             update={"document_version": request.document_version},
@@ -209,15 +262,14 @@ class AnnotationService:
         except DatasetLibraryServiceError as error:
             raise AnnotationServiceError(f"标签集读取失败: {error}") from error
         warnings = self._validate_document(document, label_set, allow_archived=True)
-        review_status = _formal_review_status(document.review_status)
-        self._validate_review_status(review_status, len(document.rectangles))
         path = self._annotation_path(sample.filename, sample.annotation_path)
         current_digest = _safe_sha256(path)
         if current_digest != request.expected_disk_sha256:
             raise AnnotationConflictError("标注文件已被其他操作修改，请重新加载后再保存")
+        existing_document: AnnotationDocument | None = None
         if path.exists():
             try:
-                self.repository.load(
+                existing_document = self.repository.load(
                     path,
                     sample.id,
                     label_set,
@@ -230,12 +282,15 @@ class AnnotationService:
                     f"现有标注 JSON 无法验证，原文件未被覆盖: {error}"
                 ) from error
 
-        # 未产生框且未确认负样本时只更新 SQLite 状态，不创建空 JSON。
-        if (
-            not path.exists()
-            and not document.rectangles
-            and review_status != ReviewStatus.COMPLETED_NEGATIVE
-        ):
+        changed = _document_content_changed(existing_document, document)
+        review_status = ReviewStateMachine.after_edit(
+            sample.review_status,
+            request.edit_origin,
+            changed=changed,
+        )
+
+        # 新图片没有框时不创建无意义 JSON；明确完成人工复核使用 mark_review_completed。
+        if not path.exists() and not document.rectangles:
             self.samples.update_annotation_index(
                 sample.id,
                 annotation_path="",
@@ -254,26 +309,45 @@ class AnnotationService:
                 True,
                 False,
                 warnings,
+                review_status,
             )
 
         relative_path = (
             self.paths.annotations.joinpath(path.name).relative_to(self.paths.root).as_posix()
         )
-        marker = self._marker_path(sample.id)
+        operation_id = new_id()
+        operation_directory = self._operation_directory(operation_id)
+        manifest = operation_directory / "manifest.json"
+        candidate = operation_directory / "candidate.json"
+        original = operation_directory / "original.json"
         marker_payload: dict[str, Any] = {
+            "operation_id": operation_id,
             "dataset_id": self.dataset_id,
             "sample_id": sample.id,
             "annotation_path": relative_path,
             "expected_sha256": request.expected_disk_sha256,
             "document_version": request.document_version,
+            "old_annotation_version": sample.annotation_version,
+            "old_annotation_sha256": sample.annotation_sha256,
+            "old_review_status": sample.review_status.value if sample.review_status else None,
+            "target_review_status": review_status.value if review_status else None,
+            "edit_origin": request.edit_origin.value,
+            "edit_kind": request.edit_kind.value,
+            "original_existed": path.exists(),
             "phase": "prepared",
             "created_at": datetime.now(UTC).isoformat(),
         }
         try:
-            self._write_marker(marker, marker_payload)
-            digest = self.repository.save(path, document, label_set)
+            self._prepare_operation_directory(operation_directory)
+            if path.exists():
+                _copy_file_durable(path, original)
+            self._write_marker(manifest, marker_payload)
+            digest = self.repository.save(candidate, document, label_set)
+            marker_payload.update(phase="candidate_ready", json_sha256=digest)
+            self._write_marker(manifest, marker_payload)
+            _replace_file_from_bytes(candidate, path)
             marker_payload.update(phase="json_committed", json_sha256=digest)
-            self._write_marker(marker, marker_payload)
+            self._write_marker(manifest, marker_payload)
             self.samples.update_annotation_index(
                 sample.id,
                 annotation_path=relative_path,
@@ -287,7 +361,9 @@ class AnnotationService:
                     (rectangle.id, rectangle.label_id) for rectangle in document.rectangles
                 ),
             )
-            marker.unlink(missing_ok=True)
+            marker_payload.update(phase="committed")
+            self._write_marker(manifest, marker_payload)
+            self._remove_operation_directory(operation_directory)
             return AnnotationSaveResult(
                 sample.id,
                 request.document_version,
@@ -295,11 +371,48 @@ class AnnotationService:
                 True,
                 False,
                 warnings,
+                review_status,
             )
         except (LabelMeError, SampleRepositoryError, OSError) as error:
-            if path.exists() and marker_payload.get("phase") == "json_committed":
-                self._mark_diagnostic(sample.id, AnnotationState.RECOVERY_REQUIRED)
+            if marker_payload.get("phase") == "json_committed":
+                try:
+                    if bool(marker_payload["original_existed"]):
+                        _replace_file_from_bytes(original, path)
+                    else:
+                        path.unlink(missing_ok=True)
+                        _fsync_directory(path.parent)
+                    marker_payload.update(phase="rolled_back", error=str(error))
+                    self._write_marker(manifest, marker_payload)
+                except OSError as rollback_error:
+                    marker_payload.update(
+                        phase="recovery_required",
+                        error=str(error),
+                        rollback_error=str(rollback_error),
+                    )
+                    self._write_marker(manifest, marker_payload)
+                    self._mark_diagnostic(sample.id, AnnotationState.RECOVERY_REQUIRED)
+                    raise AnnotationServiceError(
+                        f"标注保存失败且原文件恢复失败: {rollback_error}"
+                    ) from error
             raise AnnotationServiceError(f"标注保存失败: {error}") from error
+
+    def mark_review_completed(self, sample_id: str) -> ReviewStatus:
+        """无需制造空 JSON 即可确认整张图片已完成人工复核。"""
+
+        sample = self.samples.get_sample(sample_id)
+        if sample is None:
+            raise AnnotationServiceError("待确认复核的样本不存在")
+        if sample.annotation_state in {
+            AnnotationState.CORRUPT,
+            AnnotationState.UNKNOWN_LABEL,
+            AnnotationState.RECOVERY_REQUIRED,
+        }:
+            raise AnnotationServiceError("样本存在标注诊断，修复前不能确认完成")
+        try:
+            self.samples.update_review_status(sample_id, ReviewStatus.COMPLETED)
+        except SampleRepositoryError as error:
+            raise AnnotationServiceError(f"确认复核完成失败: {error}") from error
+        return ReviewStatus.COMPLETED
 
     def recover_pending(self) -> AnnotationMigrationReport:
         """只回放有限恢复标记，不扫描数据集中的全部 JSON。"""
@@ -310,6 +423,55 @@ class AnnotationService:
         recovered = 0
         failed: list[str] = []
         diagnostics: list[str] = []
+        operation_directories = sorted(
+            path for path in self.recovery_directory.iterdir() if path.is_dir()
+        )
+        for operation_directory in operation_directories:
+            examined += 1
+            manifest = operation_directory / "manifest.json"
+            payload: dict[str, Any] = {}
+            try:
+                if operation_directory.is_symlink() or manifest.is_symlink():
+                    raise AnnotationServiceError("恢复目录不能是符号链接")
+                payload = json.loads(manifest.read_text(encoding="utf-8"))
+                if payload.get("dataset_id") != self.dataset_id:
+                    raise AnnotationServiceError("恢复清单数据集 ID 不匹配")
+                sample_id = str(payload["sample_id"])
+                sample = self.samples.get_sample(sample_id)
+                if sample is None:
+                    raise AnnotationServiceError("恢复清单引用的样本不存在")
+                phase = str(payload.get("phase"))
+                if phase == "committed":
+                    self._remove_operation_directory(operation_directory)
+                    recovered += 1
+                    continue
+                if phase in {"json_committed", "recovery_required"}:
+                    path = self.samples.resolve_path(
+                        str(payload["annotation_path"]), "pool/annotations"
+                    )
+                    if bool(payload.get("original_existed")):
+                        _replace_file_from_bytes(operation_directory / "original.json", path)
+                    else:
+                        path.unlink(missing_ok=True)
+                        _fsync_directory(path.parent)
+                    payload.update(phase="rolled_back")
+                    self._write_marker(manifest, payload)
+                    self.samples.update_annotation_diagnostic(
+                        sample_id,
+                        AnnotationState.READY
+                        if sample.annotation_path
+                        else AnnotationState.MISSING,
+                    )
+                    recovered += 1
+                    continue
+                if phase == "rolled_back":
+                    diagnostics.append(f"保留可重试候选: {operation_directory.name}")
+                    continue
+                diagnostics.append(f"保留未发布候选: {operation_directory.name}")
+            except Exception as error:
+                failed.append(str(payload.get("sample_id", operation_directory.name)))
+                diagnostics.append(f"恢复操作 {operation_directory.name} 处理失败: {error}")
+
         try:
             label_set = self.library_service.open_dataset(self.dataset_id).label_set
         except DatasetLibraryServiceError as error:
@@ -354,7 +516,7 @@ class AnnotationService:
                     annotation_version=int(payload["document_version"]),
                     annotation_sha256=digest,
                     annotation_updated_at=datetime.now(UTC).isoformat(),
-                    review_status=_formal_review_status(document.review_status),
+                    review_status=sample.review_status,
                     shape_labels=tuple(
                         (rectangle.id, rectangle.label_id) for rectangle in document.rectangles
                     ),
@@ -403,13 +565,6 @@ class AnnotationService:
                 warnings.append(f"矩形 {rectangle.id} 尺寸很小，请人工确认")
         return tuple(warnings)
 
-    @staticmethod
-    def _validate_review_status(status: ReviewStatus, rectangle_count: int) -> None:
-        if status == ReviewStatus.COMPLETED and rectangle_count == 0:
-            raise AnnotationServiceError("已完成状态至少需要一个有效矩形")
-        if status == ReviewStatus.COMPLETED_NEGATIVE and rectangle_count != 0:
-            raise AnnotationServiceError("已完成（无目标）状态不能包含矩形")
-
     def _annotation_path(self, filename: str, relative_path: str) -> Path:
         if relative_path:
             return self.samples.resolve_path(relative_path, "pool/annotations")
@@ -417,6 +572,29 @@ class AnnotationService:
 
     def _marker_path(self, sample_id: str) -> Path:
         return self.recovery_directory / f"{sample_id}.json"
+
+    def _operation_directory(self, operation_id: str) -> Path:
+        return self.recovery_directory / operation_id
+
+    def _prepare_operation_directory(self, directory: Path) -> None:
+        if self.recovery_directory.exists() and self.recovery_directory.is_symlink():
+            raise AnnotationServiceError("标注恢复目录不能是符号链接")
+        self.recovery_directory.mkdir(parents=True, exist_ok=True)
+        try:
+            directory.resolve(strict=False).relative_to(self.recovery_directory.resolve())
+        except ValueError as error:
+            raise AnnotationServiceError("标注恢复操作越过受管目录") from error
+        directory.mkdir(parents=False, exist_ok=False)
+
+    def _remove_operation_directory(self, directory: Path) -> None:
+        try:
+            directory.resolve(strict=True).relative_to(self.recovery_directory.resolve())
+        except (OSError, ValueError) as error:
+            raise AnnotationServiceError("拒绝清理越界的标注恢复目录") from error
+        if directory.is_symlink():
+            raise AnnotationServiceError("拒绝清理符号链接恢复目录")
+        shutil.rmtree(directory)
+        _fsync_directory(self.recovery_directory)
 
     def _write_marker(self, marker: Path, payload: dict[str, Any]) -> None:
         if self.recovery_directory.exists() and self.recovery_directory.is_symlink():
@@ -508,6 +686,9 @@ class AnnotationAutosaveService:
             request.document_version,
             request.expected_disk_sha256,
             request.document.model_copy(deep=True),
+            request.edit_origin,
+            request.edit_kind,
+            request.base_document_version,
         )
         with self._lock:
             self._latest_request = immutable
@@ -540,6 +721,9 @@ class AnnotationAutosaveService:
             request.document_version,
             loaded.disk_sha256,
             request.document.model_copy(deep=True),
+            request.edit_origin,
+            request.edit_kind,
+            loaded.document.document_version if loaded.document else None,
         )
         return self.submit(rebased)
 
@@ -584,6 +768,9 @@ class AnnotationAutosaveService:
                 request.document_version,
                 previous_digest,
                 request.document,
+                request.edit_origin,
+                request.edit_kind,
+                previous_version,
             )
         return self.service.save(request)
 
@@ -597,20 +784,17 @@ class AnnotationAutosaveService:
         )
 
 
-def review_status_after_edit(current: ReviewStatus) -> ReviewStatus:
-    """按产品规则计算任意框编辑后的图片级复核状态。"""
+def review_status_after_edit(current: ReviewStatus | None) -> ReviewStatus:
+    """兼容旧调用点；人工有效编辑统一转为已完成。"""
 
-    normalized = _formal_review_status(current)
-    if normalized == ReviewStatus.ISSUE:
-        return ReviewStatus.ISSUE
-    return ReviewStatus.PENDING_REVIEW
-
-
-def _formal_review_status(value: ReviewStatus) -> ReviewStatus:
-    return {
-        ReviewStatus.AUTO_PENDING_REVIEW: ReviewStatus.PENDING_REVIEW,
-        ReviewStatus.REVIEWED: ReviewStatus.COMPLETED,
-    }.get(value, value)
+    return (
+        ReviewStateMachine.after_edit(
+            current,
+            AnnotationEditOrigin.MANUAL,
+            changed=True,
+        )
+        or ReviewStatus.COMPLETED
+    )
 
 
 def _sha256(path: Path) -> str:
@@ -622,3 +806,50 @@ def _safe_sha256(path: Path) -> str:
         return _sha256(path) if path.is_file() else ""
     except OSError:
         return ""
+
+
+def _document_content_changed(
+    previous: AnnotationDocument | None,
+    current: AnnotationDocument,
+) -> bool:
+    if previous is None:
+        return bool(current.rectangles or current.unsupported_shapes)
+    return previous.model_dump(exclude={"document_version"}) != current.model_dump(
+        exclude={"document_version"}
+    )
+
+
+def _copy_file_durable(source: Path, target: Path) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with source.open("rb") as source_stream, target.open("wb") as target_stream:
+        shutil.copyfileobj(source_stream, target_stream)
+        target_stream.flush()
+        os.fsync(target_stream.fileno())
+    _fsync_directory(target.parent)
+
+
+def _replace_file_from_bytes(source: Path, target: Path) -> None:
+    data = source.read_bytes()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_name(f".{target.name}.{new_id()}.tmp")
+    try:
+        with temporary.open("wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, target)
+        _fsync_directory(target.parent)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _fsync_directory(directory: Path) -> None:
+    """Windows 不支持目录 fsync；可用的平台上尽力刷新目录项。"""
+
+    if os.name == "nt":
+        return
+    descriptor = os.open(directory, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)

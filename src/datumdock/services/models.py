@@ -272,7 +272,7 @@ class AutoAnnotationService:
             project,
             sample,
             document,
-            review_status=ReviewStatus.AUTO_PENDING_REVIEW,
+            review_status=ReviewStatus.PENDING_REVIEW,
         )
         return backend
 

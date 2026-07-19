@@ -159,6 +159,7 @@ class ManagedDatasetGateway:
         search: str = "",
         review_status: ReviewStatus | None = None,
         annotation_state: AnnotationState | None = None,
+        has_annotations: bool | None = None,
         label_id: str | None = None,
         sort: SampleSort = SampleSort.FILENAME_ASC,
     ) -> SamplePage:
@@ -175,6 +176,7 @@ class ManagedDatasetGateway:
                 label_id=label_id,
                 sort=sort,
                 annotation_state=annotation_state,
+                has_annotations=has_annotations,
             )
         )
 
@@ -276,6 +278,11 @@ class ManagedDatasetGateway:
     def wait_annotation_save(self, dataset_id: str):
         autosave = self._annotation_autosaves.get(dataset_id)
         return autosave.wait_latest() if autosave else None
+
+    def mark_review_completed(self, dataset_id: str, sample_id: str) -> ReviewStatus:
+        """通过真实服务确认图片完成，不为零框图片创建 JSON。"""
+
+        return AnnotationService(self.service, dataset_id).mark_review_completed(sample_id)
 
     def locate_sample(
         self,

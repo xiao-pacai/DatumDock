@@ -44,7 +44,6 @@ def _document(sample: DatasetSample, label_id: str, version: int = 1) -> Annotat
         image_height=sample.height,
         rectangles=[RectangleShape(label_id=label_id, x1=4, y1=5, x2=40, y2=32)],
         document_version=version,
-        review_status=ReviewStatus.PENDING_REVIEW,
     )
 
 

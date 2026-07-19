@@ -1,4 +1,4 @@
-"""步骤四标签体系与 SQLite v2 迁移回归。"""
+"""步骤四标签体系与 SQLite v3 迁移回归。"""
 
 from __future__ import annotations
 
@@ -166,7 +166,7 @@ def test_v1_schema_migrates_status_and_annotation_summary(tmp_path: Path) -> Non
         sample.file_hash,
         sample.perceptual_hash,
         sample.perceptual_hash_version,
-        ReviewStatus.AUTO_PENDING_REVIEW.value,
+        "auto_pending_review",
         sample.health.value,
         sample.thumbnail_state.value,
         "",
@@ -209,6 +209,94 @@ def test_v1_schema_migrates_status_and_annotation_summary(tmp_path: Path) -> Non
     assert updated is not None
     assert updated.annotation_count == 1
     assert repository.label_usage_counts()[label_set.labels[0].id] == (1, 1)
+
+
+def test_v2_to_v3_maps_all_review_states_without_touching_json(tmp_path: Path) -> None:
+    """五状态迁移在事务内收敛为双状态，并保持全部标注字节不变。"""
+
+    library = DatasetLibraryService(tmp_path / "library")
+    bundle = library.create_dataset("双状态迁移")
+    paths = library.dataset_repository.paths(bundle.dataset.id)
+    paths.index.unlink()
+    connection = sqlite3.connect(paths.index)
+    DatasetSampleRepository._create_v1_schema(connection)
+    DatasetSampleRepository._migrate_v1_to_v2(connection)
+    statuses = (
+        "unreviewed",
+        "pending_review",
+        "completed",
+        "completed_negative",
+        "issue",
+        "auto_pending_review",
+        "reviewed",
+    )
+    samples: list[DatasetSample] = []
+    before_json: dict[str, bytes] = {}
+    for number, status in enumerate(statuses, start=1):
+        sample = _sample(bundle.dataset.id, number)
+        samples.append(sample)
+        connection.execute(
+            "INSERT INTO samples("
+            "id,dataset_id,filename,original_filename,image_path,annotation_path,width,height,"
+            "image_mode,managed_format,content_hash,file_hash,perceptual_hash,"
+            "perceptual_hash_version,review_status,annotation_count,annotation_state,"
+            "annotation_version,annotation_sha256,annotation_updated_at,health,thumbnail_state,"
+            "thumbnail_path,is_trashed,duplicate_group_id,similarity_group_id,imported_at"
+            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                sample.id,
+                sample.dataset_id,
+                sample.filename,
+                sample.original_filename,
+                sample.image_path,
+                "",
+                sample.width,
+                sample.height,
+                sample.image_mode,
+                sample.managed_format,
+                sample.content_hash,
+                sample.file_hash,
+                sample.perceptual_hash,
+                sample.perceptual_hash_version,
+                status,
+                0,
+                AnnotationState.MISSING.value,
+                0,
+                "",
+                "",
+                sample.health.value,
+                sample.thumbnail_state.value,
+                "",
+                0,
+                None,
+                None,
+                sample.imported_at,
+            ),
+        )
+        annotation = paths.annotations / f"{Path(sample.filename).stem}.json"
+        payload = f'{{"legacy":"{status}"}}\n'.encode()
+        annotation.write_bytes(payload)
+        before_json[annotation.name] = payload
+    connection.execute("PRAGMA user_version = 2")
+    connection.commit()
+    connection.close()
+
+    repository = DatasetSampleRepository(paths, bundle.dataset.id)
+
+    expected = (
+        None,
+        ReviewStatus.PENDING_REVIEW,
+        ReviewStatus.COMPLETED,
+        ReviewStatus.COMPLETED,
+        ReviewStatus.PENDING_REVIEW,
+        ReviewStatus.PENDING_REVIEW,
+        ReviewStatus.COMPLETED,
+    )
+    assert tuple(repository.get_sample(sample.id).review_status for sample in samples) == expected
+    assert any("issue" in issue for issue in repository.migration_issues())
+    assert {
+        path.name: path.read_bytes() for path in paths.annotations.glob("*.json")
+    } == before_json
 
 
 def test_label_revision_blocks_stale_update(tmp_path: Path) -> None:
@@ -260,7 +348,6 @@ def _save_labeled_sample(
         image_width=sample.width,
         image_height=sample.height,
         rectangles=[RectangleShape(label_id=label_id, x1=2, y1=2, x2=30, y2=20)],
-        review_status=ReviewStatus.PENDING_REVIEW,
     )
     AnnotationService(library, dataset_id).save(
         AnnotationSaveRequest(dataset_id, sample.id, 1, "", document)

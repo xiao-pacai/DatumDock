@@ -22,12 +22,14 @@ from datumdock.domain.models import (
 from datumdock.services.annotations import (
     AnnotationAutosaveService,
     AnnotationConflictError,
+    AnnotationEditKind,
+    AnnotationEditOrigin,
     AnnotationHistory,
     AnnotationSaveRequest,
     AnnotationService,
     AnnotationServiceError,
     AutosaveState,
-    review_status_after_edit,
+    ReviewStateMachine,
 )
 from datumdock.services.dataset_library import DatasetLibraryService
 from datumdock.services.labelme import LabelMeRepository
@@ -128,7 +130,6 @@ def test_atomic_save_updates_labelme_and_sqlite_then_reloads(tmp_path: Path) -> 
     assert loaded.document is not None
     document = loaded.document.model_copy(deep=True)
     document.rectangles.append(RectangleShape(label_id=label.id, x1=5, y1=6, x2=45, y2=36))
-    document.review_status = ReviewStatus.PENDING_REVIEW
 
     result = service.save(
         AnnotationSaveRequest(dataset_id, sample.id, 1, loaded.disk_sha256, document)
@@ -144,7 +145,8 @@ def test_atomic_save_updates_labelme_and_sqlite_then_reloads(tmp_path: Path) -> 
     assert indexed is not None
     assert indexed.annotation_count == 1
     assert indexed.annotation_version == 1
-    assert indexed.review_status == ReviewStatus.PENDING_REVIEW
+    assert indexed.review_status == ReviewStatus.COMPLETED
+    assert result.review_status == ReviewStatus.COMPLETED
     assert DatasetSampleRepository(paths, dataset_id).label_usage_counts()[label.id] == (1, 1)
     reopened = service.load(sample.id)
     assert reopened.document is not None
@@ -162,7 +164,6 @@ def test_autosave_digest_rebase_is_isolated_per_sample(tmp_path: Path) -> None:
     assert second_loaded.document is not None
     second_v1 = second_loaded.document.model_copy(deep=True)
     second_v1.rectangles.append(RectangleShape(label_id=label.id, x1=2, y1=2, x2=20, y2=20))
-    second_v1.review_status = ReviewStatus.PENDING_REVIEW
     second_saved = service.save(AnnotationSaveRequest(dataset_id, second.id, 1, "", second_v1))
 
     autosave = AnnotationAutosaveService(service)
@@ -170,7 +171,6 @@ def test_autosave_digest_rebase_is_isolated_per_sample(tmp_path: Path) -> None:
     assert first_loaded.document is not None
     first_document = first_loaded.document.model_copy(deep=True)
     first_document.rectangles.append(RectangleShape(label_id=label.id, x1=4, y1=4, x2=24, y2=24))
-    first_document.review_status = ReviewStatus.PENDING_REVIEW
     autosave.submit(AnnotationSaveRequest(dataset_id, first.id, 1, "", first_document)).result(
         timeout=5
     )
@@ -194,29 +194,24 @@ def test_autosave_digest_rebase_is_isolated_per_sample(tmp_path: Path) -> None:
     assert reloaded.document.rectangles[0].x2 == 30
 
 
-def test_empty_document_is_lazy_but_confirmed_negative_creates_json(tmp_path: Path) -> None:
-    """普通空标注不建文件，确认无目标后才建立可交换的空 JSON。"""
+def test_zero_box_completion_does_not_create_json(tmp_path: Path) -> None:
+    """零框图片可以确认完成，但复核状态不会制造无意义的 LabelMe JSON。"""
 
     library, dataset_id, sample, _label, service = _managed_annotation(tmp_path)
     loaded = service.load(sample.id)
     assert loaded.document is not None
-    first = loaded.document.model_copy(deep=True)
-    first.review_status = ReviewStatus.PENDING_REVIEW
-    service.save(AnnotationSaveRequest(dataset_id, sample.id, 1, "", first))
     path = library.dataset_repository.paths(dataset_id).annotations / "image_000001.json"
     assert not path.exists()
 
-    negative = first.model_copy(deep=True)
-    negative.review_status = ReviewStatus.COMPLETED_NEGATIVE
-    result = service.save(AnnotationSaveRequest(dataset_id, sample.id, 2, "", negative))
+    result = service.mark_review_completed(sample.id)
 
-    assert path.is_file()
-    assert result.json_sha256
+    assert result == ReviewStatus.COMPLETED
+    assert not path.exists()
     indexed = DatasetSampleRepository(
         library.dataset_repository.paths(dataset_id), dataset_id
     ).get_sample(sample.id)
     assert indexed is not None
-    assert indexed.review_status == ReviewStatus.COMPLETED_NEGATIVE
+    assert indexed.review_status == ReviewStatus.COMPLETED
 
 
 def test_corrupt_json_stays_byte_identical_and_read_only(tmp_path: Path) -> None:
@@ -280,11 +275,11 @@ def test_save_rejects_conflict_zero_area_and_out_of_bounds_but_warns_tiny(
     assert "尺寸很小" in result.warnings[0]
 
 
-def test_sqlite_failure_leaves_marker_and_startup_replays_it(
+def test_sqlite_failure_rolls_back_json_and_preserves_retry_candidate(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """JSON 已提交但 SQLite 失败时保留恢复标记，重启只回放该标记。"""
+    """SQLite 失败后恢复旧 JSON，绝不能留下标注与复核状态单边提交。"""
 
     _library, dataset_id, sample, label, service = _managed_annotation(tmp_path)
     loaded = service.load(sample.id)
@@ -298,18 +293,22 @@ def test_sqlite_failure_leaves_marker_and_startup_replays_it(
     monkeypatch.setattr(service.samples, "update_annotation_index", fail_index)
     with pytest.raises(AnnotationServiceError, match="SQLite"):
         service.save(AnnotationSaveRequest(dataset_id, sample.id, 1, "", document))
-    marker = service.recovery_directory / f"{sample.id}.json"
-    assert marker.is_file()
+    assert not (service.paths.annotations / "image_000001.json").exists()
+    operation_directories = [path for path in service.recovery_directory.iterdir() if path.is_dir()]
+    assert len(operation_directories) == 1
+    manifest = json.loads((operation_directories[0] / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["phase"] == "rolled_back"
+    assert (operation_directories[0] / "candidate.json").is_file()
 
     restarted = AnnotationService(DatasetLibraryService(tmp_path / "library"), dataset_id)
     report = restarted.recover_pending()
 
-    assert report.recovered == 1
-    assert not marker.exists()
+    assert report.recovered == 0
+    assert report.diagnostics
     restored = restarted.samples.get_sample(sample.id)
     assert restored is not None
-    assert restored.annotation_count == 1
-    assert restored.annotation_state == AnnotationState.READY
+    assert restored.annotation_count == 0
+    assert restored.review_status is None
 
 
 def test_history_and_autosave_keep_latest_version(tmp_path: Path) -> None:
@@ -320,7 +319,6 @@ def test_history_and_autosave_keep_latest_version(tmp_path: Path) -> None:
     assert loaded.document is not None
     first = loaded.document.model_copy(deep=True)
     first.rectangles.append(RectangleShape(label_id=label.id, x1=2, y1=2, x2=20, y2=20))
-    first.review_status = review_status_after_edit(first.review_status)
     history = AnnotationHistory(loaded.document)
     history.record(first)
     history.record(first)
@@ -344,35 +342,71 @@ def test_history_and_autosave_keep_latest_version(tmp_path: Path) -> None:
     assert reopened.document.document_version == 2
 
 
-@pytest.mark.parametrize(
-    ("status", "count", "message"),
-    [
-        (ReviewStatus.COMPLETED, 0, "至少需要"),
-        (ReviewStatus.COMPLETED_NEGATIVE, 1, "不能包含"),
-    ],
-)
-def test_review_completion_rules(
-    tmp_path: Path,
-    status: ReviewStatus,
-    count: int,
-    message: str,
-) -> None:
-    """完成与完成无目标状态均有明确框数约束。"""
+def test_review_state_machine_distinguishes_manual_model_and_noop() -> None:
+    """人工有效编辑完成复核，模型编辑重新待复核，无效操作保持原值。"""
+
+    assert (
+        ReviewStateMachine.after_edit(None, AnnotationEditOrigin.MANUAL, changed=True)
+        == ReviewStatus.COMPLETED
+    )
+    assert (
+        ReviewStateMachine.after_edit(
+            ReviewStatus.PENDING_REVIEW,
+            AnnotationEditOrigin.MANUAL,
+            changed=True,
+        )
+        == ReviewStatus.COMPLETED
+    )
+    assert (
+        ReviewStateMachine.after_edit(
+            ReviewStatus.COMPLETED,
+            AnnotationEditOrigin.MODEL,
+            changed=True,
+        )
+        == ReviewStatus.PENDING_REVIEW
+    )
+    assert (
+        ReviewStateMachine.after_edit(
+            ReviewStatus.PENDING_REVIEW,
+            AnnotationEditOrigin.MANUAL,
+            changed=False,
+        )
+        == ReviewStatus.PENDING_REVIEW
+    )
+
+
+def test_model_write_sets_pending_and_manual_edit_completes(tmp_path: Path) -> None:
+    """未来模型入口和人工整改共享同一保存边界。"""
 
     _library, dataset_id, sample, label, service = _managed_annotation(tmp_path)
     loaded = service.load(sample.id)
     assert loaded.document is not None
-    document = loaded.document.model_copy(deep=True)
-    if count:
-        document.rectangles.append(RectangleShape(label_id=label.id, x1=2, y1=2, x2=20, y2=20))
-    document.review_status = status
-    with pytest.raises(AnnotationServiceError, match=message):
-        service.save(AnnotationSaveRequest(dataset_id, sample.id, 1, "", document))
+    model_document = loaded.document.model_copy(deep=True)
+    model_document.rectangles.append(RectangleShape(label_id=label.id, x1=2, y1=2, x2=20, y2=20))
+    model_result = service.save(
+        AnnotationSaveRequest(
+            dataset_id,
+            sample.id,
+            1,
+            "",
+            model_document,
+            AnnotationEditOrigin.MODEL,
+            AnnotationEditKind.MODEL_WRITE,
+        )
+    )
+    assert model_result.review_status == ReviewStatus.PENDING_REVIEW
 
-
-def test_issue_status_stays_issue_after_edit() -> None:
-    """有问题图片只有人工重新确认完成后才移除问题状态。"""
-
-    assert review_status_after_edit(ReviewStatus.ISSUE) == ReviewStatus.ISSUE
-    assert review_status_after_edit(ReviewStatus.COMPLETED) == ReviewStatus.PENDING_REVIEW
-    assert review_status_after_edit(ReviewStatus.COMPLETED_NEGATIVE) == ReviewStatus.PENDING_REVIEW
+    manual_document = model_document.model_copy(deep=True)
+    manual_document.rectangles[0].x2 = 25
+    manual_result = service.save(
+        AnnotationSaveRequest(
+            dataset_id,
+            sample.id,
+            2,
+            model_result.json_sha256,
+            manual_document,
+            AnnotationEditOrigin.MANUAL,
+            AnnotationEditKind.MOVE,
+        )
+    )
+    assert manual_result.review_status == ReviewStatus.COMPLETED
