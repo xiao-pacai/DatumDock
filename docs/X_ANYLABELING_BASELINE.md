@@ -61,7 +61,7 @@ DatumDock 的差异化重点是多项目/多数据集池、项目级标签知识
 以下全部必需：
 
 - 项目级模型管理：本地导入、检查、验证、更新、删除和模型类别到项目标签的映射。
-- ONNX 模型的可靠本地运行与检测矩形框预标注；优先使用可用 GPU、首次 CPU 回退有可操作指引。结果直接进入当前数据集并带模型来源、置信度和图片级待审核状态，可逐图审查、修改或删除。
+- ONNX 模型的可靠本地运行与检测矩形框预标注；优先使用可用 GPU、首次 CPU 回退有可操作指引。结果直接进入当前数据集并带模型来源、置信度和图片级待复核状态；有效人工编辑保存后自动完成，无修改检查可明确确认完成。
 - 对受支持 PT 变体的明确适配；不支持时给出原因，不猜测模型结构。
 - 导出器框架和至少 YOLO Detection；新增格式必须有格式校验、最小示例和回归测试。
 - LabelMe、YOLO Detection、COCO Detection、Pascal VOC Detection 的导入/导出能力，或在当前发布范围中明确标记并将缺口保留在路线图。
@@ -90,4 +90,4 @@ DatumDock 的差异化重点是多项目/多数据集池、项目级标签知识
 
 ## English Summary
 
-DatumDock uses X-AnyLabeling as a workflow benchmark, not as a promise to clone every upstream feature or visual asset. Step four completes the label, rectangle-canvas, undo/redo, autosave, and review portions of L2, but full directory interoperability is still missing, so the product does not yet claim complete L2. L3 and L4 cover reviewed AI, common formats, and separately accepted advanced tasks.
+DatumDock uses X-AnyLabeling as a workflow benchmark, not as a promise to clone every upstream feature or visual asset. In the pending AI workflow, one effective manual edit automatically completes a model-pending image after save; explicit confirmation is only needed when no edit is made. Full directory interoperability is still missing.

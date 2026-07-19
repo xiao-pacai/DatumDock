@@ -135,6 +135,7 @@ $env:QT_QPA_PLATFORM = "offscreen"
 - 正式画布支持创建、选择、移动、八点缩放、删除、换标签、撤销/重做；右侧列表与画布双向同步。
 - 每个有效编辑排入串行自动保存；版本与磁盘摘要按样本 UUID 隔离。保存失败保留内存状态，离开前明确要求重试、放弃或取消。
 - 未复核、待审核、已完成、已完成（无目标）和有问题为互斥图片级状态；异常由图片健康与标注诊断派生。
+- 上述状态与截图是步骤四 schema v2 的历史复验证据。后续需求已在 `UX.md`、`ARCHITECTURE.md` 和 `ANNOTATION_WORKFLOW.md` 中简化为“待复核 / 已完成”双状态，当前尚未重新实现或截图验收。
 - 重命名和回收站恢复会同步 `imagePath`、文件名与摘要；故障注入证明可恢复原 JSON 字节和旧摘要。
 
 ## 12. 步骤四 Python 3.11 结果
@@ -187,4 +188,4 @@ $env:QT_QPA_PLATFORM = "offscreen"
 
 ## English Summary
 
-DatumDock step four completes dataset-level labels, editable rectangles, ordered LabelMe persistence, immediate autosave, SQLite v2, image-level review, label inspection, and governance consistency, scoring 96/100 with no known P0/P1 issues. Python 3.11 passes 153 tests; one symlink test is skipped for Windows account permissions. Twenty-two native bilingual screenshots cover all three target resolutions plus migration editing and save-failure protection. Models, complete X-AnyLabeling directory exchange, YOLO export, backups, transfer, and installer delivery remain future work.
+This file preserves the verified step-four schema-v2 review evidence and screenshots. A later, unimplemented requirement replaces its five visible review states with pending review and completed only; unannotated and unhealthy samples become separate conditions. The historical score and screenshots must not be treated as validation of the new two-state UI.

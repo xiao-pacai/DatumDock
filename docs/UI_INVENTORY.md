@@ -53,7 +53,7 @@
 | `similarity_review` | 相似图片检查 | 更多操作、数据治理 | 候选组、相似度、确认/忽略 |
 | `trash` | 回收站 | 更多操作、设置 | 可恢复项、空状态、永久清空 |
 | `dataset_overview` | 数据集详情与统计 | 数据集卡片、更多操作 | 图片、标签、状态、质量和存储摘要 |
-| `settings` | 设置 | 首页、工作台顶部 | 常规、语言、快捷键、数据、显示、教程、关于 |
+| `settings` | 设置 | 首页、工作台顶部 | 常规、语言、全部应用快捷键与恢复全部默认按键、数据、显示、教程、关于 |
 | `component_gallery` | 组件与状态样例 | 仅界面预览模式 | normal、hover、selected、disabled、loading、empty、error |
 
 ## 3. 弹窗与向导
@@ -89,6 +89,18 @@
 | `json_error` | 损坏 JSON | 普通模式保持原字节、只读异常和诊断详情 |
 | `unsupported_model` | 不支持模型 | 原因、支持范围和下一步 |
 
+### 3.1 待统一整改的新弹窗
+
+| 拟定标识 | 界面 | 目标交互 | 当前状态 |
+| --- | --- | --- | --- |
+| `quick_label_selector` | 双击矩形后的快速更改标签小窗 | 可调尺寸、即时搜索、响应式标签卡片、快速新建、确认/取消 | 需求已记录；尚未加入 `DialogId`，不计入上方 28 个已注册弹窗 |
+
+### 3.2 待统一整改的工作台操作
+
+| 拟定操作 ID | 控件 | 目标交互 | 当前状态 |
+| --- | --- | --- | --- |
+| `review.mark_completed` | “确认已完成”按钮及可配置快捷键 | 用于检查后无需修改的待复核图片；若发生有效人工编辑，则编辑保存成功时自动完成 | 需求已记录；schema v3 和真实操作尚未实现 |
+
 ## 4. 可复用组件
 
 - 品牌区、页面标题、面包屑、预览横幅、响应式操作栏和 Toast。
@@ -111,4 +123,4 @@
 
 ## English Summary
 
-This inventory covers the step-four annotation UI. Normal mode now provides real dataset labels, editable rectangles, ordered LabelMe autosave, image-level review, label inspection, on-demand thumbnail overlays, and governance consistency through gateway/service boundaries. The Python 3.11 suite passes 153 tests and twenty-two native bilingual screenshots; preview mode remains disposable and isolated. Model, export, complete X-AnyLabeling directory exchange, and backup actions remain unconnected.
+This inventory covers the verified step-four UI and pending revisions. The planned `review.mark_completed` action supports the new two-state review model but is not implemented, and the quick label selector remains unregistered. Settings must eventually enumerate all actions and support atomic restore-all defaults.

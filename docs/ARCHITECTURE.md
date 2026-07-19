@@ -132,6 +132,20 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 - `index.sqlite` 是单个受管数据集内万级样本的查询事实来源。schema v2 在 `samples` 维护标注摘要、版本、框数、更新时间和复核状态，并以 `sample_labels(sample_id, label_id, shape_id)` 支持标签使用量、筛选和跨页定位；v1→v2 不同步解析全部 JSON。
 - 图片级复核状态固定为 `unreviewed`、`pending_review`、`completed`、`completed_negative` 与 `issue`。加载失败另由图片健康或 `annotation_state` 表示；异常不允许用户手工设置。自动标注来源字段已在模型中预留，但模型推理仍未接入。
 - `completed` 不能由 shape 数量自动推导；零 shape 样本只可通过明确的负样本确认进入 `completed_negative`。删除最后一个框回到 `pending_review`，有问题图片编辑后保持 `issue`，直到用户重新确认。
+
+### 7.1 待实施的双状态复核模型
+
+> 上述五状态是步骤四当前 schema v2 的历史实现。下一轮统一整改将迁移为本节定义的双状态模型；迁移完成前不得改写历史验收结论。
+
+- schema v3 的 `review_status` 只允许空值、`pending_review` 和 `completed`。空值表示尚未产生复核状态，不作为第三种用户可见徽标。
+- 纯人工创建首个矩形时写入 `completed`；模型新增或改变任何预测框时写入 `pending_review`。待复核图片的第一次有效人工编辑在保存请求中同时携带目标状态 `completed`。
+- 有效人工编辑来源必须由命令边界明确标记，至少包含创建、移动、缩放、删除、换标签和实际改变文档的撤销/重做；选择、视图变换、搜索、筛选和取消对话框不得伪造编辑来源。
+- `AnnotationAutosaveService` 在同一次 JSON/SQLite 协调保存中提交人工编辑和 `completed`，不能先改状态后写框。任一阶段失败时内存待处理状态与持久化状态仍为 `pending_review`，重试使用最新完整快照。
+- `review.mark_completed` 用于检查后无需编辑的图片，通过 Gateway/Service 在一个事务中更新状态和摘要；按钮与可配置快捷键共用该 `action_id`。写盘失败不得让 UI 先显示完成。
+- 零框且明确确认的图片也使用 `completed`，通过框数为零识别负样本，不保留 `completed_negative` 枚举。
+- v2→v3 迁移规则：`unreviewed` 转为空值，`pending_review` 保持，`completed` 与 `completed_negative` 合并为 `completed`，`issue` 为避免误判完成而转为 `pending_review` 并记录迁移诊断。
+- 图片缺失、JSON 损坏、未知标签和恢复失败继续由 `health_status` / `annotation_state` 表达，可以与复核状态并存，不得偷偷增加为第三种复核状态。
+- SQLite 迁移必须在事务中完成并保留回滚；主页摘要、筛选、标签检查和导出候选只从新枚举与独立健康字段读取。
 - `trash/` 只保存被选择“移入回收站”的完整样本包及恢复元数据；永久删除和大批量删除不进入该目录。
 - 图片导入时只复制/转码图片，不创建空 LabelMe JSON；首次画框或确认负样本时才创建。索引只保留原始文件名，不持久化外部绝对来源路径。
 - 外部 X-AnyLabeling/LabelMe 文件的兼容载荷与 DatumDock 的可编辑矩形框分层存储：矩形框解析为内部 `label_id` 与像素坐标；其他 shape 及 `flags`、`attributes`、`description`、`difficult`、`score` 等未知或未支持字段保留为只读兼容载荷。`LabelMeRepository` 在写回或导出时按原顺序合并该载荷，不将私有稳定 ID、复核状态或模型元数据泄漏到交换 JSON。
@@ -184,11 +198,14 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 
 ## 9. 快捷键管理
 
-- 所有可配置用户操作注册为稳定的 `action_id`，例如 `file.save`、`canvas.delete_shape`、`dataset.next_sample`；UI 文案和默认快捷键与 `action_id` 分离。
-- `ShortcutService` 维护默认绑定、用户覆盖绑定和不可配置保留组合。应用启动时将有效绑定分配给对应 `QAction`/快捷键对象。
-- 保存新绑定前，服务检查空值、语法、同一上下文冲突、跨上下文歧义和系统保留组合；允许用户明确替换冲突绑定，但不允许绕过保留组合。
-- 更新绑定时撤销旧 `QAction` 快捷键并立即应用新绑定；恢复默认时删除对应 `shortcut_overrides` 项。
-- 快捷键配置应有单元测试，覆盖默认值、冲突检测、替换、恢复默认和设置持久化。
+- 所有 DatumDock 定义的键盘操作都注册为稳定的 `action_id`，例如 `file.save`、`canvas.delete_shape`、`dataset.next_sample`；UI 文案、作用域和默认快捷键与 `action_id` 分离。页面不得直接创建不在注册表中的硬编码 `QShortcut`。
+- `ActionRegistry` 是全部应用操作、默认绑定、作用域和可见入口的事实来源。设置页直接枚举注册表，因此后续新增带键盘入口的操作会自动出现，不依赖手工维护第二份列表。
+- `ShortcutService` 维护出厂默认绑定、用户覆盖绑定、显式未绑定状态和平台保留组合。应用启动时将有效绑定分配给对应 `QAction`/快捷键对象。
+- 保存新绑定前，服务区分“显式未绑定”与无效空输入，并检查语法、同一上下文冲突、跨上下文歧义和系统保留组合；允许用户明确替换冲突绑定，但不允许绕过保留组合。
+- 更新绑定时撤销旧 `QAction` 快捷键并立即应用新绑定；单项/分组恢复删除对应覆盖。“恢复全部默认按键”在一个原子设置事务中清空全部快捷键覆盖，验证默认注册表后再统一应用到所有活动窗口。
+- 如果恢复全部的持久化、验证或应用阶段失败，服务回滚到恢复前的完整配置；快捷键事务不得写入数据集，也不得重置其他全局设置字段。
+- 平台保留组合由运行平台策略提供；文本控件的普通编辑行为和中键/滚轮等纯鼠标手势不登记成键盘 `action_id`。
+- 快捷键配置应有单元测试，覆盖注册表完整性、默认值、未绑定、作用域冲突、替换、单项/分组/全部恢复、失败回滚、即时应用和重启持久化。
 
 ## 10. 标签检查与批量迁移
 
@@ -265,4 +282,4 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 
 ## English Summary
 
-Step four extends the official `AppLibrary -> ManagedDataset` architecture with SQLite v2 annotation indexes, managed labels, ordered LabelMe persistence, per-sample autosave versions, image review states, label inspection, and bounded recovery journals. UI pages receive view data or media bytes through `ManagedDatasetGateway`, never managed paths. Models, complete X-AnyLabeling directory exchange, exports, backups, and legacy migration remain future layers.
+The architecture now documents that the first effective manual annotation edit atomically completes a pending model result in the same autosave transaction. `review.mark_completed` remains for no-edit review, while view-only commands never affect status. Legacy migration and health separation remain as previously specified; implementation is pending.

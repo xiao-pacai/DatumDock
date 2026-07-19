@@ -101,7 +101,8 @@ flowchart LR
 - 中间为占据主要空间的图片画布，负责矩形框标注、缩放、平移、选中态和直接编辑。
 - 右侧上半区显示当前图片的全部标注。列表行显示标签颜色、中文别名、英文训练名和选中状态，并与画布框双向同步。
 - 右侧下半区显示图片列表或网格，支持搜索和筛选。每一行/卡片显示缩略图、文件名、标注数量，并在末尾固定显示图片级状态。
-- 用户可见状态至少包含“未标注、待审核、已完成、有问题、异常”。其中“已完成”等同于内部已复核；它必须由用户按整张图片确认，不能仅因存在矩形框自动产生。人工确认的无目标负样本可显示“已完成（无目标）”。
+- 下一轮整改后，用户可见复核状态只包含“待复核”和“已完成”。纯人工标注默认已完成；模型标注进入待复核，第一次有效人工编辑保存成功后自动完成。检查后无需修改时通过按钮或可配置快捷键确认已完成。
+- 新导入且无标注的图片不显示复核徽标，“无标注”只是筛选条件；图片/JSON 损坏作为独立健康诊断。明确确认的零框负样本同样显示已完成，不再使用“已完成（无目标）”第三状态。
 - 右侧两个区域使用可调整分隔条，可分别折叠；图片列表按 SQLite 分页并延迟加载缩略图，保证万张图片规模下可用。
 - 页面标题始终明确显示当前数据集名称，避免用户误操作其他存档。
 - 空数据集显示“导入图片”和“管理标签”两个首要操作，不展示无意义的空表格或 IDE 式目录提示。
@@ -169,8 +170,8 @@ flowchart LR
 
 - 数据集级标签管理、颜色、别名、描述、同义词与标签检查。
 - 受管图片池、完全重复检查、近似组、统一 PNG、重命名与删除。
-- 矩形框标注、图片级复核状态与 X-AnyLabeling 双向互操作。
-- ONNX / Ultralytics YOLO 模型管理和待复核自动标注。
+- 矩形框标注、待复核/已完成双状态与 X-AnyLabeling 双向互操作。
+- ONNX / Ultralytics YOLO 模型管理、待复核自动标注和人工确认已完成。
 - 按比例生成 YOLO 训练集，以及后续可注册的其他格式导出器。
 - 数据集备份导入导出；模型二进制仍单独分享。
 - 在标签集兼容时复制或移动样本、合并数据集。
@@ -227,4 +228,4 @@ flowchart LR
 
 ## English Summary
 
-DatumDock step four extends the game-save-like managed library and image pool with SQLite v2 labels, editable rectangles, ordered LabelMe persistence, immediate autosave, image-level review, label inspection, and bounded recovery. Preview mode remains memory-only. Models, complete directory interchange, exports, backups, installer preservation, and legacy-data migration remain planned.
+DatumDock's verified step-four library still uses schema v2. In the pending two-state target, the first effective manual edit completes a model-pending image in the same atomic save; no-edit review uses an explicit button or configurable shortcut. Unannotated samples and health errors remain separate. Implementation is pending.
