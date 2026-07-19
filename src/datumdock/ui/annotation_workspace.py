@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QPushButton,
     QSplitter,
+    QStackedWidget,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -28,6 +29,7 @@ from datumdock.ui.components import (
     FilterChip,
     GhostButton,
     PreviewBanner,
+    PrimaryButton,
     SearchBox,
     StatusBadge,
     ToolButton,
@@ -44,7 +46,7 @@ from datumdock.ui.theme import THEME
 
 
 class AnnotationWorkspace(QWidget):
-    """组合顶部、左侧、画布和右侧面板，只处理内存演示状态。"""
+    """组合顶部、左侧、画布和右侧面板，只消费网关提供的只读快照。"""
 
     home_requested = Signal()
     route_requested = Signal(str)
@@ -83,6 +85,7 @@ class AnnotationWorkspace(QWidget):
         self.banner = PreviewBanner(self.locale, self.preview_mode)
         banner_layout.addWidget(self.banner)
         banner_layout.addStretch()
+        banner_wrap.setVisible(self.preview_mode)
         root.addWidget(banner_wrap)
 
         body = QWidget()
@@ -115,9 +118,14 @@ class AnnotationWorkspace(QWidget):
         layout.addWidget(self.home_button)
         self.dataset_combo = QComboBox()
         self.dataset_combo.setMinimumWidth(210)
-        self.dataset_combo.addItem(self.snapshot.dataset.name, self.snapshot.dataset.id)
-        self.dataset_combo.addItem("可回收物分类", "recycle-items")
-        self.dataset_combo.addItem("仓库安全检查", "warehouse")
+        available = self.snapshot.available_datasets or (self.snapshot.dataset,)
+        for dataset in available:
+            self.dataset_combo.addItem(dataset.name, dataset.id)
+        for index in range(self.dataset_combo.count()):
+            if self.dataset_combo.itemData(index) == self.snapshot.dataset.id:
+                self.dataset_combo.setCurrentIndex(index)
+                break
+        self.dataset_combo.currentIndexChanged.connect(self._on_dataset_changed)
         layout.addWidget(self.dataset_combo)
         layout.addStretch()
         self.import_button = QPushButton()
@@ -272,12 +280,35 @@ class AnnotationWorkspace(QWidget):
         self.image_list = QListWidget()
         self.image_list.setSpacing(4)
         self.image_list.currentItemChanged.connect(self._on_image_selected)
-        layout.addWidget(self.image_list, 1)
+        self.image_stack = QStackedWidget()
+        self.image_stack.addWidget(self.image_list)
+        empty = QWidget()
+        empty_layout = QVBoxLayout(empty)
+        empty_layout.setContentsMargins(16, 18, 16, 18)
+        empty_layout.addStretch()
+        self.image_empty_title = QLabel()
+        self.image_empty_title.setObjectName("sectionTitle")
+        self.image_empty_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.image_empty_body = QLabel()
+        self.image_empty_body.setObjectName("mutedText")
+        self.image_empty_body.setWordWrap(True)
+        self.image_empty_body.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.image_empty_import = PrimaryButton()
+        self.image_empty_import.clicked.connect(lambda: self.dialog_requested.emit("image_import"))
+        self.image_empty_labels = GhostButton()
+        self.image_empty_labels.clicked.connect(lambda: self.route_requested.emit("label_manager"))
+        empty_layout.addWidget(self.image_empty_title)
+        empty_layout.addWidget(self.image_empty_body)
+        empty_layout.addWidget(self.image_empty_import)
+        empty_layout.addWidget(self.image_empty_labels)
+        empty_layout.addStretch()
+        self.image_stack.addWidget(empty)
+        layout.addWidget(self.image_stack, 1)
         self.preview_toggle = FilterChip("")
         self.preview_toggle.setChecked(True)
         layout.addWidget(self.preview_toggle)
         self.image_collapse.clicked.connect(
-            lambda: self.image_list.setVisible(not self.image_list.isVisible())
+            lambda: self.image_stack.setVisible(not self.image_stack.isVisible())
         )
         return panel
 
@@ -318,6 +349,14 @@ class AnnotationWorkspace(QWidget):
         self.grid_toggle.setText(tr(self.locale, "workspace.grid"))
         self.grid_toggle.setIcon(self.icons.icon("grid"))
         self.preview_toggle.setText(tr(self.locale, "workspace.preview_boxes"))
+        self.image_empty_title.setText(tr(self.locale, "workspace.empty_images_title"))
+        self.image_empty_body.setText(tr(self.locale, "workspace.empty_images_body"))
+        self.image_empty_import.setText(tr(self.locale, "workspace.import"))
+        self.image_empty_labels.setText(tr(self.locale, "workspace.labels"))
+        self.canvas.set_empty_message(
+            tr(self.locale, "workspace.empty_canvas_title"),
+            tr(self.locale, "workspace.empty_canvas_body"),
+        )
         current_status = self.status_combo.currentData()
         self.status_combo.clear()
         self.status_combo.addItem(tr(self.locale, "workspace.all_status"), None)
@@ -367,6 +406,9 @@ class AnnotationWorkspace(QWidget):
         image = self._current_image()
         if image is None:
             self.canvas.clear_preview()
+            self._rebuild_annotations()
+            self._rebuild_images()
+            self._update_status_bar()
             return
         annotations = self.snapshot.annotations_by_image.get(image.id, ())
         self.canvas.load_preview(image, self.snapshot.labels, annotations)
@@ -446,6 +488,14 @@ class AnnotationWorkspace(QWidget):
             if image.id == self.current_image_id:
                 self.image_list.setCurrentItem(item)
         self.image_list.blockSignals(False)
+        self.image_stack.setCurrentIndex(0 if self.image_list.count() else 1)
+
+    def _on_dataset_changed(self, index: int) -> None:
+        """快速切换只发送稳定 ID，主窗口重新向网关请求完整上下文。"""
+
+        dataset_id = self.dataset_combo.itemData(index)
+        if dataset_id and dataset_id != self.snapshot.dataset.id:
+            self.route_requested.emit(f"annotation_workspace:{dataset_id}")
 
     def _image_row(self, image: ImageItemViewData) -> QWidget:
         row = QWidget()
@@ -529,8 +579,12 @@ class AnnotationWorkspace(QWidget):
     def _update_status_bar(self) -> None:
         image = self._current_image()
         if image is None:
-            self.index_label.clear()
-            self.resolution_label.clear()
+            self.index_label.setText(
+                tr(self.locale, "workspace.image_index").format(current=0, total=0)
+            )
+            self.resolution_label.setText(tr(self.locale, "workspace.no_image"))
+            self.zoom_label.setText(tr(self.locale, "workspace.zoom").format(zoom=100))
+            self.save_label.setText(tr(self.locale, "workspace.waiting_for_import"))
             return
         index = next(
             (

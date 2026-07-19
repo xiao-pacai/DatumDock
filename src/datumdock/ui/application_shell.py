@@ -9,9 +9,10 @@ from PySide6.QtWidgets import QMainWindow, QStackedWidget, QWidget
 from datumdock.i18n.catalog import LocaleService, tr
 from datumdock.ui.annotation_workspace import AnnotationWorkspace
 from datumdock.ui.components import ToastOverlay
+from datumdock.ui.managed_gateway import ManagedDatasetGateway
 from datumdock.ui.prototype_dialogs import DialogId, DialogRegistry, PreviewFlowDialog
 from datumdock.ui.prototype_gateway import PreviewGateway, UnavailableGateway
-from datumdock.ui.prototype_models import UiCommand, UiGateway
+from datumdock.ui.prototype_models import CommandStatus, UiCommand, UiGateway
 from datumdock.ui.prototype_pages import (
     BasePage,
     ComponentGalleryPage,
@@ -87,16 +88,27 @@ class ApplicationShell(QMainWindow):
         self.retranslate_ui()
         self.navigation.navigate(RouteId.STARTUP, remember=False)
         QTimer.singleShot(360, lambda: self.navigation.navigate(RouteId.HOME, remember=False))
+        initial_error_key = getattr(gateway, "initial_error_key", "")
+        if initial_error_key:
+            QTimer.singleShot(460, lambda: self.show_message(initial_error_key))
 
     @classmethod
     def for_mode(
         cls,
         locale_service: LocaleService,
         preview_mode: bool,
+        gateway: UiGateway | None = None,
     ) -> ApplicationShell:
-        """根据启动参数选择一次性预览网关或安全空网关。"""
+        """预览模式只用内存；普通模式初始化真实受管资料库。"""
 
-        gateway: UiGateway = PreviewGateway() if preview_mode else UnavailableGateway()
+        if gateway is None:
+            if preview_mode:
+                gateway = PreviewGateway()
+            else:
+                try:
+                    gateway = ManagedDatasetGateway.from_default_root()
+                except Exception:
+                    gateway = UnavailableGateway()
         return cls(locale_service, gateway)
 
     def _register_static_pages(self) -> None:
@@ -161,7 +173,12 @@ class ApplicationShell(QMainWindow):
             (RouteId.DATASET_OVERVIEW, "overview"),
         )
         for route, kind in page_specs:
-            page = ManagementPage(self.locale_service, kind, snapshot)
+            page = ManagementPage(
+                self.locale_service,
+                kind,
+                snapshot,
+                self.gateway.preview_mode,
+            )
             self.navigation.register(route, page)
             self._connect_page(page)
 
@@ -172,6 +189,7 @@ class ApplicationShell(QMainWindow):
             return
         page.route_requested.connect(self.navigate)
         page.dialog_requested.connect(self.open_dialog)
+        page.command_requested.connect(self._dispatch_command)
         page.message_requested.connect(self.show_message)
 
     def navigate(self, route_spec: str) -> None:
@@ -190,14 +208,48 @@ class ApplicationShell(QMainWindow):
             return
         self.navigation.navigate(route)
 
-    def open_dialog(self, dialog_id: str) -> None:
+    def open_dialog(self, dialog_spec: str) -> None:
         """打开注册弹窗并连接统一命令边界。"""
 
-        if not self.gateway.preview_mode:
+        dialog_text, _, dataset_id = dialog_spec.partition(":")
+        allowed_managed_dialogs = {
+            DialogId.CREATE_DATASET,
+            DialogId.CREATE_FROM_TEMPLATE,
+            DialogId.DATASET_DIAGNOSTICS,
+            DialogId.RENAME_DATASET,
+            DialogId.ARCHIVE_DATASET,
+        }
+        try:
+            identifier = DialogId(dialog_text)
+        except ValueError:
             self.show_message("toast.not_connected")
             return
+        if not self.gateway.preview_mode and identifier not in allowed_managed_dialogs:
+            self.show_message("toast.not_connected")
+            return
+        home_snapshot = self.gateway.home_snapshot()
+        context: dict[str, str] = {}
+        if dataset_id:
+            dataset = next(
+                (item for item in home_snapshot.datasets if item.id == dataset_id),
+                None,
+            )
+            if dataset is None:
+                self.show_message("toast.dataset_unavailable")
+                return
+            context = {
+                "dataset_id": dataset.id,
+                "name": dataset.name,
+                "description": dataset.description,
+                "diagnostic": dataset.diagnostic,
+            }
         try:
-            dialog = self.dialog_registry.create(DialogId(dialog_id), self)
+            dialog = self.dialog_registry.create(
+                identifier,
+                self,
+                context=context,
+                datasets=home_snapshot.datasets,
+            )
         except ValueError:
             self.show_message("toast.not_connected")
             return
@@ -214,8 +266,13 @@ class ApplicationShell(QMainWindow):
         home = self.navigation.pages.get(RouteId.HOME)
         if isinstance(home, HomePage):
             home.update_snapshot(self.gateway.home_snapshot())
-        if result.affected_id and self.gateway.preview_mode:
-            self._register_context_pages(result.affected_id)
+        applied = result.status in {CommandStatus.APPLIED, CommandStatus.PREVIEW_APPLIED}
+        if result.affected_id and applied:
+            if action_id in {"dataset.create", "dataset.create_from_template"}:
+                self._register_context_pages(result.affected_id)
+                self.navigation.navigate(RouteId.ANNOTATION_WORKSPACE)
+            elif action_id == "dataset.rename":
+                self._register_context_pages(result.affected_id)
 
     def _forget_dialog(self, dialog: PreviewFlowDialog) -> None:
         if dialog in self._active_dialogs:

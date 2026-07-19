@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLayout,
     QLineEdit,
+    QMenu,
     QPushButton,
     QSizePolicy,
     QVBoxLayout,
@@ -78,6 +79,7 @@ class PreviewBanner(QFrame):
 
         key = "prototype.banner.preview" if self.preview_mode else "prototype.banner.normal"
         self.label.setText(tr(self.locale, key))
+        self.setVisible(self.preview_mode)
 
 
 class PageHeader(QWidget):
@@ -337,6 +339,9 @@ class DatasetCard(SectionCard):
 
     opened = Signal(str)
     diagnostics_requested = Signal(str)
+    rename_requested = Signal(str)
+    archive_requested = Signal(str)
+    restore_requested = Signal(str)
 
     def __init__(
         self,
@@ -358,6 +363,20 @@ class DatasetCard(SectionCard):
         more.setAccessibleName(tr(locale, "nav.more"))
         more.setToolTip(tr(locale, "nav.more"))
         more.setFixedWidth(38)
+        menu = QMenu(more)
+        if data.archived:
+            restore = menu.addAction(tr(locale, "action.restore"))
+            restore.triggered.connect(lambda: self.restore_requested.emit(data.id))
+        elif data.health == DatasetHealth.READY:
+            rename = menu.addAction(tr(locale, "action.rename_dataset"))
+            rename.triggered.connect(lambda: self.rename_requested.emit(data.id))
+            archive = menu.addAction(tr(locale, "action.archive"))
+            archive.triggered.connect(lambda: self.archive_requested.emit(data.id))
+        if data.health == DatasetHealth.DAMAGED:
+            diagnostics = menu.addAction(tr(locale, "home.diagnostics"))
+            diagnostics.triggered.connect(lambda: self.diagnostics_requested.emit(data.id))
+        more.setMenu(menu)
+        more.setEnabled(not menu.isEmpty())
         title_row.addWidget(more)
         self.body.addLayout(title_row)
         description = QLabel(data.description)
@@ -391,7 +410,10 @@ class DatasetCard(SectionCard):
         footer.addWidget(modified)
         self.body.addLayout(footer)
         action = PrimaryButton()
-        if data.health == DatasetHealth.DAMAGED:
+        if data.archived:
+            action.setText(tr(locale, "action.restore"))
+            action.clicked.connect(lambda: self.restore_requested.emit(data.id))
+        elif data.health == DatasetHealth.DAMAGED:
             action.setText(tr(locale, "home.diagnostics"))
             action.clicked.connect(lambda: self.diagnostics_requested.emit(data.id))
         elif data.health == DatasetHealth.LOADING:

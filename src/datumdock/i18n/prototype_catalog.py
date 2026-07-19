@@ -25,6 +25,12 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "home.sort.created": "创建时间",
         "home.sort.name": "名称",
         "home.new_dataset": "新建数据集",
+        "home.from_template": "复制配置新建",
+        "home.template_help": "复制其他数据集的标签集、命名规则和显示配置",
+        "home.template_empty": "创建第一个数据集后即可复制其配置",
+        "home.filter.active": "活动数据集",
+        "home.filter.archived": "已归档",
+        "home.filter.all": "全部",
         "home.empty.title": "创建第一个数据集",
         "home.empty.body": "数据将由 DatumDock 在软件内部统一管理，外部来源不会被修改。",
         "home.empty.action": "新建第一个数据集",
@@ -64,18 +70,18 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "tutorial.reader.heading": "从数据集池开始建立可靠训练数据",
         "tutorial.reader.body": (
             "DatumDock 把图片复制到受管数据集池，再通过标签、标注、复核和导出形成可检查的流程。"
-            "本原型只展示界面结构，不会创建或修改真实文件。"
+            "当前版本已接入内部数据集存档；图片导入、真实标注与导出将在后续步骤接入。"
         ),
         "release.title": "新功能与版本说明",
         "release.subtitle": "当前安装包内置的本地版本说明。",
-        "release.current": "v0.1.0 · UI 原型阶段",
+        "release.current": "v0.1.0 · 内部资料库阶段",
         "release.body": (
-            "新增存档式数据集主页、现代视觉 v2、四区标注工作台和完整管理页面预览。"
-            "真实数据集与模型逻辑将在后续阶段接入。"
+            "新增可持久化的内部数据集资料库、真实创建、打开、切换、重命名、归档和配置复制。"
+            "图片导入、真实标注保存、模型与导出将在后续步骤接入。"
         ),
         "about.title": "关于 DatumDock",
         "about.subtitle": "本地优先的视觉数据集管理与标注桌面应用",
-        "about.version": "版本 0.1.0 · UI Preview",
+        "about.version": "版本 0.1.0 · 步骤二",
         "about.license": "MIT License",
         "workspace.back_home": "返回主页",
         "workspace.switch": "切换数据集",
@@ -101,6 +107,12 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "workspace.image_index": "第 {current} / {total} 张",
         "workspace.zoom": "缩放 {zoom}%",
         "workspace.resolution": "{width} × {height}",
+        "workspace.empty_canvas_title": "这个数据集还没有图片",
+        "workspace.empty_canvas_body": "从“导入图片”开始；外部来源文件不会被修改。",
+        "workspace.empty_images_title": "图片池为空",
+        "workspace.empty_images_body": "导入图片或先配置标签，开始建立受管数据集池。",
+        "workspace.no_image": "尚未导入图片",
+        "workspace.waiting_for_import": "等待导入图片",
         "tool.select": "选择/编辑",
         "tool.rectangle": "矩形框",
         "tool.ai": "AI 标注",
@@ -142,6 +154,7 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "action.import_model": "导入模型",
         "action.configure_mapping": "配置映射",
         "action.restore": "恢复",
+        "action.rename_dataset": "重命名数据集",
         "action.empty_trash": "永久清空",
         "action.confirm_group": "确认相似组",
         "action.ignore": "忽略候选",
@@ -151,6 +164,7 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "action.previous": "上一步",
         "action.next": "下一步",
         "action.finish_preview": "完成界面预览",
+        "action.apply": "确认应用",
         "action.open_workspace": "打开标注工作台",
         "action.retry": "重试",
         "action.details": "错误详情",
@@ -213,6 +227,7 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "dialog.template.source": "源数据集",
         "dialog.template.scope": "复制标签集、命名规则与显示偏好，不复制图片和标注。",
         "dialog.preview_only": "此步骤只更新内存演示数据，不会创建真实文件。",
+        "dialog.managed_action": "此操作将安全更新 DatumDock 内部资料库，不会访问外部来源文件。",
         "dialog.import.title": "导入图片",
         "dialog.import.body": (
             "支持 JPG/JPEG、PNG、BMP、WebP 和 TIFF；正式接入后会复制并统一转为 PNG。"
@@ -220,9 +235,11 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "dialog.duplicate.title": "发现完全相同的图片",
         "dialog.duplicate.body": "左侧为待导入图片，右侧为已有图片。请选择跳过或同时保留。",
         "dialog.rename.title": "批量重命名预览",
+        "dialog.dataset_rename.title": "重命名数据集",
         "dialog.delete.title": "删除受管图片",
         "dialog.delete.body": "图片、标注、索引和缩略图会一并处理；外部来源文件不受影响。",
         "dialog.delete.scope": "受管图片 · LabelMe JSON · 索引 · 缩略图",
+        "dialog.archive.scope": "归档不会删除图片、标注、标签、模型或任何配置，可随时恢复。",
         "dialog.export.title": "导出 YOLO Detection 数据集",
         "dialog.xany.title": "X-AnyLabeling 交换",
         "dialog.backup.title": "数据集备份",
@@ -240,6 +257,8 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "dialog.models_excluded": "模型二进制不会包含在备份包中。",
         "dialog.progress": "正在生成界面预览…",
         "dialog.success_preview": "预览流程已完成，没有写入任何真实数据。",
+        "dialog.ready_to_apply": "准备应用",
+        "dialog.apply_after_confirm": "确认后才会执行；任何失败都会明确提示，不会伪造成功。",
         "form.name": "名称",
         "form.description": "描述",
         "form.source_dataset": "源数据集",
@@ -302,12 +321,21 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "preview.preview": "预览",
         "preview.grouped": "已分组",
         "preview.new_directory": "新目录",
+        "preview.managed_library": "内部资料库",
         "preview.groups": "2 组",
         "compare.pending": "待导入图片",
         "compare.existing": "已有图片",
         "toast.not_connected": "功能将在后续阶段接入；没有修改任何用户数据。",
         "toast.preview_applied": "已更新内存演示数据，关闭应用后自动丢弃。",
         "toast.invalid_name": "请输入有效的数据集名称。",
+        "toast.dataset_created": "数据集已创建并保存到内部资料库。",
+        "toast.dataset_renamed": "数据集已重命名，内部 UUID 目录保持不变。",
+        "toast.dataset_archived": "数据集已归档，任何内容都没有被删除。",
+        "toast.dataset_restored": "数据集已恢复。",
+        "toast.duplicate_dataset_name": "活动数据集中已存在同名数据集。",
+        "toast.dataset_unavailable": "该数据集已归档或损坏，当前无法打开。",
+        "toast.library_operation_failed": "资料库操作失败，未留下半完成的数据集。",
+        "toast.library_unavailable": "内部资料库无法安全初始化；已进入只读安全模式。",
     },
     "en_US": {
         "prototype.banner.preview": "UI Preview · Demo data lives in memory only",
@@ -333,6 +361,12 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "home.sort.created": "Created",
         "home.sort.name": "Name",
         "home.new_dataset": "New Dataset",
+        "home.from_template": "Copy Configuration",
+        "home.template_help": "Copy labels, naming rules, and display settings from a dataset",
+        "home.template_empty": "Create a dataset before copying its configuration",
+        "home.filter.active": "Active Datasets",
+        "home.filter.archived": "Archived",
+        "home.filter.all": "All",
         "home.empty.title": "Create your first dataset",
         "home.empty.body": (
             "DatumDock will manage it internally without modifying external sources."
@@ -382,22 +416,22 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "tutorial.reader.heading": "Build reliable training data from a managed dataset pool",
         "tutorial.reader.body": (
             "DatumDock copies images into a managed pool, then connects labels, annotations, "
-            "review, and export in an inspectable workflow. This prototype only demonstrates "
-            "the interface and never creates or modifies real files."
+            "review, and export in an inspectable workflow. This version now persists internal "
+            "dataset saves; image import, annotation persistence, and export arrive later."
         ),
         "release.title": "What's New & Release Notes",
         "release.subtitle": "Local release notes included with this installation.",
-        "release.current": "v0.1.0 · UI Prototype Phase",
+        "release.current": "v0.1.0 · Internal Library Phase",
         "release.body": (
-            "Adds a save-game-like dataset home, visual design v2, the four-zone annotation "
-            "workspace, and complete management-page previews. Real dataset and model logic "
-            "will be connected later."
+            "Adds a persistent internal dataset library with real create, open, switch, rename, "
+            "archive, restore, and configuration-copy flows. Image import, annotation "
+            "persistence, models, and export arrive in later steps."
         ),
         "about.title": "About DatumDock",
         "about.subtitle": (
             "A local-first desktop application for visual dataset management and annotation"
         ),
-        "about.version": "Version 0.1.0 · UI Preview",
+        "about.version": "Version 0.1.0 · Step Two",
         "about.license": "MIT License",
         "workspace.back_home": "Back Home",
         "workspace.switch": "Switch Dataset",
@@ -423,6 +457,16 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "workspace.image_index": "Image {current} of {total}",
         "workspace.zoom": "Zoom {zoom}%",
         "workspace.resolution": "{width} × {height}",
+        "workspace.empty_canvas_title": "This dataset has no images yet",
+        "workspace.empty_canvas_body": (
+            "Start with Import Images; external source files will remain unchanged."
+        ),
+        "workspace.empty_images_title": "The image pool is empty",
+        "workspace.empty_images_body": (
+            "Import images or configure labels to start building the managed pool."
+        ),
+        "workspace.no_image": "No images imported",
+        "workspace.waiting_for_import": "Waiting for images",
         "tool.select": "Select / Edit",
         "tool.rectangle": "Rectangle",
         "tool.ai": "AI Annotation",
@@ -478,6 +522,7 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "action.import_model": "Import Model",
         "action.configure_mapping": "Configure Mapping",
         "action.restore": "Restore",
+        "action.rename_dataset": "Rename Dataset",
         "action.empty_trash": "Empty Permanently",
         "action.confirm_group": "Confirm Group",
         "action.ignore": "Ignore Candidate",
@@ -487,6 +532,7 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "action.previous": "Back",
         "action.next": "Next",
         "action.finish_preview": "Finish UI Preview",
+        "action.apply": "Apply",
         "action.open_workspace": "Open Annotation Workspace",
         "action.retry": "Retry",
         "action.details": "Error Details",
@@ -560,6 +606,10 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "dialog.preview_only": (
             "This step only changes in-memory demo data and creates no real files."
         ),
+        "dialog.managed_action": (
+            "This action safely updates DatumDock's internal library and never touches "
+            "external source files."
+        ),
         "dialog.import.title": "Import Images",
         "dialog.import.body": (
             "Supports JPG/JPEG, PNG, BMP, WebP, and TIFF. Real import will copy and normalize "
@@ -571,12 +621,17 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
             "Skip it or keep both."
         ),
         "dialog.rename.title": "Batch Rename Preview",
+        "dialog.dataset_rename.title": "Rename Dataset",
         "dialog.delete.title": "Delete Managed Images",
         "dialog.delete.body": (
             "Images, annotations, indexes, and thumbnails are handled together; external "
             "sources are untouched."
         ),
         "dialog.delete.scope": "Managed Image · LabelMe JSON · Index · Thumbnail",
+        "dialog.archive.scope": (
+            "Archiving never deletes images, annotations, labels, models, or settings, "
+            "and can be reversed at any time."
+        ),
         "dialog.export.title": "Export YOLO Detection Dataset",
         "dialog.xany.title": "X-AnyLabeling Exchange",
         "dialog.backup.title": "Dataset Backup",
@@ -594,6 +649,11 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "dialog.models_excluded": "Model binaries are excluded from dataset backups.",
         "dialog.progress": "Generating UI preview…",
         "dialog.success_preview": "The preview flow is complete. No real data was written.",
+        "dialog.ready_to_apply": "Ready to Apply",
+        "dialog.apply_after_confirm": (
+            "The action runs only after confirmation. Failures are reported and never "
+            "presented as success."
+        ),
         "form.name": "Name",
         "form.description": "Description",
         "form.source_dataset": "Source Dataset",
@@ -656,6 +716,7 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "preview.preview": "Preview",
         "preview.grouped": "Grouped",
         "preview.new_directory": "New Directory",
+        "preview.managed_library": "Internal Library",
         "preview.groups": "2 groups",
         "compare.pending": "Pending Import",
         "compare.existing": "Existing Image",
@@ -664,5 +725,21 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
             "In-memory demo data updated; it will be discarded when the app closes."
         ),
         "toast.invalid_name": "Enter a valid dataset name.",
+        "toast.dataset_created": "Dataset created and saved in the internal library.",
+        "toast.dataset_renamed": (
+            "Dataset renamed; its internal UUID directory remains unchanged."
+        ),
+        "toast.dataset_archived": "Dataset archived. No content was deleted.",
+        "toast.dataset_restored": "Dataset restored.",
+        "toast.duplicate_dataset_name": "An active dataset already uses this name.",
+        "toast.dataset_unavailable": (
+            "This dataset is archived or damaged and cannot be opened right now."
+        ),
+        "toast.library_operation_failed": (
+            "The library action failed and left no half-created dataset."
+        ),
+        "toast.library_unavailable": (
+            "The internal library could not initialize safely; read-only safe mode is active."
+        ),
     },
 }

@@ -79,6 +79,7 @@ class BasePage(QWidget):
 
     route_requested = Signal(str)
     dialog_requested = Signal(str)
+    command_requested = Signal(str, dict)
     message_requested = Signal(str)
 
     def retranslate_ui(self) -> None:
@@ -206,10 +207,18 @@ class HomePage(BasePage):
         self.hero_subtitle.setWordWrap(True)
         self.hero_new = PrimaryButton()
         self.hero_new.clicked.connect(lambda: self.dialog_requested.emit("create_dataset"))
+        self.hero_template = GhostButton()
+        self.hero_template.clicked.connect(
+            lambda: self.dialog_requested.emit("create_from_template")
+        )
         hero.body.addWidget(self.hero_eyebrow)
         hero.body.addWidget(self.hero_title)
         hero.body.addWidget(self.hero_subtitle)
-        hero.body.addWidget(self.hero_new, 0, Qt.AlignmentFlag.AlignLeft)
+        actions = QHBoxLayout()
+        actions.addWidget(self.hero_new)
+        actions.addWidget(self.hero_template)
+        actions.addStretch()
+        hero.body.addLayout(actions)
         return hero
 
     def _build_quick_start(self) -> QWidget:
@@ -274,10 +283,18 @@ class HomePage(BasePage):
         self.dataset_search.textChanged.connect(self._rebuild_dataset_cards)
         self.dataset_sort = QComboBox()
         self.dataset_sort.currentIndexChanged.connect(self._rebuild_dataset_cards)
+        self.archive_filter = QComboBox()
+        self.archive_filter.currentIndexChanged.connect(self._rebuild_dataset_cards)
+        self.template_button = GhostButton()
+        self.template_button.clicked.connect(
+            lambda: self.dialog_requested.emit("create_from_template")
+        )
         self.new_button = PrimaryButton()
         self.new_button.clicked.connect(lambda: self.dialog_requested.emit("create_dataset"))
         title_row.addWidget(self.dataset_search)
         title_row.addWidget(self.dataset_sort)
+        title_row.addWidget(self.archive_filter)
+        title_row.addWidget(self.template_button)
         title_row.addWidget(self.new_button)
         section.addLayout(title_row)
         self.dataset_grid = QGridLayout()
@@ -339,6 +356,7 @@ class HomePage(BasePage):
         self.hero_title.setText(tr(self.locale, "home.title"))
         self.hero_subtitle.setText(tr(self.locale, "home.subtitle"))
         self.hero_new.setText(tr(self.locale, "home.new_dataset"))
+        self.hero_template.setText(tr(self.locale, "home.from_template"))
         self.quick_title.setText(tr(self.locale, "home.quick_start"))
         self.quick_subtitle.setText(tr(self.locale, "home.quick_subtitle"))
         for label, key in zip(
@@ -360,7 +378,32 @@ class HomePage(BasePage):
         for index in range(self.dataset_sort.count()):
             if self.dataset_sort.itemData(index) == current_sort:
                 self.dataset_sort.setCurrentIndex(index)
+        current_filter = self.archive_filter.currentData()
+        self.archive_filter.clear()
+        for key, value in (
+            ("home.filter.active", "active"),
+            ("home.filter.archived", "archived"),
+            ("home.filter.all", "all"),
+        ):
+            self.archive_filter.addItem(tr(self.locale, key), value)
+        for index in range(self.archive_filter.count()):
+            if self.archive_filter.itemData(index) == current_filter:
+                self.archive_filter.setCurrentIndex(index)
+                break
+        self.template_button.setText(tr(self.locale, "home.from_template"))
         self.new_button.setText("＋  " + tr(self.locale, "home.new_dataset"))
+        has_template_source = any(
+            not item.archived and item.health.value == "ready" for item in self.snapshot.datasets
+        )
+        self.hero_template.setEnabled(has_template_source)
+        self.template_button.setEnabled(has_template_source)
+        template_tip = (
+            tr(self.locale, "home.template_help")
+            if has_template_source
+            else tr(self.locale, "home.template_empty")
+        )
+        self.hero_template.setToolTip(template_tip)
+        self.template_button.setToolTip(template_tip)
         self.learning_title.setText(tr(self.locale, "home.learning"))
         self.learning_subtitle.setText(tr(self.locale, "home.learning_subtitle"))
         self.learning_all.setText(tr(self.locale, "home.view_all"))
@@ -372,8 +415,18 @@ class HomePage(BasePage):
         clear_layout(self.dataset_grid)
         query = self.dataset_search.text().strip().casefold()
         datasets = [item for item in self.snapshot.datasets if query in item.name.casefold()]
-        if self.dataset_sort.currentData() == "name":
-            datasets.sort(key=lambda item: item.name)
+        archive_filter = self.archive_filter.currentData() or "active"
+        if archive_filter == "active":
+            datasets = [item for item in datasets if not item.archived]
+        elif archive_filter == "archived":
+            datasets = [item for item in datasets if item.archived]
+        sort_mode = self.dataset_sort.currentData() or "modified"
+        if sort_mode == "name":
+            datasets.sort(key=lambda item: item.name.casefold())
+        elif sort_mode == "created":
+            datasets.sort(key=lambda item: item.created_sort, reverse=True)
+        else:
+            datasets.sort(key=lambda item: item.modified_sort, reverse=True)
         if not datasets:
             empty = EmptyState(
                 tr(self.locale, "home.empty.title"),
@@ -391,7 +444,18 @@ class HomePage(BasePage):
                 )
             )
             card.diagnostics_requested.connect(
-                lambda dataset_id: self.dialog_requested.emit("dataset_diagnostics")
+                lambda dataset_id: self.dialog_requested.emit(f"dataset_diagnostics:{dataset_id}")
+            )
+            card.rename_requested.connect(
+                lambda dataset_id: self.dialog_requested.emit(f"rename_dataset:{dataset_id}")
+            )
+            card.archive_requested.connect(
+                lambda dataset_id: self.dialog_requested.emit(f"archive_dataset:{dataset_id}")
+            )
+            card.restore_requested.connect(
+                lambda dataset_id: self.command_requested.emit(
+                    "dataset.restore", {"dataset_id": dataset_id}
+                )
             )
             self.dataset_grid.addWidget(
                 card,
@@ -592,12 +656,14 @@ class ManagementPage(BasePage):
         locale: LocaleService,
         kind: str,
         workspace: WorkspaceSnapshot,
+        preview_mode: bool = True,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.locale = locale
         self.kind = kind
         self.workspace = workspace
+        self.preview_mode = preview_mode
         self._build_ui()
         self.retranslate_ui()
 
@@ -661,7 +727,11 @@ class ManagementPage(BasePage):
                 "stats.completed",
                 THEME.tokens.success,
             ),
-            ("12", "stats.attention", THEME.tokens.warning),
+            (
+                "12" if self.preview_mode else "0",
+                "stats.attention",
+                THEME.tokens.warning,
+            ),
         ):
             card = StatCard(value, tr(self.locale, label_key), color)
             self.stat_cards.append((card, label_key))
@@ -681,18 +751,24 @@ class ManagementPage(BasePage):
             )
         elif self.kind == "similarity":
             self.primary_action.clicked.connect(
-                lambda: self.message_requested.emit("toast.preview_applied")
+                lambda: self.message_requested.emit(
+                    "toast.preview_applied" if self.preview_mode else "toast.not_connected"
+                )
             )
         elif self.kind == "trash":
             self.primary_action.clicked.connect(
-                lambda: self.message_requested.emit("toast.preview_applied")
+                lambda: self.message_requested.emit(
+                    "toast.preview_applied" if self.preview_mode else "toast.not_connected"
+                )
             )
             self.secondary_action.clicked.connect(
                 lambda: self.dialog_requested.emit("delete_batch")
             )
         else:
             self.primary_action.clicked.connect(
-                lambda: self.message_requested.emit("toast.preview_applied")
+                lambda: self.message_requested.emit(
+                    "toast.preview_applied" if self.preview_mode else "toast.not_connected"
+                )
             )
 
     def _populate_table(self) -> None:
@@ -740,32 +816,40 @@ class ManagementPage(BasePage):
             ]
         elif self.kind == "similarity":
             headers = ("table.file", "table.file", "table.similarity", "table.status")
-            rows = [
-                (
-                    "factory_part_000231.png",
-                    "factory_part_000232.png",
-                    "96.8%",
-                    "value.pending_confirmation",
-                ),
-                (
-                    "factory_part_000244.png",
-                    "factory_part_000245.png",
-                    "94.2%",
-                    "value.confirmed",
-                ),
-                (
-                    "factory_part_000301.png",
-                    "factory_part_000302.png",
-                    "91.6%",
-                    "value.pending_confirmation",
-                ),
-            ]
+            rows = (
+                []
+                if not self.preview_mode
+                else [
+                    (
+                        "factory_part_000231.png",
+                        "factory_part_000232.png",
+                        "96.8%",
+                        "value.pending_confirmation",
+                    ),
+                    (
+                        "factory_part_000244.png",
+                        "factory_part_000245.png",
+                        "94.2%",
+                        "value.confirmed",
+                    ),
+                    (
+                        "factory_part_000301.png",
+                        "factory_part_000302.png",
+                        "91.6%",
+                        "value.pending_confirmation",
+                    ),
+                ]
+            )
         elif self.kind == "trash":
             headers = ("table.file", "table.review", "table.status")
-            rows = [
-                ("factory_part_000119.png", "4", "value.restorable"),
-                ("factory_part_000087.png", "0", "value.restorable"),
-            ]
+            rows = (
+                []
+                if not self.preview_mode
+                else [
+                    ("factory_part_000119.png", "4", "value.restorable"),
+                    ("factory_part_000087.png", "0", "value.restorable"),
+                ]
+            )
         else:
             headers = ("table.file", "table.review", "table.usage", "table.status")
             rows = [

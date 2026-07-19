@@ -21,9 +21,12 @@ from datumdock.ui.prototype_models import (
 
 
 class UnavailableGateway:
-    """普通模式只提供安全空主页，不读取或创建任何资料库文件。"""
+    """资料库初始化失败时提供安全空主页并拒绝全部副作用。"""
 
     preview_mode = False
+
+    def __init__(self, error_key: str = "toast.library_unavailable") -> None:
+        self.initial_error_key = error_key
 
     def home_snapshot(self) -> HomeSnapshot:
         """返回没有演示内容的主页。"""
@@ -31,7 +34,7 @@ class UnavailableGateway:
         return HomeSnapshot((), quick_start_completed=0)
 
     def workspace_snapshot(self, dataset_id: str | None = None) -> WorkspaceSnapshot | None:
-        """真实资料库尚未接入，因此普通模式没有工作台数据。"""
+        """资料库不可用时没有可安全打开的工作台数据。"""
 
         return None
 
@@ -48,7 +51,7 @@ class PreviewGateway:
 
     def __init__(self) -> None:
         self._datasets = list(_demo_datasets())
-        self._workspace = _demo_workspace(self._datasets[0])
+        self._workspace = _demo_workspace(self._datasets[0], tuple(self._datasets))
 
     def home_snapshot(self) -> HomeSnapshot:
         """返回当前预览会话的数据集卡片。"""
@@ -61,16 +64,29 @@ class PreviewGateway:
         if dataset_id:
             dataset = next((item for item in self._datasets if item.id == dataset_id), None)
             if dataset is not None:
-                return replace(self._workspace, dataset=dataset)
-        return self._workspace
+                return replace(
+                    self._workspace,
+                    dataset=dataset,
+                    available_datasets=tuple(item for item in self._datasets if not item.archived),
+                )
+        return replace(
+            self._workspace,
+            available_datasets=tuple(item for item in self._datasets if not item.archived),
+        )
 
     def dispatch(self, command: UiCommand) -> UiCommandResult:
         """仅处理适合视觉检查的轻量内存动作。"""
 
-        if command.action_id == "dataset.create":
+        if command.action_id in {"dataset.create", "dataset.create_from_template"}:
             name = str(command.payload.get("name", "")).strip()
             if not name:
                 return UiCommandResult(CommandStatus.INVALID, "toast.invalid_name")
+            duplicate = any(
+                item.name.casefold() == name.casefold() and not item.archived
+                for item in self._datasets
+            )
+            if duplicate:
+                return UiCommandResult(CommandStatus.INVALID, "toast.duplicate_dataset_name")
             identifier = f"preview-{len(self._datasets) + 1}"
             self._datasets.insert(
                 0,
@@ -89,6 +105,29 @@ class PreviewGateway:
                 CommandStatus.PREVIEW_APPLIED,
                 "toast.preview_applied",
                 affected_id=identifier,
+            )
+        dataset_id = str(command.payload.get("dataset_id", ""))
+        index = next(
+            (position for position, item in enumerate(self._datasets) if item.id == dataset_id),
+            None,
+        )
+        if index is not None and command.action_id == "dataset.rename":
+            name = str(command.payload.get("name", "")).strip()
+            if not name:
+                return UiCommandResult(CommandStatus.INVALID, "toast.invalid_name")
+            self._datasets[index] = replace(self._datasets[index], name=name)
+            return UiCommandResult(
+                CommandStatus.PREVIEW_APPLIED,
+                "toast.preview_applied",
+                affected_id=dataset_id,
+            )
+        if index is not None and command.action_id in {"dataset.archive", "dataset.restore"}:
+            archived = command.action_id == "dataset.archive"
+            self._datasets[index] = replace(self._datasets[index], archived=archived)
+            return UiCommandResult(
+                CommandStatus.PREVIEW_APPLIED,
+                "toast.preview_applied",
+                affected_id=dataset_id,
             )
         return UiCommandResult(CommandStatus.PREVIEW_APPLIED, "toast.preview_applied")
 
@@ -142,7 +181,10 @@ def _demo_datasets() -> tuple[DatasetCardViewData, ...]:
     )
 
 
-def _demo_workspace(dataset: DatasetCardViewData) -> WorkspaceSnapshot:
+def _demo_workspace(
+    dataset: DatasetCardViewData,
+    available_datasets: tuple[DatasetCardViewData, ...],
+) -> WorkspaceSnapshot:
     """构造包含三十多个标签体验所需信息密度的工作台快照。"""
 
     labels = (
@@ -266,4 +308,4 @@ def _demo_workspace(dataset: DatasetCardViewData) -> WorkspaceSnapshot:
         ),
         ModelViewData("model-3", "Legacy Checkpoint", "PT", "—", 0, "—", "value.unsupported"),
     )
-    return WorkspaceSnapshot(dataset, labels, images, annotations, models)
+    return WorkspaceSnapshot(dataset, labels, images, annotations, models, available_datasets)

@@ -30,8 +30,10 @@ class CommandStatus(StrEnum):
     """界面意图的处理结论，禁止用成功结果冒充真实业务。"""
 
     PREVIEW_APPLIED = "preview_applied"
+    APPLIED = "applied"
     NOT_CONNECTED = "not_connected"
     INVALID = "invalid"
+    ERROR = "error"
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +49,10 @@ class DatasetCardViewData:
     modified_text: str
     cover_seed: int
     health: DatasetHealth = DatasetHealth.READY
+    created_sort: str = ""
+    modified_sort: str = ""
+    archived: bool = False
+    diagnostic: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,6 +127,7 @@ class WorkspaceSnapshot:
     images: tuple[ImageItemViewData, ...]
     annotations_by_image: dict[str, tuple[AnnotationItemViewData, ...]]
     models: tuple[ModelViewData, ...]
+    available_datasets: tuple[DatasetCardViewData, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

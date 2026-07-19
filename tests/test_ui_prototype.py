@@ -14,9 +14,12 @@ from PySide6.QtWidgets import QApplication
 from datumdock.app import create_application, parse_launch_options
 from datumdock.i18n.catalog import CATALOGS, LocaleService, tr
 from datumdock.resources import resource_root
+from datumdock.services.dataset_library import DatasetLibraryService
 from datumdock.ui.annotation_workspace import AnnotationWorkspace
 from datumdock.ui.application_shell import ApplicationShell
+from datumdock.ui.components import DatasetCard
 from datumdock.ui.icons import IconRegistry
+from datumdock.ui.managed_gateway import ManagedDatasetGateway
 from datumdock.ui.prototype_dialogs import TITLE_KEYS, DialogId
 from datumdock.ui.prototype_gateway import PreviewGateway, UnavailableGateway
 from datumdock.ui.prototype_models import CommandStatus, UiCommand
@@ -60,21 +63,31 @@ def test_shell_sessions_do_not_write_user_data(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    """启动、导航和预览命令都不得创建用户资料库。"""
+    """普通模式初始化内部资料库，随后预览模式不得读取或修改它。"""
 
-    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
-    monkeypatch.setenv("APPDATA", str(tmp_path))
+    managed_root = tmp_path / "managed"
+    monkeypatch.setenv("DATUMDOCK_DATA_DIR", str(managed_root))
     application = _application()
     normal = ApplicationShell.for_mode(LocaleService(), False)
     normal.show()
     application.processEvents()
     normal.close()
+    before = {
+        path.relative_to(managed_root): path.read_bytes()
+        for path in managed_root.rglob("*")
+        if path.is_file()
+    }
     preview = ApplicationShell.for_mode(LocaleService(), True)
     preview.gateway.dispatch(UiCommand("dataset.create", {"name": "临时"}))
     preview.navigate(RouteId.SETTINGS.value)
     application.processEvents()
     preview.close()
-    assert list(tmp_path.iterdir()) == []
+    after = {
+        path.relative_to(managed_root): path.read_bytes()
+        for path in managed_root.rglob("*")
+        if path.is_file()
+    }
+    assert before == after
 
 
 def test_translation_catalogs_have_identical_keys() -> None:
@@ -101,9 +114,13 @@ def test_preview_shell_registers_and_visits_every_route() -> None:
     window.close()
 
 
-def test_normal_shell_is_safe_empty_home() -> None:
-    """普通模式不得注册依赖演示数据的管理和标注页面。"""
+def test_normal_shell_is_real_empty_home(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """普通首次启动显示真实空主页，并允许打开受管数据集创建向导。"""
 
+    monkeypatch.setenv("DATUMDOCK_DATA_DIR", str(tmp_path / "library"))
     application = _application()
     window = ApplicationShell.for_mode(LocaleService(), False)
     window.show()
@@ -116,8 +133,235 @@ def test_normal_shell_is_safe_empty_home() -> None:
     assert home.snapshot.quick_start_completed == 0
     window.open_dialog(DialogId.CREATE_DATASET.value)
     application.processEvents()
-    assert window._active_dialogs == []
-    assert window.toast.isVisible()
+    assert len(window._active_dialogs) == 1
+    window._active_dialogs[0].close()
+    window.close()
+
+
+def test_managed_shell_creates_opens_and_switches_real_empty_datasets(tmp_path: Path) -> None:
+    """创建后直接进入空工作台，顶部下拉可切换两个真实数据集。"""
+
+    application = _application()
+    service = DatasetLibraryService(tmp_path)
+    gateway = ManagedDatasetGateway(service)
+    window = ApplicationShell(LocaleService(), gateway)
+    window.show()
+    window._dispatch_command("dataset.create", {"name": "数据集一", "description": ""})
+    application.processEvents()
+    assert window.navigation.current == RouteId.ANNOTATION_WORKSPACE
+    workspace = window.navigation.pages[RouteId.ANNOTATION_WORKSPACE]
+    assert isinstance(workspace, AnnotationWorkspace)
+    assert workspace.snapshot.dataset.name == "数据集一"
+    assert workspace.snapshot.images == ()
+    assert workspace.image_stack.currentIndex() == 1
+
+    window._dispatch_command("dataset.create", {"name": "数据集二", "description": ""})
+    application.processEvents()
+    workspace = window.navigation.pages[RouteId.ANNOTATION_WORKSPACE]
+    assert isinstance(workspace, AnnotationWorkspace)
+    assert workspace.dataset_combo.count() == 2
+    first_id = next(item.id for item in gateway.home_snapshot().datasets if item.name == "数据集一")
+    window.navigate(f"{RouteId.ANNOTATION_WORKSPACE.value}:{first_id}")
+    application.processEvents()
+    switched = window.navigation.pages[RouteId.ANNOTATION_WORKSPACE]
+    assert isinstance(switched, AnnotationWorkspace)
+    assert switched.snapshot.dataset.name == "数据集一"
+    assert switched.snapshot.images == ()
+    window.close()
+
+
+def test_real_create_dialog_finishes_in_new_empty_workspace(tmp_path: Path) -> None:
+    """主页创建向导经过确认后真实创建，并直接进入新数据集工作台。"""
+
+    application = _application()
+    service = DatasetLibraryService(tmp_path)
+    window = ApplicationShell(LocaleService(), ManagedDatasetGateway(service))
+    window.show()
+    window.open_dialog(DialogId.CREATE_DATASET.value)
+    dialog = window._active_dialogs[0]
+    dialog.name_input.setText("向导创建数据集")
+    dialog.description_input.setPlainText("由真实 GUI 向导创建")
+    dialog.next_step()
+    dialog.next_step()
+    dialog.next_step()
+    application.processEvents()
+
+    records = service.list_datasets()
+    assert len(records) == 1
+    assert records[0].entry.name == "向导创建数据集"
+    assert window.navigation.current == RouteId.ANNOTATION_WORKSPACE
+    workspace = window.navigation.pages[RouteId.ANNOTATION_WORKSPACE]
+    assert isinstance(workspace, AnnotationWorkspace)
+    assert workspace.snapshot.dataset.name == "向导创建数据集"
+    assert workspace.image_stack.currentIndex() == 1
+    window.close()
+
+
+def test_unconnected_normal_action_has_no_file_side_effect(tmp_path: Path) -> None:
+    """普通模式的图片导入等未接入入口只提示，不产生任何文件副作用。"""
+
+    service = DatasetLibraryService(tmp_path)
+    dataset = service.create_dataset("安全数据集")
+    gateway = ManagedDatasetGateway(service)
+    before = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    }
+    result = gateway.dispatch(UiCommand("image.import", {"dataset_id": dataset.dataset.id}))
+    after = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    }
+    assert result.status == CommandStatus.NOT_CONNECTED
+    assert before == after
+
+
+def test_managed_gateway_rename_archive_restore_and_home_snapshot(tmp_path: Path) -> None:
+    """主页元数据命令真实生效，归档和恢复不删除 UUID 目录。"""
+
+    service = DatasetLibraryService(tmp_path)
+    gateway = ManagedDatasetGateway(service)
+    created = gateway.dispatch(UiCommand("dataset.create", {"name": "初始名称"}))
+    assert created.status == CommandStatus.APPLIED
+    assert created.affected_id
+    dataset_id = created.affected_id
+    directory = service.dataset_directory(dataset_id)
+
+    renamed = gateway.dispatch(
+        UiCommand("dataset.rename", {"dataset_id": dataset_id, "name": "更新名称"})
+    )
+    assert renamed.status == CommandStatus.APPLIED
+    assert gateway.home_snapshot().datasets[0].name == "更新名称"
+
+    archived = gateway.dispatch(UiCommand("dataset.archive", {"dataset_id": dataset_id}))
+    assert archived.status == CommandStatus.APPLIED
+    assert gateway.home_snapshot().datasets[0].archived is True
+    assert directory.is_dir()
+
+    restored = gateway.dispatch(UiCommand("dataset.restore", {"dataset_id": dataset_id}))
+    assert restored.status == CommandStatus.APPLIED
+    assert gateway.home_snapshot().datasets[0].archived is False
+    assert service.dataset_directory(dataset_id) == directory
+
+
+def test_home_search_sort_and_archive_filter_use_real_snapshot(tmp_path: Path) -> None:
+    """主页搜索、排序和归档筛选直接作用于真实资料库快照。"""
+
+    application = _application()
+    service = DatasetLibraryService(tmp_path)
+    first = service.create_dataset("Alpha")
+    service.create_dataset("Beta")
+    service.archive_dataset(first.dataset.id)
+    window = ApplicationShell(LocaleService(), ManagedDatasetGateway(service))
+    home = window.navigation.pages[RouteId.HOME]
+    assert isinstance(home, HomePage)
+    window.show()
+    window.navigation.navigate(RouteId.HOME, remember=False)
+
+    home.archive_filter.setCurrentIndex(home.archive_filter.findData("active"))
+    application.processEvents()
+    active_cards = home.findChildren(DatasetCard)
+    assert [card.data.name for card in active_cards if card.isVisibleTo(home)] == ["Beta"]
+
+    home.archive_filter.setCurrentIndex(home.archive_filter.findData("archived"))
+    home.dataset_search.setText("alp")
+    application.processEvents()
+    archived_cards = home.findChildren(DatasetCard)
+    assert [card.data.name for card in archived_cards if card.isVisibleTo(home)] == ["Alpha"]
+    assert next(card for card in archived_cards if card.isVisibleTo(home)).data.archived is True
+    window.close()
+
+
+def test_preview_mode_ignores_even_a_corrupt_real_library(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """预览模式不实例化真实 Service，因此损坏索引也不会被读取或改写。"""
+
+    root = tmp_path / "real-library"
+    root.mkdir()
+    library = root / "library.json"
+    original = b"{broken-real-library"
+    library.write_bytes(original)
+    monkeypatch.setenv("DATUMDOCK_DATA_DIR", str(root))
+
+    application = _application()
+    window = ApplicationShell.for_mode(LocaleService(), True)
+    window.show()
+    application.processEvents()
+    assert window.gateway.preview_mode is True
+    assert window.gateway.home_snapshot().datasets
+    window.close()
+    assert library.read_bytes() == original
+
+
+def test_language_switch_does_not_modify_real_dataset_content(tmp_path: Path) -> None:
+    """中英文切换只刷新系统文案，真实名称、描述和资料库字节保持不变。"""
+
+    service = DatasetLibraryService(tmp_path)
+    dataset = service.create_dataset("原始名称", "原始描述")
+    gateway = ManagedDatasetGateway(service)
+    before = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    }
+    application = _application()
+    window = ApplicationShell(LocaleService(), gateway)
+    window.change_locale("en_US")
+    application.processEvents()
+    window.close()
+    after = {
+        path.relative_to(tmp_path): path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    }
+
+    assert gateway.home_snapshot().datasets[0].name == "原始名称"
+    assert service.open_dataset(dataset.dataset.id).dataset.description == "原始描述"
+    assert before == after
+
+
+def test_corrupt_dataset_becomes_diagnostic_home_card(tmp_path: Path) -> None:
+    """损坏数据集保留在主页并带诊断，不影响健康数据集工作台。"""
+
+    service = DatasetLibraryService(tmp_path)
+    damaged = service.create_dataset("损坏数据集")
+    healthy = service.create_dataset("健康数据集")
+    service.dataset_repository.paths(damaged.dataset.id).metadata.write_text(
+        "{broken",
+        encoding="utf-8",
+    )
+    gateway = ManagedDatasetGateway(service)
+    cards = {item.id: item for item in gateway.home_snapshot().datasets}
+
+    assert cards[damaged.dataset.id].health.value == "damaged"
+    assert cards[damaged.dataset.id].diagnostic
+    assert gateway.workspace_snapshot(damaged.dataset.id) is None
+    assert gateway.workspace_snapshot(healthy.dataset.id) is not None
+
+
+def test_real_empty_home_and_workspace_fit_reference_sizes(tmp_path: Path) -> None:
+    """三个基准窗口尺寸下真实主页与空工作台不发生核心区域裁切。"""
+
+    application = _application()
+    service = DatasetLibraryService(tmp_path)
+    dataset = service.create_dataset("响应式数据集")
+    window = ApplicationShell(LocaleService(), ManagedDatasetGateway(service))
+    window.show()
+    for width, height in ((1366, 768), (1440, 900), (1920, 1080)):
+        window.resize(width, height)
+        window.navigate(RouteId.HOME.value)
+        application.processEvents()
+        assert window.centralWidget().width() >= 900
+        window.navigate(f"{RouteId.ANNOTATION_WORKSPACE.value}:{dataset.dataset.id}")
+        application.processEvents()
+        workspace = window.navigation.pages[RouteId.ANNOTATION_WORKSPACE]
+        assert isinstance(workspace, AnnotationWorkspace)
+        assert workspace.canvas.width() >= 360
+        assert workspace.right_panel.width() >= 300
     window.close()
 
 

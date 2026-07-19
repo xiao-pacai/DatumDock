@@ -34,6 +34,7 @@ from datumdock.ui.components import (
     PrimaryButton,
     SectionCard,
 )
+from datumdock.ui.prototype_models import DatasetCardViewData
 from datumdock.ui.theme import THEME
 
 
@@ -74,7 +75,7 @@ TITLE_KEYS = {
     DialogId.CREATE_DATASET: "dialog.create.title",
     DialogId.CREATE_FROM_TEMPLATE: "dialog.template.title",
     DialogId.DATASET_DIAGNOSTICS: "home.diagnostics",
-    DialogId.RENAME_DATASET: "dialog.rename.title",
+    DialogId.RENAME_DATASET: "dialog.dataset_rename.title",
     DialogId.ARCHIVE_DATASET: "action.archive",
     DialogId.LABEL_EDITOR: "action.add_label",
     DialogId.LABEL_COLOR: "table.color",
@@ -112,12 +113,16 @@ class PreviewFlowDialog(QDialog):
         locale: LocaleService,
         dialog_id: DialogId,
         preview_mode: bool,
+        context: dict[str, str] | None = None,
+        datasets: tuple[DatasetCardViewData, ...] = (),
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.locale = locale
         self.dialog_id = dialog_id
         self.preview_mode = preview_mode
+        self.context = context or {}
+        self.datasets = datasets
         self.comparison_labels: list[tuple[QLabel, str]] = []
         self.setModal(True)
         self.resize(760, 570)
@@ -172,7 +177,9 @@ class PreviewFlowDialog(QDialog):
         self.description_input = QTextEdit()
         self.description_input.setMaximumHeight(84)
         self.source_combo = QComboBox()
-        self.source_combo.addItems(["工厂零件检测", "可回收物分类", "仓库安全检查"])
+        for dataset in self.datasets:
+            if not dataset.archived and dataset.health.value == "ready":
+                self.source_combo.addItem(dataset.name, dataset.id)
         self.path_input = QLineEdit("C:\\DatumDock-Preview\\output")
         self.seed_input = QSpinBox()
         self.seed_input.setRange(0, 999999)
@@ -188,6 +195,11 @@ class PreviewFlowDialog(QDialog):
             ["YOLO Detection", "X-AnyLabeling / LabelMe", "DatumDock Backup"]
         )
         self._configure_fields()
+        self.name_input.setText(self.context.get("name", ""))
+        self.description_input.setPlainText(self.context.get("description", ""))
+        if self.dialog_id == DialogId.DATASET_DIAGNOSTICS:
+            self.description_input.setPlainText(self.context.get("diagnostic", ""))
+            self.description_input.setReadOnly(True)
         page.body.addLayout(self.form)
         if self.dialog_id == DialogId.DUPLICATE_COMPARE:
             compare = QHBoxLayout()
@@ -212,17 +224,18 @@ class PreviewFlowDialog(QDialog):
         self.form.addRow(label, field)
 
     def _configure_fields(self) -> None:
-        if self.dialog_id in {
-            DialogId.CREATE_DATASET,
-            DialogId.RENAME_DATASET,
-            DialogId.LABEL_EDITOR,
-        }:
+        if self.dialog_id in {DialogId.CREATE_DATASET, DialogId.LABEL_EDITOR}:
             self._add_form_row("form.name", self.name_input)
             self._add_form_row("form.description", self.description_input)
+        elif self.dialog_id == DialogId.RENAME_DATASET:
+            self._add_form_row("form.name", self.name_input)
         elif self.dialog_id == DialogId.CREATE_FROM_TEMPLATE:
             self.copy_check = QCheckBox()
+            self.copy_check.setChecked(True)
+            self.copy_check.setEnabled(False)
             self._add_form_row("form.source_dataset", self.source_combo)
             self._add_form_row("form.new_dataset", self.name_input)
+            self._add_form_row("form.description", self.description_input)
             self._add_form_row("form.copy", self.copy_check)
         elif self.dialog_id == DialogId.AUTO_ANNOTATION:
             self.backend_combo = QComboBox()
@@ -274,11 +287,7 @@ class PreviewFlowDialog(QDialog):
             self._add_form_row("form.formats", QLabel("JPG · JPEG · PNG · BMP · WebP · TIFF"))
             self._add_form_row("form.managed_format", QLabel("PNG"))
             self._add_form_row("form.duplicate_check", self.duplicate_check)
-        elif self.dialog_id in {
-            DialogId.DELETE_CURRENT,
-            DialogId.DELETE_BATCH,
-            DialogId.ARCHIVE_DATASET,
-        }:
+        elif self.dialog_id in {DialogId.DELETE_CURRENT, DialogId.DELETE_BATCH}:
             self.delete_warning = QLabel()
             self.delete_warning.setStyleSheet(
                 f"color:{THEME.tokens.danger}; background:#FCE8E8; border-radius:8px; padding:10px;"
@@ -286,6 +295,14 @@ class PreviewFlowDialog(QDialog):
             self.form.addRow(self.delete_warning)
             self.delete_mode_combo = QComboBox()
             self._add_form_row("form.mode", self.delete_mode_combo)
+        elif self.dialog_id == DialogId.ARCHIVE_DATASET:
+            self.delete_warning = QLabel()
+            self.delete_warning.setWordWrap(True)
+            self.delete_warning.setStyleSheet(
+                f"color:{THEME.tokens.text_primary}; background:#FFF3D8; "
+                "border-radius:8px; padding:10px;"
+            )
+            self.form.addRow(self.delete_warning)
         else:
             self.status_value = QLabel()
             self._add_form_row("form.status", self.status_value)
@@ -310,6 +327,19 @@ class PreviewFlowDialog(QDialog):
             ("preview.duplicates", "preview.groups", "preview.grouped", "preview.review"),
             ("preview.output", "—", "preview.new_directory", "preview.preview"),
         )
+        if not self.preview_mode and self.dialog_id in {
+            DialogId.CREATE_DATASET,
+            DialogId.CREATE_FROM_TEMPLATE,
+            DialogId.RENAME_DATASET,
+            DialogId.ARCHIVE_DATASET,
+        }:
+            rows = (
+                ("preview.images", "0", "0", "preview.ready"),
+                ("preview.annotations", "0", "0", "preview.ready"),
+                ("preview.labels", "—", "—", "preview.ready"),
+                ("preview.duplicates", "—", "—", "preview.ready"),
+                ("preview.output", "—", "preview.managed_library", "preview.ready"),
+            )
         for row, values in enumerate(rows):
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
@@ -375,23 +405,33 @@ class PreviewFlowDialog(QDialog):
             self.name_input.setFocus()
             self.name_input.setStyleSheet(f"border:2px solid {THEME.tokens.danger};")
             return
+        if (
+            self.pages.currentIndex() == 0
+            and self.dialog_id == DialogId.CREATE_FROM_TEMPLATE
+            and self.source_combo.currentData() is None
+        ):
+            self.source_combo.setFocus()
+            self.source_combo.setStyleSheet(f"border:2px solid {THEME.tokens.danger};")
+            return
         if self.pages.currentIndex() < self.pages.count() - 1:
             self.pages.setCurrentIndex(self.pages.currentIndex() + 1)
             self._refresh_step_state()
             return
+        if self.dialog_id == DialogId.DATASET_DIAGNOSTICS:
+            self.accept()
+            return
         payload = {
             "name": self.name_input.text().strip(),
             "description": self.description_input.toPlainText().strip(),
+            "dataset_id": self.context.get("dataset_id", ""),
+            "source_dataset_id": self.source_combo.currentData() or "",
         }
-        action_id = (
-            "dataset.create"
-            if self.dialog_id
-            in {
-                DialogId.CREATE_DATASET,
-                DialogId.CREATE_FROM_TEMPLATE,
-            }
-            else f"preview.{self.dialog_id.value}"
-        )
+        action_id = {
+            DialogId.CREATE_DATASET: "dataset.create",
+            DialogId.CREATE_FROM_TEMPLATE: "dataset.create_from_template",
+            DialogId.RENAME_DATASET: "dataset.rename",
+            DialogId.ARCHIVE_DATASET: "dataset.archive",
+        }.get(self.dialog_id, f"preview.{self.dialog_id.value}")
         self.command_ready.emit(action_id, payload)
         self.accept()
 
@@ -417,7 +457,8 @@ class PreviewFlowDialog(QDialog):
         title = tr(self.locale, TITLE_KEYS[self.dialog_id])
         self.setWindowTitle(title)
         self.title.setText(title)
-        self.notice.setText(tr(self.locale, "dialog.preview_only"))
+        notice_key = "dialog.preview_only" if self.preview_mode else "dialog.managed_action"
+        self.notice.setText(tr(self.locale, notice_key))
         for chip, key in zip(
             self.step_chips,
             ("dialog.step.configure", "dialog.step.preview", "dialog.step.result"),
@@ -429,7 +470,7 @@ class PreviewFlowDialog(QDialog):
         self.next_button.setText(
             tr(
                 self.locale,
-                "action.finish_preview"
+                ("action.finish_preview" if self.preview_mode else "action.apply")
                 if self.pages.currentIndex() == self.pages.count() - 1
                 else "action.next",
             )
@@ -456,8 +497,18 @@ class PreviewFlowDialog(QDialog):
         else:
             explanation_key = "dialog.integrity"
         self.preview_explanation.setText(tr(self.locale, explanation_key))
-        self.result_title.setText(tr(self.locale, "dialog.step.result"))
-        self.result_body.setText(tr(self.locale, "dialog.success_preview"))
+        self.result_title.setText(
+            tr(
+                self.locale,
+                "dialog.step.result" if self.preview_mode else "dialog.ready_to_apply",
+            )
+        )
+        self.result_body.setText(
+            tr(
+                self.locale,
+                "dialog.success_preview" if self.preview_mode else "dialog.apply_after_confirm",
+            )
+        )
 
     def _retranslate_options(self) -> None:
         """刷新表单值和组合框选项，同时保留当前选择。"""
@@ -498,7 +549,14 @@ class PreviewFlowDialog(QDialog):
         if hasattr(self, "status_value"):
             self.status_value.setText(tr(self.locale, "preview.ready"))
         if hasattr(self, "delete_warning"):
-            self.delete_warning.setText("⚠  " + tr(self.locale, "dialog.delete.scope"))
+            warning_key = (
+                "dialog.archive.scope"
+                if self.dialog_id == DialogId.ARCHIVE_DATASET
+                else "dialog.delete.scope"
+            )
+            dataset_name = self.context.get("name", "")
+            prefix = f"{dataset_name}\n" if dataset_name else ""
+            self.delete_warning.setText("⚠  " + prefix + tr(self.locale, warning_key))
 
 
 class DialogRegistry:
@@ -508,8 +566,22 @@ class DialogRegistry:
         self.locale = locale
         self.preview_mode = preview_mode
 
-    def create(self, dialog_id: DialogId | str, parent: QWidget | None = None) -> PreviewFlowDialog:
+    def create(
+        self,
+        dialog_id: DialogId | str,
+        parent: QWidget | None = None,
+        *,
+        context: dict[str, str] | None = None,
+        datasets: tuple[DatasetCardViewData, ...] = (),
+    ) -> PreviewFlowDialog:
         """按稳定标识创建完整对话框实例。"""
 
         identifier = DialogId(dialog_id)
-        return PreviewFlowDialog(self.locale, identifier, self.preview_mode, parent)
+        return PreviewFlowDialog(
+            self.locale,
+            identifier,
+            self.preview_mode,
+            context,
+            datasets,
+            parent,
+        )

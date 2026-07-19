@@ -47,6 +47,15 @@ class PreviewAnnotationCanvas(QWidget):
         self._temporary: QRectF | None = None
         self._undo: list[list[AnnotationItemViewData]] = []
         self._redo: list[list[AnnotationItemViewData]] = []
+        self.empty_title = "DatumDock"
+        self.empty_subtitle = ""
+
+    def set_empty_message(self, title: str, subtitle: str = "") -> None:
+        """由工作台提供本地化空状态，画布不自行读取翻译资源。"""
+
+        self.empty_title = title
+        self.empty_subtitle = subtitle
+        self.update()
 
     def load_preview(
         self,
@@ -338,7 +347,25 @@ class PreviewAnnotationCanvas(QWidget):
         font.setPixelSize(17)
         font.setWeight(QFont.Weight.DemiBold)
         painter.setFont(font)
-        painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "DatumDock · UI Preview")
+        center = self.rect().center()
+        title_rect = self.rect().adjusted(24, 0, -24, 0)
+        title_rect.setBottom(center.y())
+        painter.drawText(
+            title_rect,
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom,
+            self.empty_title,
+        )
+        if self.empty_subtitle:
+            painter.setPen(QColor("#7F8B9D"))
+            font.setPixelSize(13)
+            font.setWeight(QFont.Weight.Normal)
+            painter.setFont(font)
+            subtitle_rect = self.rect().adjusted(40, center.y() + 10, -40, -20)
+            painter.drawText(
+                subtitle_rect,
+                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+                self.empty_subtitle,
+            )
 
     def _annotation_rect(self, item: AnnotationItemViewData) -> QRectF:
         image_rect = self._image_rect()

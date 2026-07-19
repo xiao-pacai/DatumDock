@@ -50,7 +50,7 @@ def create_application(arguments: list[str] | None = None) -> QApplication:
 
 
 def main(arguments: list[str] | None = None) -> int:
-    """启动新应用外壳；普通和预览模式均不调用旧工作区服务。"""
+    """启动新应用外壳；普通模式使用内部资料库，预览模式只用内存。"""
 
     raw_arguments = list(sys.argv[1:] if arguments is None else arguments)
     options, qt_arguments = parse_launch_options(raw_arguments)
