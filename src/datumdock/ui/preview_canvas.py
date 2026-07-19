@@ -9,6 +9,7 @@ from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QFont,
+    QKeyEvent,
     QMouseEvent,
     QPainter,
     QPainterPath,
@@ -18,6 +19,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QWidget
 
+from datumdock.domain.models import new_id
 from datumdock.ui.prototype_models import AnnotationItemViewData, ImageItemViewData, LabelViewData
 from datumdock.ui.theme import THEME
 
@@ -34,6 +36,7 @@ class PreviewAnnotationCanvas(QWidget):
     """在内存中绘制图片与矩形，验证标注工作台布局和交互。"""
 
     shape_selected = Signal(str)
+    shape_double_clicked = Signal(str)
     document_changed = Signal()
     zoom_changed = Signal(int)
 
@@ -60,6 +63,7 @@ class PreviewAnnotationCanvas(QWidget):
         self.empty_subtitle = ""
         self.managed_pixmap = QPixmap()
         self.managed_read_only = False
+        self.current_label_id: str | None = None
         self.pan_offset = QPointF()
         self._pan_start = QPointF()
 
@@ -83,6 +87,7 @@ class PreviewAnnotationCanvas(QWidget):
         self.managed_read_only = False
         self.pan_offset = QPointF()
         self.labels = {label.id: label for label in labels}
+        self.current_label_id = next(iter(self.labels), None)
         self.annotations = list(annotations)
         self.selected_id = self.annotations[0].id if self.annotations else None
         self._undo.clear()
@@ -103,8 +108,16 @@ class PreviewAnnotationCanvas(QWidget):
         self.pan_offset = QPointF()
         self.update()
 
-    def load_managed_image(self, image: ImageItemViewData, data: bytes) -> bool:
-        """普通模式只载入网关返回的图片字节，矩形编辑保持禁用。"""
+    def load_managed_image(
+        self,
+        image: ImageItemViewData,
+        data: bytes,
+        labels: tuple[LabelViewData, ...] = (),
+        annotations: tuple[AnnotationItemViewData, ...] = (),
+        *,
+        editable: bool = False,
+    ) -> bool:
+        """普通模式只接收网关字节和视图快照，不接触受管路径。"""
 
         pixmap = QPixmap()
         if not pixmap.loadFromData(data, "PNG"):
@@ -112,14 +125,55 @@ class PreviewAnnotationCanvas(QWidget):
             return False
         self.image = image
         self.managed_pixmap = pixmap
-        self.managed_read_only = True
-        self.labels.clear()
-        self.annotations.clear()
-        self.selected_id = None
+        self.managed_read_only = not editable
+        self.labels = {label.id: label for label in labels}
+        self.current_label_id = next(
+            (label.id for label in labels if not label.archived),
+            None,
+        )
+        self.annotations = list(annotations)
+        self.selected_id = self.annotations[0].id if self.annotations else None
+        self._undo.clear()
+        self._redo.clear()
         self.zoom = 1.0
         self.pan_offset = QPointF()
         self.update()
         return True
+
+    def set_current_label(self, label_id: str | None) -> None:
+        """设置新建矩形使用的活动标签，归档标签由外层过滤。"""
+
+        self.current_label_id = label_id if label_id in self.labels else None
+
+    def delete_selected(self) -> None:
+        """删除当前矩形并形成一个可撤销操作。"""
+
+        if self.managed_read_only or not self.selected_id:
+            return
+        remaining = [item for item in self.annotations if item.id != self.selected_id]
+        if len(remaining) == len(self.annotations):
+            return
+        self._push_undo()
+        self.annotations = remaining
+        self.selected_id = None
+        self.document_changed.emit()
+        self.update()
+
+    def change_selected_label(self, label_id: str) -> None:
+        """通过统一标签选择器改派所选矩形，并形成一次历史操作。"""
+
+        if self.managed_read_only or label_id not in self.labels or not self.selected_id:
+            return
+        current = next(
+            (item for item in self.annotations if item.id == self.selected_id),
+            None,
+        )
+        if current is None or current.label_id == label_id:
+            return
+        self._push_undo()
+        self._replace_annotation(replace(current, label_id=label_id))
+        self.document_changed.emit()
+        self.update()
 
     def set_tool(self, tool: CanvasTool) -> None:
         """切换画布工具并更新鼠标形态。"""
@@ -190,7 +244,7 @@ class PreviewAnnotationCanvas(QWidget):
             self._paint_empty(painter)
             return
         image_rect = self._image_rect()
-        if self.managed_read_only and not self.managed_pixmap.isNull():
+        if not self.managed_pixmap.isNull():
             painter.drawPixmap(
                 image_rect,
                 self.managed_pixmap,
@@ -258,10 +312,10 @@ class PreviewAnnotationCanvas(QWidget):
         else:
             changed = replace(
                 original,
-                x1=original.x1 + delta.x(),
-                y1=original.y1 + delta.y(),
-                x2=original.x2 + delta.x(),
-                y2=original.y2 + delta.y(),
+                x1=original.x1 + max(-original.x1, min(delta.x(), self.image.width - original.x2)),
+                y1=original.y1 + max(-original.y1, min(delta.y(), self.image.height - original.y2)),
+                x2=original.x2 + max(-original.x1, min(delta.x(), self.image.width - original.x2)),
+                y2=original.y2 + max(-original.y1, min(delta.y(), self.image.height - original.y2)),
             )
         self._replace_annotation(changed)
         self.update()
@@ -279,15 +333,14 @@ class PreviewAnnotationCanvas(QWidget):
         if self._temporary is not None and self.image is not None:
             rect = self._temporary.normalized()
             self._temporary = None
-            if rect.width() >= 8 and rect.height() >= 8 and self.labels:
+            if rect.width() >= 8 and rect.height() >= 8 and self.current_label_id is not None:
                 self._push_undo()
                 image_rect = self._image_rect()
-                label_id = next(iter(self.labels))
                 top_left = self._canvas_to_image(rect.topLeft(), image_rect)
                 bottom_right = self._canvas_to_image(rect.bottomRight(), image_rect)
                 new_item = AnnotationItemViewData(
-                    f"preview-shape-{len(self.annotations) + 1}",
-                    label_id,
+                    new_id(),
+                    self.current_label_id,
                     top_left.x(),
                     top_left.y(),
                     bottom_right.x(),
@@ -311,6 +364,35 @@ class PreviewAnnotationCanvas(QWidget):
         self._drag_snapshot = None
         self._active_handle = None
         self.update()
+
+    def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
+        """双击矩形请求外层打开统一标签选择器。"""
+
+        if event.button() == Qt.MouseButton.LeftButton and not self.managed_read_only:
+            hit = self._shape_at(event.position())
+            if hit is not None:
+                self.select_shape(hit.id)
+                self.shape_double_clicked.emit(hit.id)
+                return
+        super().mouseDoubleClickEvent(event)
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        """Delete 删除选中框，Esc 取消当前绘制或选择。"""
+
+        if event.key() == Qt.Key.Key_Delete:
+            self.delete_selected()
+            event.accept()
+            return
+        if event.key() == Qt.Key.Key_Escape:
+            self._temporary = None
+            self._drag_origin = None
+            self._drag_snapshot = None
+            self._active_handle = None
+            self.selected_id = None
+            self.update()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     def wheelEvent(self, event: QWheelEvent) -> None:
         """滚轮提供立即缩放反馈，不等待动画。"""
@@ -512,8 +594,18 @@ class PreviewAnnotationCanvas(QWidget):
             y1 += delta.y()
         if "bottom" in handle:
             y2 += delta.y()
+        if self.image is None:
+            return original
+        x1 = max(0.0, min(x1, self.image.width - 2.0))
+        y1 = max(0.0, min(y1, self.image.height - 2.0))
+        x2 = max(2.0, min(x2, float(self.image.width)))
+        y2 = max(2.0, min(y2, float(self.image.height)))
         return replace(
-            original, x1=min(x1, x2 - 2), y1=min(y1, y2 - 2), x2=max(x2, x1 + 2), y2=max(y2, y1 + 2)
+            original,
+            x1=min(x1, x2 - 2),
+            y1=min(y1, y2 - 2),
+            x2=max(x2, x1 + 2),
+            y2=max(y2, y1 + 2),
         )
 
     def _replace_annotation(self, changed: AnnotationItemViewData) -> None:
@@ -524,5 +616,5 @@ class PreviewAnnotationCanvas(QWidget):
 
     def _push_undo(self) -> None:
         self._undo.append(list(self.annotations))
-        del self._undo[:-50]
+        del self._undo[:-100]
         self._redo.clear()

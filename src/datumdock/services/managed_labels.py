@@ -2,16 +2,30 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
+import os
+import shutil
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError
 
-from datumdock.domain.models import Label, LabelSet, LabelStatus, new_id, utc_now
+from datumdock.domain.models import (
+    AnnotationState,
+    Label,
+    LabelSet,
+    LabelStatus,
+    new_id,
+    utc_now,
+)
 from datumdock.services.dataset_library import DatasetLibraryService, DatasetLibraryServiceError
+from datumdock.services.labelme import LabelMeRepository
 from datumdock.services.library_repository import DatasetRepositoryError
 from datumdock.services.sample_repository import DatasetSampleRepository, SampleRepositoryError
+from datumdock.services.storage import write_json_atomic
 
 
 class ManagedLabelError(RuntimeError):
@@ -42,6 +56,15 @@ class LabelUsage:
     label_id: str
     image_count: int
     shape_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class LabelMigrationResult:
+    """训练映射迁移的真实文件与样本摘要。"""
+
+    label_set: LabelSet
+    migrated_sample_ids: tuple[str, ...]
+    changed_json_count: int
 
 
 class LabelColorService:
@@ -354,6 +377,175 @@ class LabelInspectionService:
         )
 
 
+class ManagedLabelMigrationService:
+    """使用可恢复备份批量迁移训练名，并同步 SQLite 摘要。"""
+
+    def __init__(self, library_service: DatasetLibraryService) -> None:
+        self.library_service = library_service
+        self.labels = LabelSetService(library_service)
+        self.labelme = LabelMeRepository()
+
+    def apply(self, preview: LabelChangePreview) -> LabelMigrationResult:
+        """确认修订号后迁移 JSON；类别 ID 变化不会改写 LabelMe。"""
+
+        current = self.labels.repository.load(preview.dataset_id)
+        if current.revision != preview.expected_revision:
+            raise ManagedLabelError("标签集已被其他操作修改，请重新生成影响预览")
+        if not preview.requires_json_migration:
+            updated = self.labels.apply_mapping_change(preview, migration_completed=True)
+            return LabelMigrationResult(updated, (), 0)
+        paths = self.library_service.dataset_repository.paths(preview.dataset_id)
+        samples = DatasetSampleRepository(paths, preview.dataset_id)
+        sample_ids = samples.sample_ids_for_label(preview.label_id)
+        target = self._target_label_set(current, preview)
+        operation = (
+            self.library_service.root
+            / "recovery"
+            / "label-migrations"
+            / preview.dataset_id
+            / new_id()
+        )
+        backup_directory = operation / "backups"
+        self._validate_operation_path(operation)
+        backup_directory.mkdir(parents=True, exist_ok=False)
+        manifest = operation / "manifest.json"
+        write_json_atomic(
+            manifest,
+            {
+                "dataset_id": preview.dataset_id,
+                "label_id": preview.label_id,
+                "expected_revision": preview.expected_revision,
+                "new_training_name": preview.new_training_name,
+                "sample_ids": list(sample_ids),
+                "phase": "prepared",
+                "created_at": datetime.now(UTC).isoformat(),
+            },
+        )
+        changed: list[tuple[str, Path, Path]] = []
+        try:
+            for sample_id in sample_ids:
+                sample = samples.get_sample(sample_id)
+                if sample is None or not sample.annotation_path:
+                    raise ManagedLabelError(f"标签迁移样本缺少标注路径: {sample_id}")
+                path = samples.resolve_path(sample.annotation_path, "pool/annotations")
+                backup = backup_directory / f"{sample.id}.json"
+                shutil.copy2(path, backup)
+                document = self.labelme.load(
+                    path,
+                    sample.id,
+                    current,
+                    sample.filename,
+                    (sample.width, sample.height),
+                )
+                digest = self.labelme.save(path, document, target)
+                samples.update_annotation_index(
+                    sample.id,
+                    annotation_path=sample.annotation_path,
+                    annotation_count=len(document.rectangles),
+                    annotation_state=AnnotationState.READY,
+                    annotation_version=sample.annotation_version,
+                    annotation_sha256=digest,
+                    annotation_updated_at=datetime.now(UTC).isoformat(),
+                    review_status=sample.review_status,
+                    shape_labels=tuple(
+                        (rectangle.id, rectangle.label_id) for rectangle in document.rectangles
+                    ),
+                )
+                changed.append((sample.id, path, backup))
+            write_json_atomic(
+                manifest,
+                {
+                    "dataset_id": preview.dataset_id,
+                    "label_id": preview.label_id,
+                    "expected_revision": preview.expected_revision,
+                    "new_training_name": preview.new_training_name,
+                    "sample_ids": list(sample_ids),
+                    "phase": "json_committed",
+                    "created_at": datetime.now(UTC).isoformat(),
+                },
+            )
+            updated = self.labels.apply_mapping_change(preview, migration_completed=True)
+            self._remove_operation_directory(operation)
+            return LabelMigrationResult(updated, sample_ids, len(changed))
+        except Exception as error:
+            rollback_errors = self._rollback(changed, current, samples)
+            if not rollback_errors:
+                self._remove_operation_directory(operation)
+            detail = f"标签训练名迁移失败: {error}"
+            if rollback_errors:
+                detail += f"；恢复失败: {'；'.join(rollback_errors)}"
+            raise ManagedLabelError(detail) from error
+
+    @staticmethod
+    def _target_label_set(current: LabelSet, preview: LabelChangePreview) -> LabelSet:
+        labels = [
+            label.model_copy(
+                deep=True,
+                update={
+                    "name": preview.new_training_name,
+                    "class_id": preview.new_class_id,
+                    "modified_at": utc_now(),
+                },
+            )
+            if label.id == preview.label_id
+            else label.model_copy(deep=True)
+            for label in current.labels
+        ]
+        return current.model_copy(deep=True, update={"labels": labels})
+
+    def _rollback(
+        self,
+        changed: list[tuple[str, Path, Path]],
+        label_set: LabelSet,
+        samples: DatasetSampleRepository,
+    ) -> list[str]:
+        errors: list[str] = []
+        for sample_id, path, backup in reversed(changed):
+            try:
+                os.replace(backup, path)
+                sample = samples.get_sample(sample_id)
+                if sample is None:
+                    raise ManagedLabelError("回滚样本不存在")
+                document = self.labelme.load(
+                    path,
+                    sample.id,
+                    label_set,
+                    sample.filename,
+                    (sample.width, sample.height),
+                )
+                digest = _file_sha256(path)
+                samples.update_annotation_index(
+                    sample.id,
+                    annotation_path=sample.annotation_path,
+                    annotation_count=len(document.rectangles),
+                    annotation_state=AnnotationState.READY,
+                    annotation_version=sample.annotation_version,
+                    annotation_sha256=digest,
+                    annotation_updated_at=datetime.now(UTC).isoformat(),
+                    review_status=sample.review_status,
+                    shape_labels=tuple(
+                        (rectangle.id, rectangle.label_id) for rectangle in document.rectangles
+                    ),
+                )
+            except Exception as error:
+                errors.append(f"{sample_id}: {error}")
+        return errors
+
+    def _validate_operation_path(self, operation: Path) -> None:
+        recovery = (self.library_service.root / "recovery" / "label-migrations").resolve(
+            strict=False
+        )
+        try:
+            operation.resolve(strict=False).relative_to(recovery)
+        except ValueError as error:
+            raise ManagedLabelError("标签迁移恢复目录越过资料库边界") from error
+
+    def _remove_operation_directory(self, operation: Path) -> None:
+        self._validate_operation_path(operation)
+        if operation.exists():
+            shutil.rmtree(operation)
+
+
 def _hex_rgb(value: str) -> tuple[int, int, int]:
     normalized = value.removeprefix("#")
     return tuple(int(normalized[index : index + 2], 16) for index in (0, 2, 4))
@@ -386,3 +578,7 @@ def _hsl_to_hex(hue: float, saturation: float, lightness: float) -> str:
     green_value = round((green + offset) * 255)
     blue_value = round((blue + offset) * 255)
     return f"#{red_value:02X}{green_value:02X}{blue_value:02X}"
+
+
+def _file_sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()

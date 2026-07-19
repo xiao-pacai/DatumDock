@@ -13,6 +13,7 @@ from datumdock.ui.annotation_workspace import AnnotationWorkspace
 from datumdock.ui.components import ToastOverlay
 from datumdock.ui.managed_gateway import ManagedDatasetGateway
 from datumdock.ui.managed_governance_pages import ManagedGovernancePage
+from datumdock.ui.managed_label_pages import ManagedLabelInspectionPage, ManagedLabelPage
 from datumdock.ui.managed_media_dialogs import (
     ManagedImageImportDialog,
     ManagedRenameDialog,
@@ -20,7 +21,13 @@ from datumdock.ui.managed_media_dialogs import (
 )
 from datumdock.ui.prototype_dialogs import DialogId, DialogRegistry
 from datumdock.ui.prototype_gateway import PreviewGateway, UnavailableGateway
-from datumdock.ui.prototype_models import CommandStatus, UiCommand, UiCommandResult, UiGateway
+from datumdock.ui.prototype_models import (
+    CommandStatus,
+    UiCommand,
+    UiCommandResult,
+    UiGateway,
+    WorkspaceNavigationTarget,
+)
 from datumdock.ui.prototype_pages import (
     BasePage,
     ComponentGalleryPage,
@@ -207,6 +214,29 @@ class ApplicationShell(QMainWindow):
         for route, kind in page_specs:
             if (
                 not self.gateway.preview_mode
+                and kind == "labels"
+                and isinstance(self.gateway, ManagedDatasetGateway)
+            ):
+                page = ManagedLabelPage(
+                    self.locale_service,
+                    self.gateway,
+                    snapshot.dataset.id,
+                )
+                page.route_requested.connect(self.navigate)
+            elif (
+                not self.gateway.preview_mode
+                and kind == "inspection"
+                and isinstance(self.gateway, ManagedDatasetGateway)
+            ):
+                page = ManagedLabelInspectionPage(
+                    self.locale_service,
+                    self.gateway,
+                    snapshot.dataset.id,
+                )
+                page.route_requested.connect(self.navigate)
+                page.workspace_target_requested.connect(self.navigate_workspace_target)
+            elif (
+                not self.gateway.preview_mode
                 and kind in {"similarity", "trash"}
                 and isinstance(self.gateway, ManagedDatasetGateway)
             ):
@@ -228,6 +258,18 @@ class ApplicationShell(QMainWindow):
             self.navigation.register(route, page)
             self._connect_page(page)
 
+    def navigate_workspace_target(self, target: WorkspaceNavigationTarget) -> None:
+        """使用结构化稳定 ID 打开跨页标签检查目标。"""
+
+        current = self.navigation.pages.get(RouteId.ANNOTATION_WORKSPACE)
+        if isinstance(current, AnnotationWorkspace) and not current.prepare_to_leave():
+            return
+        self._register_context_pages(target.dataset_id)
+        workspace = self.navigation.pages.get(RouteId.ANNOTATION_WORKSPACE)
+        if isinstance(workspace, AnnotationWorkspace):
+            workspace.open_navigation_target(target)
+            self.navigation.navigate(RouteId.ANNOTATION_WORKSPACE)
+
     def _connect_page(self, page: QWidget) -> None:
         """把页面意图集中转发到导航、弹窗和状态提示。"""
 
@@ -243,6 +285,17 @@ class ApplicationShell(QMainWindow):
 
         route_text, _, context = route_spec.partition(":")
         route = RouteId(route_text)
+        current_workspace = self.navigation.pages.get(RouteId.ANNOTATION_WORKSPACE)
+        if (
+            self.navigation.current == RouteId.ANNOTATION_WORKSPACE
+            and isinstance(current_workspace, AnnotationWorkspace)
+            and (
+                route != RouteId.ANNOTATION_WORKSPACE
+                or (context and context != current_workspace.snapshot.dataset.id)
+            )
+            and not current_workspace.prepare_to_leave()
+        ):
+            return
         if route == RouteId.ANNOTATION_WORKSPACE:
             snapshot = self.gateway.workspace_snapshot(context or None)
             if snapshot is None:
@@ -487,6 +540,10 @@ class ApplicationShell(QMainWindow):
     def closeEvent(self, event: QCloseEvent) -> None:
         """关闭时取消后台任务并等待当前单样本原子步骤结束。"""
 
+        workspace = self.navigation.pages.get(RouteId.ANNOTATION_WORKSPACE)
+        if isinstance(workspace, AnnotationWorkspace) and not workspace.prepare_to_leave():
+            event.ignore()
+            return
         self.locale_service.unsubscribe(self.retranslate_ui)
         self.startup_timer.stop()
         self.initial_error_timer.stop()

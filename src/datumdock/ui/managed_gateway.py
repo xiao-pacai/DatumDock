@@ -7,6 +7,7 @@ from pathlib import Path
 from uuid import UUID
 
 from datumdock.domain.models import (
+    AnnotationState,
     AppSettings,
     LabelStatus,
     NamingPolicy,
@@ -14,6 +15,13 @@ from datumdock.domain.models import (
     SampleSort,
     SimilarityStatus,
     utc_now,
+)
+from datumdock.services.annotations import (
+    AnnotationAutosaveService,
+    AnnotationLoadResult,
+    AnnotationSaveRequest,
+    AnnotationService,
+    AutosaveState,
 )
 from datumdock.services.dataset_library import (
     DatasetLibraryService,
@@ -37,6 +45,13 @@ from datumdock.services.image_pool import (
     ThumbnailService,
 )
 from datumdock.services.library_repository import resolve_data_root
+from datumdock.services.managed_labels import (
+    LabelChangePreview,
+    LabelInspectionService,
+    LabelSetService,
+    ManagedLabelError,
+    ManagedLabelMigrationService,
+)
 from datumdock.services.sample_governance import (
     RenamePlan,
     SampleGovernanceError,
@@ -78,6 +93,7 @@ class ManagedDatasetGateway:
         self.settings = self.settings_repository.load()
         self.tasks = BackgroundTaskService()
         self._preflights: dict[str, ImageImportPreflight] = {}
+        self._annotation_autosaves: dict[str, AnnotationAutosaveService] = {}
 
     @classmethod
     def from_default_root(cls) -> ManagedDatasetGateway:
@@ -104,6 +120,13 @@ class ManagedDatasetGateway:
             return None
         available = tuple(self._card(item) for item in healthy)
         bundle = record.bundle
+        try:
+            usage = DatasetSampleRepository(
+                self.service.dataset_repository.paths(bundle.dataset.id),
+                bundle.dataset.id,
+            ).label_usage_counts()
+        except SampleRepositoryError:
+            usage = {}
         labels = tuple(
             LabelViewData(
                 id=label.id,
@@ -113,7 +136,7 @@ class ManagedDatasetGateway:
                 description=label.description,
                 synonyms=tuple(label.synonyms),
                 color=label.color,
-                usage_count=0,
+                usage_count=usage.get(label.id, (0, 0))[0],
                 archived=label.status == LabelStatus.ARCHIVED,
             )
             for label in bundle.label_set.labels
@@ -135,6 +158,7 @@ class ManagedDatasetGateway:
         limit: int = 200,
         search: str = "",
         review_status: ReviewStatus | None = None,
+        annotation_state: AnnotationState | None = None,
         label_id: str | None = None,
         sort: SampleSort = SampleSort.FILENAME_ASC,
     ) -> SamplePage:
@@ -143,14 +167,135 @@ class ManagedDatasetGateway:
         _bundle, _paths, repository = self._media(dataset_id)
         return repository.query(
             SampleQuery(
-                dataset_id,
-                offset,
-                limit,
-                search,
-                review_status,
-                label_id,
-                sort,
+                dataset_id=dataset_id,
+                offset=offset,
+                limit=limit,
+                search=search,
+                review_status=review_status,
+                label_id=label_id,
+                sort=sort,
+                annotation_state=annotation_state,
             )
+        )
+
+    def list_labels(self, dataset_id: str, search: str = "", *, include_archived: bool = True):
+        """返回当前数据集的真实标签，不读取其他数据集内容。"""
+
+        return LabelSetService(self.service).list_labels(
+            dataset_id,
+            search=search,
+            include_archived=include_archived,
+        )
+
+    def get_label_set(self, dataset_id: str):
+        """返回独立标签集快照，供编辑对话框执行修订检查。"""
+
+        return self.service.open_dataset(dataset_id).label_set.model_copy(deep=True)
+
+    def add_label(self, dataset_id: str, **values):
+        return LabelSetService(self.service).add_label(dataset_id, **values)
+
+    def update_label_display(self, dataset_id: str, label_id: str, **values):
+        return LabelSetService(self.service).update_display_fields(
+            dataset_id,
+            label_id,
+            **values,
+        )
+
+    def set_label_status(
+        self,
+        dataset_id: str,
+        label_id: str,
+        status: LabelStatus,
+        *,
+        expected_revision: int,
+    ):
+        return LabelSetService(self.service).set_status(
+            dataset_id,
+            label_id,
+            status,
+            expected_revision=expected_revision,
+        )
+
+    def label_usages(self, dataset_id: str):
+        """标签管理和检查页共享 SQLite 使用量。"""
+
+        return LabelInspectionService(self.service).usages(dataset_id)
+
+    def preview_label_change(
+        self,
+        dataset_id: str,
+        label_id: str,
+        *,
+        name: str | None = None,
+        class_id: int | None = None,
+    ) -> LabelChangePreview:
+        return LabelSetService(self.service).preview_change(
+            dataset_id,
+            label_id,
+            name=name,
+            class_id=class_id,
+        )
+
+    def apply_label_change(self, preview: LabelChangePreview):
+        """执行已确认训练映射迁移，并返回真实迁移摘要。"""
+
+        return ManagedLabelMigrationService(self.service).apply(preview)
+
+    def load_annotation(self, dataset_id: str, sample_id: str) -> AnnotationLoadResult:
+        """按需加载当前图片标注，损坏 JSON 由结果显式标记为只读。"""
+
+        service = AnnotationService(self.service, dataset_id)
+        service.recover_pending()
+        return service.load(sample_id)
+
+    def queue_annotation_save(self, request: AnnotationSaveRequest):
+        """把不可变文档快照排入数据集级串行自动保存队列。"""
+
+        autosave = self._annotation_autosaves.get(request.dataset_id)
+        if autosave is None:
+            autosave = AnnotationAutosaveService(
+                AnnotationService(self.service, request.dataset_id)
+            )
+            self._annotation_autosaves[request.dataset_id] = autosave
+        return autosave.submit(request)
+
+    def retry_annotation_save(self, dataset_id: str):
+        autosave = self._annotation_autosaves.get(dataset_id)
+        if autosave is None:
+            raise ManagedLabelError("没有可重试的标注保存")
+        return autosave.retry_latest()
+
+    def annotation_save_state(self, dataset_id: str) -> tuple[AutosaveState, str]:
+        autosave = self._annotation_autosaves.get(dataset_id)
+        return (autosave.state, autosave.error) if autosave else (AutosaveState.IDLE, "")
+
+    def wait_annotation_save(self, dataset_id: str):
+        autosave = self._annotation_autosaves.get(dataset_id)
+        return autosave.wait_latest() if autosave else None
+
+    def locate_sample(
+        self,
+        dataset_id: str,
+        sample_id: str,
+        *,
+        search: str = "",
+        review_status: ReviewStatus | None = None,
+        label_id: str | None = None,
+        sort: SampleSort = SampleSort.FILENAME_ASC,
+    ) -> int | None:
+        """返回样本在当前筛选中的位置，供标签检查跨页跳转。"""
+
+        _bundle, _paths, repository = self._media(dataset_id)
+        return repository.locate_sample(
+            sample_id,
+            SampleQuery(
+                dataset_id=dataset_id,
+                search=search,
+                review_status=review_status,
+                label_id=label_id,
+                sort=sort,
+            ),
         )
 
     def load_image(self, dataset_id: str, sample_id: str) -> ImageAsset:
@@ -281,6 +426,9 @@ class ManagedDatasetGateway:
     def close(self) -> None:
         """关闭应用时等待当前单样本原子步骤安全结束。"""
 
+        for autosave in self._annotation_autosaves.values():
+            autosave.close()
+        self._annotation_autosaves.clear()
         self.tasks.shutdown(wait=True)
 
     def dispatch(self, command: UiCommand) -> UiCommandResult:
@@ -339,6 +487,51 @@ class ManagedDatasetGateway:
                 self.settings_repository.save(settings)
                 self.settings = settings
                 return UiCommandResult(CommandStatus.APPLIED, "toast.settings_saved")
+            if command.action_id == "label.add":
+                dataset_id = str(command.payload.get("dataset_id", ""))
+                created = LabelSetService(self.service).add_label(
+                    dataset_id,
+                    class_id=command.payload.get("class_id"),
+                    name=str(command.payload.get("name", "")),
+                    alias=str(command.payload.get("alias", "")),
+                    description=str(command.payload.get("description", "")),
+                    synonyms=tuple(command.payload.get("synonyms", ())),
+                    color=str(command.payload.get("color") or "") or None,
+                )
+                return UiCommandResult(
+                    CommandStatus.APPLIED,
+                    "toast.label_saved",
+                    affected_id=created.labels[-1].id,
+                )
+            if command.action_id == "label.update_display":
+                dataset_id = str(command.payload.get("dataset_id", ""))
+                updated = LabelSetService(self.service).update_display_fields(
+                    dataset_id,
+                    str(command.payload.get("label_id", "")),
+                    alias=str(command.payload.get("alias", "")),
+                    description=str(command.payload.get("description", "")),
+                    synonyms=tuple(command.payload.get("synonyms", ())),
+                    color=str(command.payload.get("color", "")),
+                    expected_revision=int(command.payload.get("expected_revision", -1)),
+                )
+                return UiCommandResult(
+                    CommandStatus.APPLIED,
+                    "toast.label_saved",
+                    affected_id=updated.id,
+                )
+            if command.action_id == "label.set_status":
+                dataset_id = str(command.payload.get("dataset_id", ""))
+                updated = LabelSetService(self.service).set_status(
+                    dataset_id,
+                    str(command.payload.get("label_id", "")),
+                    LabelStatus(str(command.payload.get("status", ""))),
+                    expected_revision=int(command.payload.get("expected_revision", -1)),
+                )
+                return UiCommandResult(
+                    CommandStatus.APPLIED,
+                    "toast.label_saved",
+                    affected_id=updated.id,
+                )
             if command.action_id in {"similarity.confirm", "similarity.ignore"}:
                 dataset_id = str(command.payload.get("dataset_id", ""))
                 group_id = str(command.payload.get("group_id", ""))
@@ -398,7 +591,13 @@ class ManagedDatasetGateway:
             return UiCommandResult(CommandStatus.INVALID, "toast.invalid_name")
         except (DatasetNotFoundError, DatasetUnavailableError):
             return UiCommandResult(CommandStatus.ERROR, "toast.dataset_unavailable")
-        except (AppSettingsError, ImagePoolError, SampleGovernanceError, SampleRepositoryError):
+        except (
+            AppSettingsError,
+            ImagePoolError,
+            ManagedLabelError,
+            SampleGovernanceError,
+            SampleRepositoryError,
+        ):
             logger.exception("受管图片或设置操作失败: %s", command.action_id)
             return UiCommandResult(CommandStatus.ERROR, "toast.library_operation_failed")
         except DatasetLibraryServiceError:

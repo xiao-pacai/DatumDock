@@ -132,6 +132,16 @@ class WorkspaceSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class WorkspaceNavigationTarget:
+    """跨页跳转使用稳定对象，避免继续扩展冒号拼接参数。"""
+
+    dataset_id: str
+    sample_id: str | None = None
+    focus_label_id: str | None = None
+    shape_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class UiCommand:
     """页面向后端边界发出的稳定操作意图。"""
 

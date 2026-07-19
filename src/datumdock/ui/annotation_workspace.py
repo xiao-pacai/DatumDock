@@ -2,8 +2,17 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QModelIndex, QObject, QRunnable, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap, QResizeEvent
+from PySide6.QtCore import QModelIndex, QObject, QRunnable, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import (
+    QColor,
+    QIcon,
+    QKeySequence,
+    QPainter,
+    QPen,
+    QPixmap,
+    QResizeEvent,
+    QShortcut,
+)
 from PySide6.QtWidgets import (
     QButtonGroup,
     QComboBox,
@@ -14,6 +23,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMenu,
+    QMessageBox,
     QPushButton,
     QSplitter,
     QStackedWidget,
@@ -22,9 +32,22 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from datumdock.domain.models import DatasetSample, ReviewStatus, SampleHealth, SampleSort
+from datumdock.domain.models import (
+    AnnotationDocument,
+    DatasetSample,
+    RectangleShape,
+    ReviewStatus,
+    SampleHealth,
+    SampleSort,
+)
 from datumdock.i18n.catalog import LocaleService, tr
 from datumdock.resources import resource_root
+from datumdock.services.annotations import (
+    AnnotationLoadResult,
+    AnnotationSaveRequest,
+    AutosaveState,
+    review_status_after_edit,
+)
 from datumdock.ui.components import (
     BrandLockup,
     FilterChip,
@@ -40,8 +63,10 @@ from datumdock.ui.icons import IconRegistry
 from datumdock.ui.managed_sample_model import ManagedSampleDelegate, ManagedSampleListModel
 from datumdock.ui.preview_canvas import CanvasTool, PreviewAnnotationCanvas
 from datumdock.ui.prototype_models import (
+    AnnotationItemViewData,
     ImageItemViewData,
     ImageStatus,
+    WorkspaceNavigationTarget,
     WorkspaceSnapshot,
 )
 from datumdock.ui.theme import THEME
@@ -66,7 +91,12 @@ class _ImageLoadJob(QRunnable):
     def run(self) -> None:
         try:
             asset = self.gateway.load_image(self.dataset_id, self.sample_id)
-            self.signals.completed.emit(self.generation, self.sample_id, asset)
+            annotation = self.gateway.load_annotation(self.dataset_id, self.sample_id)
+            self.signals.completed.emit(
+                self.generation,
+                self.sample_id,
+                (asset, annotation),
+            )
         except Exception:
             self.signals.failed.emit(self.generation, self.sample_id)
 
@@ -104,7 +134,18 @@ class AnnotationWorkspace(QWidget):
         self._image_generation = 0
         self._image_jobs: set[_ImageLoadJob] = set()
         self._managed_sample: DatasetSample | None = None
+        self._annotation_load: AnnotationLoadResult | None = None
+        self._annotation_document: AnnotationDocument | None = None
+        self._annotation_disk_sha256 = ""
+        self._save_future = None
+        self._reassign_shape_id: str | None = None
+        self._pending_navigation_target: WorkspaceNavigationTarget | None = None
         self._build_ui()
+        self.save_poll_timer = QTimer(self)
+        self.save_poll_timer.setInterval(80)
+        self.save_poll_timer.timeout.connect(self._poll_annotation_save)
+        self.save_shortcut = QShortcut(QKeySequence.StandardKey.Save, self)
+        self.save_shortcut.activated.connect(self._retry_save)
         self.retranslate_ui()
         if self.managed_mode:
             self._initialize_managed_browser()
@@ -133,6 +174,7 @@ class AnnotationWorkspace(QWidget):
         body_layout.setSpacing(8)
         self.canvas = PreviewAnnotationCanvas()
         self.canvas.shape_selected.connect(self._on_canvas_shape_selected)
+        self.canvas.shape_double_clicked.connect(self._request_shape_reassignment)
         self.canvas.document_changed.connect(self._on_canvas_changed)
         self.canvas.zoom_changed.connect(self._set_zoom)
         self.tool_rail = self._build_tool_rail()
@@ -289,7 +331,22 @@ class AnnotationWorkspace(QWidget):
         self.annotation_list = QListWidget()
         self.annotation_list.setAlternatingRowColors(True)
         self.annotation_list.currentItemChanged.connect(self._on_annotation_selected)
+        self.annotation_list.itemDoubleClicked.connect(self._on_annotation_double_clicked)
         layout.addWidget(self.annotation_list, 1)
+        self.label_combo = QComboBox()
+        self.label_combo.setEditable(True)
+        self.label_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.label_combo.setMaxVisibleItems(16)
+        self.label_combo.currentIndexChanged.connect(self._on_label_combo_changed)
+        layout.addWidget(self.label_combo)
+        action_row = QHBoxLayout()
+        self.review_combo = QComboBox()
+        self.review_combo.currentIndexChanged.connect(self._on_review_status_changed)
+        action_row.addWidget(self.review_combo, 1)
+        self.delete_annotation_button = GhostButton()
+        self.delete_annotation_button.clicked.connect(self.canvas.delete_selected)
+        action_row.addWidget(self.delete_annotation_button)
+        layout.addLayout(action_row)
         self.annotation_collapse.clicked.connect(
             lambda: self.annotation_list.setVisible(not self.annotation_list.isVisible())
         )
@@ -322,6 +379,9 @@ class AnnotationWorkspace(QWidget):
         filter_row.addWidget(self.list_toggle)
         filter_row.addWidget(self.grid_toggle)
         layout.addLayout(filter_row)
+        self.label_filter_combo = QComboBox()
+        self.label_filter_combo.currentIndexChanged.connect(self._on_image_filter_changed)
+        layout.addWidget(self.label_filter_combo)
         if self.managed_mode:
             self.image_list = QListView()
             self.image_list.setSpacing(4)
@@ -427,7 +487,17 @@ class AnnotationWorkspace(QWidget):
         current_status = self.status_combo.currentData()
         self.status_combo.clear()
         self.status_combo.addItem(tr(self.locale, "workspace.all_status"), None)
-        statuses = ReviewStatus if self.managed_mode else ImageStatus
+        statuses = (
+            (
+                ReviewStatus.UNREVIEWED,
+                ReviewStatus.PENDING_REVIEW,
+                ReviewStatus.COMPLETED,
+                ReviewStatus.COMPLETED_NEGATIVE,
+                ReviewStatus.ISSUE,
+            )
+            if self.managed_mode
+            else ImageStatus
+        )
         for status in statuses:
             prefix = "review" if self.managed_mode else "status"
             self.status_combo.addItem(tr(self.locale, f"{prefix}.{status.value}"), status)
@@ -450,6 +520,52 @@ class AnnotationWorkspace(QWidget):
                 self.sort_combo.setCurrentIndex(index)
                 break
         self.sort_combo.blockSignals(False)
+        current_label = self.label_combo.currentData()
+        self.label_combo.blockSignals(True)
+        self.label_combo.clear()
+        for label in self.snapshot.labels:
+            if not label.archived:
+                self.label_combo.addItem(f"{label.alias} · {label.name}", label.id)
+                self.label_combo.setItemData(
+                    self.label_combo.count() - 1,
+                    label.description,
+                    Qt.ItemDataRole.ToolTipRole,
+                )
+        for index in range(self.label_combo.count()):
+            if self.label_combo.itemData(index) == current_label:
+                self.label_combo.setCurrentIndex(index)
+                break
+        self.label_combo.setPlaceholderText(tr(self.locale, "canvas.label"))
+        self.label_combo.blockSignals(False)
+        self.canvas.set_current_label(self.label_combo.currentData())
+        current_filter = self.label_filter_combo.currentData()
+        self.label_filter_combo.blockSignals(True)
+        self.label_filter_combo.clear()
+        self.label_filter_combo.addItem(tr(self.locale, "label.filter_all"), None)
+        for label in self.snapshot.labels:
+            self.label_filter_combo.addItem(f"{label.alias} · {label.name}", label.id)
+        for index in range(self.label_filter_combo.count()):
+            if self.label_filter_combo.itemData(index) == current_filter:
+                self.label_filter_combo.setCurrentIndex(index)
+                break
+        self.label_filter_combo.blockSignals(False)
+        current_review = self.review_combo.currentData()
+        self.review_combo.blockSignals(True)
+        self.review_combo.clear()
+        for status in (
+            ReviewStatus.UNREVIEWED,
+            ReviewStatus.PENDING_REVIEW,
+            ReviewStatus.COMPLETED,
+            ReviewStatus.COMPLETED_NEGATIVE,
+            ReviewStatus.ISSUE,
+        ):
+            self.review_combo.addItem(tr(self.locale, f"review.{status.value}"), status)
+        for index in range(self.review_combo.count()):
+            if self.review_combo.itemData(index) == current_review:
+                self.review_combo.setCurrentIndex(index)
+                break
+        self.review_combo.blockSignals(False)
+        self.delete_annotation_button.setText(tr(self.locale, "annotation.delete_selected"))
         for name, button in self.tool_buttons.items():
             button.setToolTip(tr(self.locale, f"tool.{name}"))
             button.setAccessibleName(button.toolTip())
@@ -488,7 +604,7 @@ class AnnotationWorkspace(QWidget):
         self._update_status_bar()
 
     def _initialize_managed_browser(self) -> None:
-        """普通模式装配分页模型，并禁用尚未接入的标注假操作。"""
+        """普通模式装配分页模型，并启用真实矩形标注工具。"""
 
         self.sample_model = ManagedSampleListModel(
             self.gateway,
@@ -503,10 +619,15 @@ class AnnotationWorkspace(QWidget):
         self.sample_model.page_changed.connect(self._on_page_changed)
         self.previous_page_button.clicked.connect(self._previous_page)
         self.next_page_button.clicked.connect(self._next_page)
-        for name in ("select", "rectangle", "ai", "undo", "redo"):
-            self.tool_buttons[name].setEnabled(False)
-        self.tool_buttons["pan"].setChecked(True)
-        self.canvas.set_tool(CanvasTool.PAN)
+        has_active_labels = any(not label.archived for label in self.snapshot.labels)
+        for name in ("select", "undo", "redo"):
+            self.tool_buttons[name].setEnabled(True)
+        self.tool_buttons["rectangle"].setEnabled(has_active_labels)
+        self.tool_buttons["ai"].setEnabled(False)
+        self.tool_buttons["select"].setChecked(True)
+        self.canvas.set_tool(CanvasTool.SELECT)
+        if not has_active_labels:
+            self.tool_buttons["rectangle"].setToolTip(tr(self.locale, "canvas.no_label"))
         self.refresh_managed_samples(select_first=True)
 
     def refresh_managed_samples(
@@ -532,6 +653,17 @@ class AnnotationWorkspace(QWidget):
             self.current_image_id = None
             self.canvas.clear_preview()
             self._update_status_bar()
+
+    def open_navigation_target(self, target: WorkspaceNavigationTarget) -> None:
+        """定位标签检查目标，加载完成后再高亮具体矩形。"""
+
+        if not self.managed_mode or target.dataset_id != self.snapshot.dataset.id:
+            return
+        self._pending_navigation_target = target
+        if target.sample_id and self.sample_model is not None:
+            row = self.sample_model.load_page_for_sample(target.sample_id)
+            if row >= 0:
+                self.image_list.setCurrentIndex(self.sample_model.index(row))
 
     def _on_page_changed(self, current: int, total: int, count: int) -> None:
         self.page_label.setText(
@@ -564,6 +696,7 @@ class AnnotationWorkspace(QWidget):
             reset_page=True,
             search=self.image_search.text(),
             review_status=self.status_combo.currentData(),
+            label_id=self.label_filter_combo.currentData(),
             sort=self.sort_combo.currentData() or SampleSort.FILENAME_ASC,
         )
         self.image_stack.setCurrentIndex(0 if self.sample_model.rowCount() else 1)
@@ -577,11 +710,18 @@ class AnnotationWorkspace(QWidget):
         current: QModelIndex,
         previous: QModelIndex,
     ) -> None:
-        del previous
         if self.sample_model is None or not current.isValid():
             return
         sample = self.sample_model.sample_at(current.row())
         if sample is None:
+            return
+        if (
+            previous.isValid()
+            and self.current_image_id is not None
+            and sample.id != self.current_image_id
+            and not self.prepare_to_leave()
+        ):
+            self.image_list.setCurrentIndex(previous)
             return
         self._managed_sample = sample
         self.current_image_id = sample.id
@@ -608,31 +748,85 @@ class AnnotationWorkspace(QWidget):
 
         QThreadPool.globalInstance().start(job)
 
-    def _managed_image_ready(self, generation: int, sample_id: str, asset) -> None:
+    def _managed_image_ready(self, generation: int, sample_id: str, payload) -> None:
         if generation != self._image_generation or sample_id != self.current_image_id:
             return
         sample = self._managed_sample
         if sample is None:
             return
+        asset, annotation_load = payload
+        self._annotation_load = annotation_load
+        self._annotation_document = (
+            annotation_load.document.model_copy(deep=True)
+            if annotation_load.document is not None
+            else None
+        )
+        self._annotation_disk_sha256 = annotation_load.disk_sha256
         view = self._managed_view_data(sample)
-        if not self.canvas.load_managed_image(view, asset.data):
+        annotations = (
+            tuple(self._annotation_view(item) for item in self._annotation_document.rectangles)
+            if self._annotation_document is not None
+            else ()
+        )
+        if not self.canvas.load_managed_image(
+            view,
+            asset.data,
+            self.snapshot.labels,
+            annotations,
+            editable=annotation_load.editable,
+        ):
             self.message_requested.emit("toast.image_load_failed")
+            return
+        self._set_review_combo(
+            self._annotation_document.review_status
+            if self._annotation_document is not None
+            else sample.review_status
+        )
+        self._rebuild_annotations()
+        self._update_status_bar()
+        if annotation_load.diagnostics:
+            self.message_requested.emit("toast.annotation_warning")
+        target = self._pending_navigation_target
+        if target and target.sample_id == sample_id:
+            if target.shape_id:
+                self.canvas.select_shape(target.shape_id)
+            elif target.focus_label_id:
+                matching = next(
+                    (
+                        item.id
+                        for item in self.canvas.annotations
+                        if item.label_id == target.focus_label_id
+                    ),
+                    None,
+                )
+                if matching:
+                    self.canvas.select_shape(matching)
+            self._pending_navigation_target = None
 
     def _managed_image_failed(self, generation: int, sample_id: str) -> None:
         if generation != self._image_generation or sample_id != self.current_image_id:
             return
         self.canvas.clear_preview()
+        self._annotation_load = None
+        self._annotation_document = None
         self.message_requested.emit("toast.image_load_failed")
 
     @staticmethod
     def _managed_view_data(sample: DatasetSample) -> ImageItemViewData:
         status = {
             ReviewStatus.UNREVIEWED: ImageStatus.UNLABELED,
+            ReviewStatus.PENDING_REVIEW: ImageStatus.PENDING,
+            ReviewStatus.COMPLETED: ImageStatus.COMPLETED,
+            ReviewStatus.COMPLETED_NEGATIVE: ImageStatus.NEGATIVE,
             ReviewStatus.AUTO_PENDING_REVIEW: ImageStatus.PENDING,
             ReviewStatus.REVIEWED: ImageStatus.COMPLETED,
             ReviewStatus.ISSUE: ImageStatus.ISSUE,
         }[sample.review_status]
-        if sample.health != SampleHealth.READY:
+        if sample.health != SampleHealth.READY or sample.annotation_state.value in {
+            "corrupt",
+            "unknown_label",
+            "recovery_required",
+        }:
             status = ImageStatus.ERROR
         return ImageItemViewData(
             sample.id,
@@ -641,7 +835,19 @@ class AnnotationWorkspace(QWidget):
             sample.width,
             sample.height,
             0,
-            0,
+            sample.annotation_count,
+        )
+
+    @staticmethod
+    def _annotation_view(rectangle: RectangleShape) -> AnnotationItemViewData:
+        return AnnotationItemViewData(
+            rectangle.id,
+            rectangle.label_id,
+            rectangle.x1,
+            rectangle.y1,
+            rectangle.x2,
+            rectangle.y2,
+            rectangle.confidence,
         )
 
     def resizeEvent(self, event: QResizeEvent) -> None:
@@ -681,14 +887,14 @@ class AnnotationWorkspace(QWidget):
         )
 
     def _rebuild_annotations(self) -> None:
-        if self.managed_mode:
-            self.annotation_list.clear()
-            return
         current = self._current_image()
-        annotations = (
-            () if current is None else self.snapshot.annotations_by_image.get(current.id, ())
-        )
-        if self.canvas.annotations and current is not None:
+        if self.managed_mode:
+            annotations = tuple(self.canvas.annotations) if current is not None else ()
+        else:
+            annotations = (
+                () if current is None else self.snapshot.annotations_by_image.get(current.id, ())
+            )
+        if not self.managed_mode and self.canvas.annotations and current is not None:
             annotations = tuple(self.canvas.annotations)
         self.annotation_list.blockSignals(True)
         self.annotation_list.clear()
@@ -708,7 +914,10 @@ class AnnotationWorkspace(QWidget):
             color.setStyleSheet(f"background:{label.color}; border-radius:6px;")
             copy = QVBoxLayout()
             copy.setSpacing(0)
-            alias = QLabel(label.alias)
+            alias_text = label.alias + (
+                f" · {tr(self.locale, 'label.archived_hint')}" if label.archived else ""
+            )
+            alias = QLabel(alias_text)
             alias.setStyleSheet("font-weight:650;")
             name = QLabel(label.name)
             name.setObjectName("mutedText")
@@ -839,6 +1048,9 @@ class AnnotationWorkspace(QWidget):
         self.selected_shape_id = shape_id
         self.canvas.select_shape(shape_id)
 
+    def _on_annotation_double_clicked(self, item: QListWidgetItem) -> None:
+        self._request_shape_reassignment(str(item.data(Qt.ItemDataRole.UserRole)))
+
     def _on_canvas_shape_selected(self, shape_id: str) -> None:
         self.selected_shape_id = shape_id
         for index in range(self.annotation_list.count()):
@@ -851,7 +1063,217 @@ class AnnotationWorkspace(QWidget):
 
     def _on_canvas_changed(self) -> None:
         self._rebuild_annotations()
-        self.message_requested.emit(tr(self.locale, "workspace.saved"))
+        if not self.managed_mode or self._annotation_document is None:
+            self.message_requested.emit("workspace.saved")
+            return
+        previous = self._annotation_document
+        old_rectangles = {rectangle.id: rectangle for rectangle in previous.rectangles}
+        rectangles = [
+            RectangleShape(
+                id=item.id,
+                label_id=item.label_id,
+                x1=item.x1,
+                y1=item.y1,
+                x2=item.x2,
+                y2=item.y2,
+                source_model_id=(
+                    old_rectangles[item.id].source_model_id if item.id in old_rectangles else None
+                ),
+                confidence=item.confidence,
+                compatibility_payload=(
+                    old_rectangles[item.id].compatibility_payload
+                    if item.id in old_rectangles
+                    else {}
+                ),
+            )
+            for item in self.canvas.annotations
+        ]
+        old_ids = set(old_rectangles)
+        new_ids = {rectangle.id for rectangle in rectangles}
+        shape_order = [
+            identifier
+            for identifier in previous.shape_order
+            if identifier not in old_ids or identifier in new_ids
+        ]
+        shape_order.extend(
+            rectangle.id for rectangle in rectangles if rectangle.id not in shape_order
+        )
+        updated = previous.model_copy(
+            deep=True,
+            update={
+                "rectangles": rectangles,
+                "shape_order": shape_order,
+                "review_status": review_status_after_edit(previous.review_status),
+                "document_version": previous.document_version + 1,
+            },
+        )
+        self._annotation_document = updated
+        self._set_review_combo(updated.review_status)
+        self._queue_annotation_save(updated)
+
+    def _queue_annotation_save(self, document: AnnotationDocument) -> None:
+        """通过 Gateway 排入不可变快照，页面不直接执行磁盘 I/O。"""
+
+        if not self.managed_mode or self.current_image_id is None:
+            return
+        request = AnnotationSaveRequest(
+            self.snapshot.dataset.id,
+            self.current_image_id,
+            document.document_version,
+            self._annotation_disk_sha256,
+            document.model_copy(deep=True),
+        )
+        self._save_future = self.gateway.queue_annotation_save(request)
+        self.save_label.setText(tr(self.locale, "canvas.saving"))
+        self.save_poll_timer.start()
+
+    def _poll_annotation_save(self) -> None:
+        future = self._save_future
+        if future is None or not future.done():
+            state, _error = self.gateway.annotation_save_state(self.snapshot.dataset.id)
+            if state == AutosaveState.SAVING:
+                self.save_label.setText(tr(self.locale, "canvas.saving"))
+            return
+        self.save_poll_timer.stop()
+        try:
+            result = future.result()
+        except Exception:
+            self.save_label.setText(tr(self.locale, "canvas.save_failed"))
+            self.save_label.setStyleSheet(f"color:{THEME.tokens.danger}; font-weight:600;")
+            self.message_requested.emit("canvas.save_failed")
+            return
+        self._annotation_disk_sha256 = result.json_sha256
+        self.save_label.setText("●  " + tr(self.locale, "canvas.autosaved"))
+        self.save_label.setStyleSheet(f"color:{THEME.tokens.success}; font-weight:600;")
+        if self.sample_model is not None and self.current_image_id:
+            sample = self.gateway.get_sample(
+                self.snapshot.dataset.id,
+                self.current_image_id,
+            )
+            if sample is not None:
+                self._managed_sample = sample
+                self.sample_model.replace_sample(sample)
+        self._update_status_bar()
+
+    def _retry_save(self) -> None:
+        if not self.managed_mode:
+            return
+        state, _error = self.gateway.annotation_save_state(self.snapshot.dataset.id)
+        if state != AutosaveState.FAILED:
+            return
+        self._save_future = self.gateway.retry_annotation_save(self.snapshot.dataset.id)
+        self.save_label.setText(tr(self.locale, "canvas.saving"))
+        self.save_poll_timer.start()
+
+    def _on_label_combo_changed(self, index: int) -> None:
+        label_id = self.label_combo.itemData(index) if index >= 0 else None
+        self.canvas.set_current_label(label_id)
+        if self._reassign_shape_id and label_id:
+            self.canvas.select_shape(self._reassign_shape_id)
+            self.canvas.change_selected_label(label_id)
+            self._reassign_shape_id = None
+
+    def _request_shape_reassignment(self, shape_id: str) -> None:
+        if not self.managed_mode:
+            return
+        self._reassign_shape_id = shape_id
+        self.canvas.select_shape(shape_id)
+        current = next(
+            (item for item in self.canvas.annotations if item.id == shape_id),
+            None,
+        )
+        if current is not None:
+            for index in range(self.label_combo.count()):
+                if self.label_combo.itemData(index) == current.label_id:
+                    self.label_combo.setCurrentIndex(index)
+                    break
+        self.label_combo.showPopup()
+
+    def _on_review_status_changed(self, index: int) -> None:
+        if (
+            not self.managed_mode
+            or self._annotation_document is None
+            or index < 0
+            or self.review_combo.signalsBlocked()
+        ):
+            return
+        try:
+            status = ReviewStatus(str(self.review_combo.itemData(index)))
+        except ValueError:
+            return
+        if status == self._annotation_document.review_status:
+            return
+        count = len(self._annotation_document.rectangles)
+        if status == ReviewStatus.COMPLETED and count == 0:
+            self.message_requested.emit("toast.review_requires_box")
+            self._set_review_combo(self._annotation_document.review_status)
+            return
+        if status == ReviewStatus.COMPLETED_NEGATIVE and count != 0:
+            self.message_requested.emit("toast.negative_requires_empty")
+            self._set_review_combo(self._annotation_document.review_status)
+            return
+        updated = self._annotation_document.model_copy(
+            deep=True,
+            update={
+                "review_status": status,
+                "document_version": self._annotation_document.document_version + 1,
+            },
+        )
+        self._annotation_document = updated
+        self._queue_annotation_save(updated)
+
+    def _set_review_combo(self, status: ReviewStatus) -> None:
+        normalized = {
+            ReviewStatus.AUTO_PENDING_REVIEW: ReviewStatus.PENDING_REVIEW,
+            ReviewStatus.REVIEWED: ReviewStatus.COMPLETED,
+        }.get(status, status)
+        self.review_combo.blockSignals(True)
+        for index in range(self.review_combo.count()):
+            if self.review_combo.itemData(index) == normalized:
+                self.review_combo.setCurrentIndex(index)
+                break
+        self.review_combo.blockSignals(False)
+
+    def prepare_to_leave(self) -> bool:
+        """离开当前图片前等待保存；失败时由用户明确重试、放弃或取消。"""
+
+        if not self.managed_mode:
+            return True
+        state, _error = self.gateway.annotation_save_state(self.snapshot.dataset.id)
+        if state == AutosaveState.SAVING:
+            try:
+                self.gateway.wait_annotation_save(self.snapshot.dataset.id)
+            except Exception:
+                state = AutosaveState.FAILED
+            else:
+                state = AutosaveState.SAVED
+        if state != AutosaveState.FAILED:
+            return True
+        box = QMessageBox(self)
+        box.setWindowTitle(tr(self.locale, "canvas.leave_failed_title"))
+        box.setText(tr(self.locale, "canvas.leave_failed_body"))
+        retry = box.addButton(tr(self.locale, "canvas.retry"), QMessageBox.ButtonRole.AcceptRole)
+        discard = box.addButton(
+            tr(self.locale, "canvas.discard"),
+            QMessageBox.ButtonRole.DestructiveRole,
+        )
+        cancel = box.addButton(tr(self.locale, "action.cancel"), QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is retry:
+            try:
+                self.gateway.retry_annotation_save(self.snapshot.dataset.id).result()
+                return True
+            except Exception:
+                self.message_requested.emit("canvas.save_failed")
+                return False
+        if clicked is discard:
+            self._annotation_document = None
+            self._annotation_load = None
+            return True
+        if clicked is cancel:
+            return False
+        return False
 
     def _set_zoom(self, zoom: int) -> None:
         self.zoom_label.setText(tr(self.locale, "workspace.zoom").format(zoom=zoom))
@@ -887,8 +1309,15 @@ class AnnotationWorkspace(QWidget):
             tr(self.locale, "workspace.resolution").format(width=image.width, height=image.height)
         )
         self.zoom_label.setText(tr(self.locale, "workspace.zoom").format(zoom=100))
-        self.save_label.setText(
-            tr(self.locale, "workspace.read_only_step3")
-            if self.managed_mode
-            else "●  " + tr(self.locale, "workspace.saved")
-        )
+        if self.managed_mode:
+            state, _error = self.gateway.annotation_save_state(self.snapshot.dataset.id)
+            state_key = {
+                AutosaveState.IDLE: "canvas.ready",
+                AutosaveState.SAVING: "canvas.saving",
+                AutosaveState.SAVED: "canvas.autosaved",
+                AutosaveState.FAILED: "canvas.save_failed",
+                AutosaveState.RECOVERING: "canvas.recovering",
+            }[state]
+            self.save_label.setText("●  " + tr(self.locale, state_key))
+        else:
+            self.save_label.setText("●  " + tr(self.locale, "workspace.saved"))

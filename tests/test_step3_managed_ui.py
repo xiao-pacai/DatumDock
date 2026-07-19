@@ -101,7 +101,7 @@ def test_managed_workspace_uses_page_model_and_loads_real_canvas(qtbot, tmp_path
     assert workspace.current_image_id == imported_id
     qtbot.waitUntil(lambda: not workspace.canvas.managed_pixmap.isNull(), timeout=5000)
     assert workspace.canvas.managed_pixmap.size().width() == 96
-    assert workspace.canvas.managed_read_only is True
+    assert workspace.canvas.managed_read_only is False
     assert workspace.tool_buttons["rectangle"].isEnabled() is False
 
     workspace.grid_toggle.click()

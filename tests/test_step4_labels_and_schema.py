@@ -10,13 +10,21 @@ from pathlib import Path
 import pytest
 
 from datumdock.domain.models import (
+    AnnotationDocument,
     AnnotationState,
     DatasetSample,
     LabelStatus,
+    RectangleShape,
     ReviewStatus,
 )
+from datumdock.services.annotations import AnnotationSaveRequest, AnnotationService
 from datumdock.services.dataset_library import DatasetLibraryService
-from datumdock.services.managed_labels import LabelSetService, ManagedLabelError
+from datumdock.services.labelme import LabelMeError
+from datumdock.services.managed_labels import (
+    LabelSetService,
+    ManagedLabelError,
+    ManagedLabelMigrationService,
+)
 from datumdock.services.sample_repository import DatasetSampleRepository
 
 
@@ -232,3 +240,103 @@ def test_label_revision_blocks_stale_update(tmp_path: Path) -> None:
             color=current.labels[0].color,
             expected_revision=current.revision,
         )
+
+
+def _save_labeled_sample(
+    library: DatasetLibraryService,
+    dataset_id: str,
+    label_id: str,
+    number: int,
+) -> tuple[DatasetSample, Path]:
+    sample = _sample(dataset_id, number)
+    paths = library.dataset_repository.paths(dataset_id)
+    DatasetSampleRepository(paths, dataset_id).add_sample(sample)
+    document = AnnotationDocument(
+        sample_id=sample.id,
+        image_filename=sample.filename,
+        image_width=sample.width,
+        image_height=sample.height,
+        rectangles=[RectangleShape(label_id=label_id, x1=2, y1=2, x2=30, y2=20)],
+        review_status=ReviewStatus.PENDING_REVIEW,
+    )
+    AnnotationService(library, dataset_id).save(
+        AnnotationSaveRequest(dataset_id, sample.id, 1, "", document)
+    )
+    return sample, paths.annotations / f"{Path(sample.filename).stem}.json"
+
+
+def test_training_name_migration_updates_json_but_class_id_change_does_not(
+    tmp_path: Path,
+) -> None:
+    """训练名迁移重写标准 label，类别 ID 修改只更新标签集。"""
+
+    library = DatasetLibraryService(tmp_path / "library")
+    dataset = library.create_dataset("训练映射").dataset
+    labels = LabelSetService(library)
+    current = labels.add_label(
+        dataset.id,
+        class_id=0,
+        name="old_part",
+        alias="零件",
+    )
+    label = current.labels[0]
+    sample, path = _save_labeled_sample(library, dataset.id, label.id, 1)
+
+    preview = labels.preview_change(dataset.id, label.id, name="renamed_part")
+    result = ManagedLabelMigrationService(library).apply(preview)
+
+    payload = path.read_text(encoding="utf-8")
+    assert result.changed_json_count == 1
+    assert '"label": "renamed_part"' in payload
+    assert label.id in payload
+    reloaded = AnnotationService(library, dataset.id).load(sample.id)
+    assert reloaded.document is not None
+    assert reloaded.document.rectangles[0].label_id == label.id
+
+    before_class_change = _hash(path)
+    class_preview = labels.preview_change(dataset.id, label.id, class_id=7)
+    class_result = ManagedLabelMigrationService(library).apply(class_preview)
+    assert class_result.changed_json_count == 0
+    assert _hash(path) == before_class_change
+    assert library.open_dataset(dataset.id).label_set.labels[0].class_id == 7
+
+
+def test_training_name_migration_failure_rolls_back_all_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """批量迁移中途失败时，已经替换的 JSON 与 SQLite 摘要全部恢复。"""
+
+    library = DatasetLibraryService(tmp_path / "library")
+    dataset = library.create_dataset("迁移回滚").dataset
+    labels = LabelSetService(library)
+    current = labels.add_label(
+        dataset.id,
+        class_id=0,
+        name="part",
+        alias="零件",
+    )
+    label = current.labels[0]
+    first, first_path = _save_labeled_sample(library, dataset.id, label.id, 1)
+    second, second_path = _save_labeled_sample(library, dataset.id, label.id, 2)
+    before = {first.id: _hash(first_path), second.id: _hash(second_path)}
+    migration = ManagedLabelMigrationService(library)
+    original_save = migration.labelme.save
+    calls = 0
+
+    def fail_second(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise LabelMeError("模拟第二个 JSON 写入失败")
+        return original_save(*args, **kwargs)
+
+    monkeypatch.setattr(migration.labelme, "save", fail_second)
+    preview = labels.preview_change(dataset.id, label.id, name="renamed")
+
+    with pytest.raises(ManagedLabelError, match="迁移失败"):
+        migration.apply(preview)
+
+    assert _hash(first_path) == before[first.id]
+    assert _hash(second_path) == before[second.id]
+    assert library.open_dataset(dataset.id).label_set.labels[0].name == "part"

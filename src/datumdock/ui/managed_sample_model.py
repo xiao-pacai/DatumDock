@@ -48,6 +48,8 @@ class ManagedSampleListModel(QAbstractListModel):
     StatusRole = Qt.ItemDataRole.UserRole + 3
     HealthRole = Qt.ItemDataRole.UserRole + 4
     SizeRole = Qt.ItemDataRole.UserRole + 5
+    AnnotationCountRole = Qt.ItemDataRole.UserRole + 6
+    AnnotationStateRole = Qt.ItemDataRole.UserRole + 7
     PAGE_SIZE = 200
     THUMBNAIL_CACHE_LIMIT = 256
 
@@ -69,6 +71,7 @@ class ManagedSampleListModel(QAbstractListModel):
         self.offset = 0
         self.search = ""
         self.review_status: ReviewStatus | None = None
+        self.label_id: str | None = None
         self.sort = SampleSort.FILENAME_ASC
         self._generation = 0
         self._thumbnail_cache: OrderedDict[str, QPixmap] = OrderedDict()
@@ -103,6 +106,10 @@ class ManagedSampleListModel(QAbstractListModel):
             return sample.health.value
         if role == self.SizeRole:
             return (sample.width, sample.height)
+        if role == self.AnnotationCountRole:
+            return sample.annotation_count
+        if role == self.AnnotationStateRole:
+            return sample.annotation_state.value
         if role == Qt.ItemDataRole.ToolTipRole:
             return f"{sample.filename}\n{sample.width} × {sample.height}"
         return None
@@ -113,6 +120,7 @@ class ManagedSampleListModel(QAbstractListModel):
         reset_page: bool = False,
         search: str | None = None,
         review_status: ReviewStatus | None | object = ...,
+        label_id: str | None | object = ...,
         sort: SampleSort | None = None,
     ) -> None:
         """筛选变化回到第一页；普通刷新保留当前分页位置。"""
@@ -121,6 +129,8 @@ class ManagedSampleListModel(QAbstractListModel):
             self.search = search.strip()
         if review_status is not ...:
             self.review_status = review_status
+        if label_id is not ...:
+            self.label_id = label_id
         if sort is not None:
             self.sort = sort
         if reset_page:
@@ -131,6 +141,7 @@ class ManagedSampleListModel(QAbstractListModel):
             limit=self.PAGE_SIZE,
             search=self.search,
             review_status=self.review_status,
+            label_id=self.label_id,
             sort=self.sort,
         )
         if page.total and self.offset >= page.total:
@@ -141,6 +152,7 @@ class ManagedSampleListModel(QAbstractListModel):
                 limit=self.PAGE_SIZE,
                 search=self.search,
                 review_status=self.review_status,
+                label_id=self.label_id,
                 sort=self.sort,
             )
         self.beginResetModel()
@@ -178,6 +190,35 @@ class ManagedSampleListModel(QAbstractListModel):
             (index for index, sample in enumerate(self.items) if sample.id == sample_id),
             -1,
         )
+
+    def replace_sample(self, sample: DatasetSample) -> None:
+        """自动保存后只刷新当前行，不重载整页或当前画布。"""
+
+        row = self.row_for_id(sample.id)
+        if row < 0:
+            return
+        items = list(self.items)
+        items[row] = sample
+        self.items = tuple(items)
+        index = self.index(row)
+        self.dataChanged.emit(index, index)
+
+    def load_page_for_sample(self, sample_id: str) -> int:
+        """定位跨页样本并只加载其所在的 200 条页面。"""
+
+        position = self.gateway.locate_sample(
+            self.dataset_id,
+            sample_id,
+            search=self.search,
+            review_status=self.review_status,
+            label_id=self.label_id,
+            sort=self.sort,
+        )
+        if position is None:
+            return -1
+        self.offset = (position // self.PAGE_SIZE) * self.PAGE_SIZE
+        self.refresh()
+        return self.row_for_id(sample_id)
 
     def clear_caches(self) -> None:
         """切换数据集时通过代号丢弃迟到结果并释放缩略图内存。"""
@@ -282,7 +323,12 @@ class ManagedSampleDelegate(QStyledItemDelegate):
         filename = str(index.data(ManagedSampleListModel.FilenameRole) or "")
         status = str(index.data(ManagedSampleListModel.StatusRole) or "unreviewed")
         health = str(index.data(ManagedSampleListModel.HealthRole) or "ready")
-        status_key = f"review.{status}" if health == "ready" else "status.error"
+        annotation_state = str(index.data(ManagedSampleListModel.AnnotationStateRole) or "missing")
+        annotation_count = int(index.data(ManagedSampleListModel.AnnotationCountRole) or 0)
+        healthy_annotation = annotation_state in {"missing", "ready"}
+        status_key = (
+            f"review.{status}" if health == "ready" and healthy_annotation else "status.error"
+        )
         status_text = tr(self.locale, status_key)
         if self.grid:
             image_rect = option.rect.adjusted(10, 8, -10, -34)
@@ -300,5 +346,6 @@ class ManagedSampleDelegate(QStyledItemDelegate):
             painter.setPen(QColor(THEME.tokens.text_primary))
             painter.drawText(copy_rect, Qt.AlignmentFlag.AlignTop, filename)
             painter.setPen(QColor(THEME.tokens.text_muted))
-            painter.drawText(copy_rect, Qt.AlignmentFlag.AlignBottom, status_text)
+            detail = f"{status_text}  ·  {annotation_count} {tr(self.locale, 'value.boxes')}"
+            painter.drawText(copy_rect, Qt.AlignmentFlag.AlignBottom, detail)
         painter.restore()
