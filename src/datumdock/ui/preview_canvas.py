@@ -8,6 +8,7 @@ from enum import StrEnum
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QColor,
+    QFocusEvent,
     QFont,
     QKeyEvent,
     QMouseEvent,
@@ -110,6 +111,7 @@ class PreviewAnnotationCanvas(QWidget):
         self._draft = RectangleDraft()
         self._hover_point = None
         self.zoom = self._fit_zoom()
+        self._refresh_cursor(reset=True)
         self.update()
         if self.selected_id:
             self.shape_selected.emit(self.selected_id)
@@ -125,6 +127,7 @@ class PreviewAnnotationCanvas(QWidget):
         self.pan_offset = QPointF()
         self._draft = RectangleDraft()
         self._hover_point = None
+        self._refresh_cursor(reset=True)
         self.update()
 
     def load_managed_image(
@@ -158,6 +161,7 @@ class PreviewAnnotationCanvas(QWidget):
         self._hover_point = None
         self.zoom = self._fit_zoom()
         self.pan_offset = QPointF()
+        self._refresh_cursor(reset=True)
         self.update()
         return True
 
@@ -165,6 +169,7 @@ class PreviewAnnotationCanvas(QWidget):
         """设置新建矩形使用的活动标签，归档标签由外层过滤。"""
 
         self.current_label_id = label_id if label_id in self.labels else None
+        self._refresh_cursor()
 
     def delete_selected(self) -> None:
         """删除当前矩形并形成一个可撤销操作。"""
@@ -178,6 +183,7 @@ class PreviewAnnotationCanvas(QWidget):
         self.annotations = remaining
         self.selected_id = None
         self._emit_change("delete")
+        self._refresh_cursor()
         self.update()
 
     def change_selected_label(self, label_id: str) -> None:
@@ -203,10 +209,7 @@ class PreviewAnnotationCanvas(QWidget):
             self._draft = RectangleDraft()
             self._temporary = None
         self.tool = tool
-        cursor = (
-            Qt.CursorShape.OpenHandCursor if tool == CanvasTool.PAN else Qt.CursorShape.ArrowCursor
-        )
-        self.setCursor(cursor)
+        self._refresh_cursor()
         self.tool_changed.emit(tool.value)
         self.update()
 
@@ -225,6 +228,7 @@ class PreviewAnnotationCanvas(QWidget):
 
         if any(item.id == shape_id for item in self.annotations):
             self.selected_id = shape_id
+            self._refresh_cursor()
             self.shape_selected.emit(shape_id)
             self.update()
 
@@ -351,13 +355,13 @@ class PreviewAnnotationCanvas(QWidget):
         if self.image is None:
             return super().mousePressEvent(event)
         point = event.position()
+        self._hover_point = point
         if event.button() == Qt.MouseButton.MiddleButton:
             if self._image_rect().contains(point):
                 self._middle_panning = True
                 self._drag_origin = point
                 self._pan_start = QPointF(self.pan_offset)
-                self._hover_point = point
-                self.setCursor(Qt.CursorShape.ClosedHandCursor)
+                self._refresh_cursor(point)
                 event.accept()
                 self.update()
             return
@@ -369,8 +373,7 @@ class PreviewAnnotationCanvas(QWidget):
             self._left_panning = True
             self._drag_origin = point
             self._pan_start = QPointF(self.pan_offset)
-            self._hover_point = point
-            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            self._refresh_cursor(point)
             return
         if self.managed_read_only:
             return
@@ -392,6 +395,7 @@ class PreviewAnnotationCanvas(QWidget):
         self._drag_snapshot = hit
         self._drag_origin = point
         self._active_handle = self._handle_at(point, hit)
+        self._refresh_cursor(point)
         self.shape_selected.emit(hit.id)
         self.update()
 
@@ -400,16 +404,17 @@ class PreviewAnnotationCanvas(QWidget):
 
         point = event.position()
         image_rect = self._image_rect()
-        self._hover_point = point if image_rect.contains(point) else None
+        self._hover_point = point
         if self._middle_panning or self._left_panning:
             if self._drag_origin is not None:
                 self.pan_offset = self._pan_start + point - self._drag_origin
                 self._clamp_pan_offset()
-            # 平移会改变图片在画布中的位置，因此必须用更新后的图片范围重新判断辅助线。
-            self._hover_point = point if self._image_rect().contains(point) else None
+            # 平移会改变图片在画布中的位置，绘制阶段会使用新图片范围重新裁切辅助线。
+            self._refresh_cursor(point)
             self.update()
             return
         if self.managed_read_only:
+            self._refresh_cursor(point)
             self.update()
             return
         if self.tool == CanvasTool.RECTANGLE and (
@@ -419,9 +424,11 @@ class PreviewAnnotationCanvas(QWidget):
             self._draft.current_point = bounded
             start = self._draft.anchor or self._draft.press_point
             self._temporary = QRectF(start, bounded)
+            self._refresh_cursor(point)
             self.update()
             return
         if self._drag_snapshot is None or self._drag_origin is None:
+            self._refresh_cursor(point)
             return
         delta = self._canvas_delta_to_image(point - self._drag_origin)
         original = self._drag_snapshot
@@ -436,6 +443,7 @@ class PreviewAnnotationCanvas(QWidget):
                 y2=original.y2 + max(-original.y1, min(delta.y(), self.image.height - original.y2)),
             )
         self._replace_annotation(changed)
+        self._refresh_cursor(point)
         self.update()
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
@@ -444,11 +452,8 @@ class PreviewAnnotationCanvas(QWidget):
         if event.button() == Qt.MouseButton.MiddleButton:
             self._middle_panning = False
             self._drag_origin = None
-            self.setCursor(
-                Qt.CursorShape.OpenHandCursor
-                if self.tool == CanvasTool.PAN
-                else Qt.CursorShape.ArrowCursor
-            )
+            self._hover_point = event.position()
+            self._refresh_cursor(event.position())
             self.update()
             return
         if event.button() != Qt.MouseButton.LeftButton:
@@ -456,7 +461,8 @@ class PreviewAnnotationCanvas(QWidget):
         if self._left_panning:
             self._left_panning = False
             self._drag_origin = None
-            self.setCursor(Qt.CursorShape.OpenHandCursor)
+            self._hover_point = event.position()
+            self._refresh_cursor(event.position())
             return
         if self.managed_read_only:
             return
@@ -489,6 +495,8 @@ class PreviewAnnotationCanvas(QWidget):
         self._drag_origin = None
         self._drag_snapshot = None
         self._active_handle = None
+        self._hover_point = event.position()
+        self._refresh_cursor(event.position())
         self.update()
 
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
@@ -527,8 +535,15 @@ class PreviewAnnotationCanvas(QWidget):
 
     def leaveEvent(self, event: object) -> None:
         self._hover_point = None
+        self._refresh_cursor(reset=True)
         self.update()
         super().leaveEvent(event)
+
+    def focusOutEvent(self, event: QFocusEvent) -> None:
+        """失去焦点时清除可能锁定的操作指针，避免切窗后残留。"""
+
+        self._refresh_cursor(reset=True)
+        super().focusOutEvent(event)
 
     def _image_rect(self) -> QRectF:
         """计算保持原始比例的居中显示区域。"""
@@ -805,6 +820,59 @@ class PreviewAnnotationCanvas(QWidget):
             if self._handle_rect(handle_point).adjusted(-3, -3, 3, 3).contains(point):
                 return name
         return None
+
+    @staticmethod
+    def _handle_cursor(handle: str) -> Qt.CursorShape:
+        """把八控制点映射为与屏幕拖动方向一致的 Qt 系统指针。"""
+
+        if handle in {"left", "right"}:
+            return Qt.CursorShape.SizeHorCursor
+        if handle in {"top", "bottom"}:
+            return Qt.CursorShape.SizeVerCursor
+        if handle in {"top_left", "bottom_right"}:
+            return Qt.CursorShape.SizeFDiagCursor
+        return Qt.CursorShape.SizeBDiagCursor
+
+    def _cursor_shape(self, point: QPointF | None = None) -> Qt.CursorShape:
+        """按单一优先级解析系统指针，避免事件处理器各自维护状态。"""
+
+        if self._middle_panning or self._left_panning:
+            return Qt.CursorShape.ClosedHandCursor
+        if self.image is None:
+            return Qt.CursorShape.ArrowCursor
+        if self.tool == CanvasTool.PAN:
+            return Qt.CursorShape.OpenHandCursor
+        if self.tool == CanvasTool.RECTANGLE:
+            if not self.managed_read_only and self.current_label_id is not None:
+                return Qt.CursorShape.CrossCursor
+            return Qt.CursorShape.ArrowCursor
+        if self.managed_read_only:
+            return Qt.CursorShape.ArrowCursor
+        if self._drag_snapshot is not None:
+            if self._active_handle is not None:
+                return self._handle_cursor(self._active_handle)
+            return Qt.CursorShape.SizeAllCursor
+        target = point if point is not None else self._hover_point
+        if target is None:
+            return Qt.CursorShape.ArrowCursor
+        selected = next(
+            (item for item in self.annotations if item.id == self.selected_id),
+            None,
+        )
+        if selected is not None:
+            handle = self._handle_at(target, selected)
+            if handle is not None:
+                return self._handle_cursor(handle)
+        if self._shape_at(target) is not None:
+            return Qt.CursorShape.SizeAllCursor
+        return Qt.CursorShape.ArrowCursor
+
+    def _refresh_cursor(self, point: QPointF | None = None, *, reset: bool = False) -> None:
+        """画布设置系统指针的唯一入口；视觉变化不得触发标注命令。"""
+
+        shape = Qt.CursorShape.ArrowCursor if reset else self._cursor_shape(point)
+        if self.cursor().shape() != shape:
+            self.setCursor(shape)
 
     def _canvas_delta_to_image(self, delta: QPointF) -> QPointF:
         if self.image is None:
