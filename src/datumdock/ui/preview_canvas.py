@@ -108,6 +108,7 @@ class PreviewAnnotationCanvas(QWidget):
         self._undo.clear()
         self._redo.clear()
         self._draft = RectangleDraft()
+        self._hover_point = None
         self.zoom = self._fit_zoom()
         self.update()
         if self.selected_id:
@@ -154,6 +155,7 @@ class PreviewAnnotationCanvas(QWidget):
         self._undo.clear()
         self._redo.clear()
         self._draft = RectangleDraft()
+        self._hover_point = None
         self.zoom = self._fit_zoom()
         self.pan_offset = QPointF()
         self.update()
@@ -354,7 +356,7 @@ class PreviewAnnotationCanvas(QWidget):
                 self._middle_panning = True
                 self._drag_origin = point
                 self._pan_start = QPointF(self.pan_offset)
-                self._hover_point = None
+                self._hover_point = point
                 self.setCursor(Qt.CursorShape.ClosedHandCursor)
                 event.accept()
                 self.update()
@@ -367,7 +369,7 @@ class PreviewAnnotationCanvas(QWidget):
             self._left_panning = True
             self._drag_origin = point
             self._pan_start = QPointF(self.pan_offset)
-            self._hover_point = None
+            self._hover_point = point
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
             return
         if self.managed_read_only:
@@ -403,7 +405,8 @@ class PreviewAnnotationCanvas(QWidget):
             if self._drag_origin is not None:
                 self.pan_offset = self._pan_start + point - self._drag_origin
                 self._clamp_pan_offset()
-            self._hover_point = None
+            # 平移会改变图片在画布中的位置，因此必须用更新后的图片范围重新判断辅助线。
+            self._hover_point = point if self._image_rect().contains(point) else None
             self.update()
             return
         if self.managed_read_only:
@@ -671,20 +674,40 @@ class PreviewAnnotationCanvas(QWidget):
             )
 
     def _paint_crosshair(self, painter: QPainter) -> None:
-        point = self._hover_point
-        if point is None or self.image is None or self._middle_panning or self._left_panning:
+        geometry = self._crosshair_geometry()
+        if geometry is None:
             return
-        visible = self._image_rect().intersected(QRectF(self.rect()))
-        if not visible.contains(point):
-            return
-        color = QColor("#FFFFFF")
-        color.setAlpha(THEME.tokens.canvas_crosshair_alpha)
+        visible, point = geometry
+        underlay = QColor(THEME.tokens.canvas_crosshair_light)
+        underlay.setAlpha(THEME.tokens.canvas_crosshair_underlay_alpha)
+        foreground = QColor(THEME.tokens.canvas_crosshair_dark)
+        foreground.setAlpha(THEME.tokens.canvas_crosshair_alpha)
         painter.save()
         painter.setClipRect(visible)
-        painter.setPen(QPen(color, 1, Qt.PenStyle.DashLine))
+        painter.setPen(QPen(underlay, THEME.tokens.canvas_crosshair_underlay_width))
+        painter.drawLine(QPointF(visible.left(), point.y()), QPointF(visible.right(), point.y()))
+        painter.drawLine(QPointF(point.x(), visible.top()), QPointF(point.x(), visible.bottom()))
+        painter.setPen(
+            QPen(
+                foreground,
+                THEME.tokens.canvas_crosshair_width,
+                Qt.PenStyle.DashLine,
+            )
+        )
         painter.drawLine(QPointF(visible.left(), point.y()), QPointF(visible.right(), point.y()))
         painter.drawLine(QPointF(point.x(), visible.top()), QPointF(point.x(), visible.bottom()))
         painter.restore()
+
+    def _crosshair_geometry(self) -> tuple[QRectF, QPointF] | None:
+        """按当前指针和图片变换计算辅助线，避免平移后沿用旧坐标。"""
+
+        point = self._hover_point
+        if point is None or self.image is None:
+            return None
+        visible = self._image_rect().intersected(QRectF(self.rect()))
+        if visible.isEmpty() or not visible.contains(point):
+            return None
+        return visible, QPointF(point)
 
     def _paint_draft_size(self, painter: QPainter, rect: QRectF) -> None:
         if self.image is None or rect.isEmpty():

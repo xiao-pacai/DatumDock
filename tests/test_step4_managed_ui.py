@@ -181,7 +181,7 @@ def test_two_click_rectangle_zero_area_retry_and_high_zoom_navigation(
     qtbot.mouseMove(canvas, center + QPoint(35, 22))
     qtbot.mouseRelease(canvas, Qt.MouseButton.MiddleButton, pos=center + QPoint(35, 22))
     assert canvas.pan_offset != before_pan
-    assert canvas._hover_point is None
+    assert canvas._crosshair_geometry() is not None
 
     before_scroll = QPointF(canvas.pan_offset)
     vertical = QWheelEvent(

@@ -33,7 +33,12 @@ class ThemeTokens:
     info: str = "#4E9CCB"
     annotation_border_alpha: int = 235
     annotation_fill_alpha: int = 38
+    canvas_crosshair_light: str = "#FFFFFF"
+    canvas_crosshair_dark: str = "#253047"
+    canvas_crosshair_underlay_alpha: int = 185
     canvas_crosshair_alpha: int = 150
+    canvas_crosshair_underlay_width: int = 2
+    canvas_crosshair_width: int = 1
     annotation_line_width: int = 2
     annotation_selected_line_width: int = 3
     annotation_handle_size: int = 8
