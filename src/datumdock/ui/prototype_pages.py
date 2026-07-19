@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QListWidget,
+    QMessageBox,
     QProgressBar,
     QPushButton,
     QScrollArea,
@@ -30,6 +31,12 @@ from PySide6.QtWidgets import (
 
 from datumdock.domain.models import AppSettings
 from datumdock.i18n.catalog import LocaleService, tr
+from datumdock.services.settings import AppSettingsError
+from datumdock.services.shortcuts import (
+    ActionGroup,
+    ActionRegistry,
+    ShortcutProfileService,
+)
 from datumdock.ui.components import (
     BrandLockup,
     DangerButton,
@@ -930,9 +937,21 @@ class SettingsPage(BasePage):
     locale_change_requested = Signal(str)
     settings_change_requested = Signal(str, object)
 
-    def __init__(self, locale: LocaleService, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        locale: LocaleService,
+        action_registry: ActionRegistry | None = None,
+        shortcut_profiles: ShortcutProfileService | None = None,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         self.locale = locale
+        self.action_registry = action_registry or ActionRegistry(parent=self)
+        self.shortcut_profiles = shortcut_profiles or ShortcutProfileService(
+            self.action_registry,
+            AppSettings(ui_locale=locale.locale),
+            None,
+        )
         root = QVBoxLayout(self)
         root.setContentsMargins(24, 20, 24, 24)
         self.header = PageHeader(locale, "page.settings.title", "page.settings.subtitle")
@@ -973,26 +992,45 @@ class SettingsPage(BasePage):
         self.shortcut_page = self._form_card()
         self.shortcut_search = SearchBox()
         self.shortcut_page.body.addWidget(self.shortcut_search)
-        self.shortcut_table = QTableWidget(6, 3)
-        shortcuts = (
-            ("settings.shortcut.import", "Ctrl+O", "Ctrl+O"),
-            ("settings.shortcut.export", "Ctrl+E", "Ctrl+E"),
-            ("settings.shortcut.previous", "A", "A"),
-            ("settings.shortcut.next", "D", "D"),
-            ("settings.shortcut.rectangle", "R", "R"),
-            ("settings.shortcut.delete", "Delete", "Delete"),
-        )
-        self.shortcut_recorders: list[ShortcutRecorder] = []
-        for row, values in enumerate(shortcuts):
-            action_key, current_value, default_value = values
-            action_item = QTableWidgetItem(action_key)
-            action_item.setData(Qt.ItemDataRole.UserRole, action_key)
+        definitions = self.action_registry.definitions
+        self.shortcut_table = QTableWidget(len(definitions), 4)
+        self.shortcut_recorders: dict[str, ShortcutRecorder] = {}
+        self.shortcut_action_buttons: dict[str, tuple[QPushButton, QPushButton]] = {}
+        for row, definition in enumerate(definitions):
+            action_item = QTableWidgetItem(definition.name_key)
+            action_item.setData(Qt.ItemDataRole.UserRole, definition.name_key)
+            action_item.setData(Qt.ItemDataRole.UserRole + 1, definition.id)
+            action_item.setToolTip(definition.description_key)
             self.shortcut_table.setItem(row, 0, action_item)
-            recorder = ShortcutRecorder(current_value)
-            recorder.recorded.connect(self._shortcut_changed)
-            self.shortcut_recorders.append(recorder)
+            recorder = ShortcutRecorder(self.action_registry.sequence(definition.id))
+            recorder.recorded.connect(
+                lambda sequence, action_id=definition.id: self._shortcut_changed(
+                    action_id, sequence
+                )
+            )
+            recorder.recording_changed.connect(self.action_registry.set_recording)
+            self.shortcut_recorders[definition.id] = recorder
             self.shortcut_table.setCellWidget(row, 1, recorder)
-            self.shortcut_table.setItem(row, 2, QTableWidgetItem(default_value))
+            self.shortcut_table.setItem(
+                row,
+                2,
+                QTableWidgetItem(definition.default_shortcut or "—"),
+            )
+            buttons = QWidget()
+            button_layout = QHBoxLayout(buttons)
+            button_layout.setContentsMargins(0, 0, 0, 0)
+            clear = GhostButton()
+            restore = GhostButton()
+            clear.clicked.connect(
+                lambda _checked=False, action_id=definition.id: self._clear_shortcut(action_id)
+            )
+            restore.clicked.connect(
+                lambda _checked=False, action_id=definition.id: self._restore_shortcut(action_id)
+            )
+            button_layout.addWidget(clear)
+            button_layout.addWidget(restore)
+            self.shortcut_action_buttons[definition.id] = (clear, restore)
+            self.shortcut_table.setCellWidget(row, 3, buttons)
         self.shortcut_table.horizontalHeader().setStretchLastSection(True)
         self.shortcut_page.body.addWidget(self.shortcut_table)
         self.shortcut_conflict = QLabel()
@@ -1001,10 +1039,22 @@ class SettingsPage(BasePage):
         )
         self.shortcut_conflict.hide()
         self.shortcut_page.body.addWidget(self.shortcut_conflict)
+        restore_row = QHBoxLayout()
+        self.restore_group_combo = QComboBox()
+        for group in ActionGroup:
+            self.restore_group_combo.addItem(group.value, group)
+        self.restore_group_shortcuts = GhostButton()
+        self.restore_group_shortcuts.clicked.connect(self._restore_shortcut_group)
         self.restore_shortcuts = QPushButton()
         self.restore_shortcuts.clicked.connect(self._restore_shortcut_defaults)
-        self.shortcut_page.body.addWidget(self.restore_shortcuts, 0, Qt.AlignmentFlag.AlignLeft)
+        restore_row.addWidget(self.restore_group_combo)
+        restore_row.addWidget(self.restore_group_shortcuts)
+        restore_row.addStretch()
+        restore_row.addWidget(self.restore_shortcuts)
+        self.shortcut_page.body.addLayout(restore_row)
         self.pages.addWidget(self.shortcut_page)
+        self.shortcut_search.textChanged.connect(self._filter_shortcuts)
+        self.action_registry.changed.connect(self._refresh_shortcut_values)
 
         self.data_page = self._form_card()
         self.trash_threshold = QSpinBox()
@@ -1083,23 +1133,106 @@ class SettingsPage(BasePage):
         if 0 <= index < self.pages.count():
             self.pages.setCurrentIndex(index)
 
-    def _shortcut_changed(self, sequence: str) -> None:
-        """在预览内检测重复快捷键并给出可见冲突状态。"""
+    def _shortcut_changed(self, action_id: str, sequence: str) -> None:
+        """保存新绑定；冲突时由用户明确决定是否替换旧动作。"""
 
-        duplicates = sum(item.sequence == sequence for item in self.shortcut_recorders)
-        self.shortcut_conflict.setVisible(duplicates > 1)
-        if duplicates <= 1:
-            self.message_requested.emit("toast.preview_applied")
-
-    def _restore_shortcut_defaults(self) -> None:
-        """恢复表格中的预览默认值，不访问真实偏好文件。"""
-
-        for row, recorder in enumerate(self.shortcut_recorders):
-            default_item = self.shortcut_table.item(row, 2)
-            recorder.sequence = default_item.text()
-            recorder.setText(recorder.sequence)
+        try:
+            self.shortcut_profiles.set_binding(action_id, sequence)
+        except (AppSettingsError, ValueError) as error:
+            conflict = self.action_registry.conflict_owner(action_id, sequence)
+            if (
+                conflict
+                and QMessageBox.question(
+                    self,
+                    tr(self.locale, "settings.shortcut_conflict"),
+                    f"{error}\n{tr(self.locale, 'settings.shortcut_replace_confirm')}",
+                )
+                == QMessageBox.StandardButton.Yes
+            ):
+                try:
+                    self.shortcut_profiles.set_binding(
+                        action_id,
+                        sequence,
+                        replace_conflict=True,
+                    )
+                except (AppSettingsError, ValueError) as replace_error:
+                    self._show_shortcut_error(str(replace_error))
+                    self._refresh_shortcut_values()
+                    return
+            else:
+                self._show_shortcut_error(str(error))
+                self._refresh_shortcut_values()
+                return
         self.shortcut_conflict.hide()
         self.message_requested.emit("toast.preview_applied")
+
+    def _show_shortcut_error(self, message: str) -> None:
+        self.shortcut_conflict.setText("⚠  " + message)
+        self.shortcut_conflict.show()
+
+    def _clear_shortcut(self, action_id: str) -> None:
+        try:
+            self.shortcut_profiles.set_binding(action_id, "")
+        except (AppSettingsError, ValueError) as error:
+            self._show_shortcut_error(str(error))
+
+    def _restore_shortcut(self, action_id: str) -> None:
+        try:
+            self.shortcut_profiles.restore_action(action_id)
+        except (AppSettingsError, ValueError) as error:
+            self._show_shortcut_error(str(error))
+
+    def _restore_shortcut_group(self) -> None:
+        group = self.restore_group_combo.currentData()
+        if not isinstance(group, ActionGroup):
+            return
+        try:
+            self.shortcut_profiles.restore_group(group)
+        except (AppSettingsError, ValueError) as error:
+            self._show_shortcut_error(str(error))
+
+    def _restore_shortcut_defaults(self) -> None:
+        """显示影响数量，确认后只原子清除快捷键覆盖。"""
+
+        count = len(self.action_registry.overrides)
+        if (
+            count
+            and QMessageBox.question(
+                self,
+                tr(self.locale, "settings.restore_defaults"),
+                tr(self.locale, "settings.restore_all_confirm").format(count=count),
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
+            return
+        try:
+            self.shortcut_profiles.restore_all()
+        except (AppSettingsError, ValueError) as error:
+            self._show_shortcut_error(str(error))
+            return
+        self.shortcut_conflict.hide()
+        self.message_requested.emit("toast.preview_applied")
+
+    def _refresh_shortcut_values(self) -> None:
+        for action_id, recorder in self.shortcut_recorders.items():
+            recorder.sequence = self.action_registry.sequence(action_id)
+            if not recorder.recording:
+                recorder.setText(recorder.sequence or "—")
+
+    def _filter_shortcuts(self, text: str) -> None:
+        needle = text.strip().casefold()
+        for row in range(self.shortcut_table.rowCount()):
+            item = self.shortcut_table.item(row, 0)
+            action_id = str(item.data(Qt.ItemDataRole.UserRole + 1))
+            definition = self.action_registry.definition(action_id)
+            haystack = " ".join(
+                (
+                    action_id,
+                    tr(self.locale, definition.name_key),
+                    tr(self.locale, definition.description_key),
+                )
+            ).casefold()
+            self.shortcut_table.setRowHidden(row, bool(needle and needle not in haystack))
 
     def retranslate_ui(self) -> None:
         self.header.retranslate_ui()
@@ -1124,14 +1257,35 @@ class SettingsPage(BasePage):
                 tr(self.locale, "table.actions"),
                 tr(self.locale, "settings.current"),
                 tr(self.locale, "settings.default"),
+                tr(self.locale, "settings.actions"),
             ]
         )
         for row in range(self.shortcut_table.rowCount()):
             item = self.shortcut_table.item(row, 0)
             item.setText(tr(self.locale, item.data(Qt.ItemDataRole.UserRole)))
+            action_id = str(item.data(Qt.ItemDataRole.UserRole + 1))
+            definition = self.action_registry.definition(action_id)
+            item.setToolTip(tr(self.locale, definition.description_key))
         self.shortcut_conflict.setText("⚠  " + tr(self.locale, "settings.shortcut_conflict"))
-        for recorder in self.shortcut_recorders:
+        for recorder in self.shortcut_recorders.values():
             recorder.set_prompt(tr(self.locale, "settings.press_shortcut"))
+        for clear, restore in self.shortcut_action_buttons.values():
+            clear.setText(tr(self.locale, "settings.clear_shortcut"))
+            restore.setText(tr(self.locale, "settings.restore_one"))
+        current_group = self.restore_group_combo.currentData()
+        self.restore_group_combo.blockSignals(True)
+        self.restore_group_combo.clear()
+        for group in ActionGroup:
+            self.restore_group_combo.addItem(
+                tr(self.locale, f"settings.shortcut_group.{group.value}"),
+                group,
+            )
+        for index in range(self.restore_group_combo.count()):
+            if self.restore_group_combo.itemData(index) == current_group:
+                self.restore_group_combo.setCurrentIndex(index)
+                break
+        self.restore_group_combo.blockSignals(False)
+        self.restore_group_shortcuts.setText(tr(self.locale, "settings.restore_group"))
         self.restore_shortcuts.setText(tr(self.locale, "settings.restore_defaults"))
         self.trash_threshold.setToolTip(tr(self.locale, "settings.trash_help"))
         self.trash_help_button.setToolTip(tr(self.locale, "settings.trash_help"))

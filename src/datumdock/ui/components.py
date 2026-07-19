@@ -188,9 +188,10 @@ class HelpButton(QPushButton):
 
 
 class ShortcutRecorder(QPushButton):
-    """点击后捕获下一组按键，只更新当前 UI 预览会话。"""
+    """点击后捕获下一组按键，持久化由设置页的配置服务负责。"""
 
     recorded = Signal(str)
+    recording_changed = Signal(bool)
 
     def __init__(self, sequence: str, parent: QWidget | None = None) -> None:
         super().__init__(sequence, parent)
@@ -203,6 +204,7 @@ class ShortcutRecorder(QPushButton):
         """进入录入状态并等待键盘事件。"""
 
         self.recording = True
+        self.recording_changed.emit(True)
         self.setText(self.prompt)
         self.setFocus(Qt.FocusReason.MouseFocusReason)
 
@@ -213,6 +215,7 @@ class ShortcutRecorder(QPushButton):
             return super().keyPressEvent(event)
         if event.key() == Qt.Key.Key_Escape:
             self.recording = False
+            self.recording_changed.emit(False)
             self.setText(self.sequence)
             return
         if event.key() in {
@@ -223,12 +226,13 @@ class ShortcutRecorder(QPushButton):
         }:
             return
         sequence = QKeySequence(event.keyCombination()).toString(
-            QKeySequence.SequenceFormat.NativeText
+            QKeySequence.SequenceFormat.PortableText
         )
         if not sequence:
             return
         self.sequence = sequence
         self.recording = False
+        self.recording_changed.emit(False)
         self.setText(sequence)
         self.recorded.emit(sequence)
 

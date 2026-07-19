@@ -8,7 +8,9 @@ from PySide6.QtCore import QThreadPool, QTimer
 from PySide6.QtGui import QCloseEvent, QResizeEvent
 from PySide6.QtWidgets import QDialog, QMainWindow, QMessageBox, QStackedWidget, QWidget
 
+from datumdock.domain.models import AppSettings
 from datumdock.i18n.catalog import LocaleService, tr
+from datumdock.services.shortcuts import ActionRegistry, ShortcutProfileService
 from datumdock.ui.annotation_workspace import AnnotationWorkspace
 from datumdock.ui.components import ToastOverlay
 from datumdock.ui.managed_gateway import ManagedDatasetGateway
@@ -97,6 +99,13 @@ class ApplicationShell(QMainWindow):
             and self.managed_settings.ui_locale != locale_service.locale
         ):
             locale_service.set_locale(self.managed_settings.ui_locale)
+        settings = self.managed_settings or AppSettings(ui_locale=locale_service.locale)
+        self.action_registry = ActionRegistry(parent=self)
+        self.shortcut_profiles = ShortcutProfileService(
+            self.action_registry,
+            settings,
+            getattr(gateway, "settings_repository", None) if not gateway.preview_mode else None,
+        )
         self.dialog_registry = DialogRegistry(locale_service, gateway.preview_mode)
         self._active_dialogs: list[QDialog] = []
         self.setMinimumSize(900, 540)
@@ -167,7 +176,11 @@ class ApplicationShell(QMainWindow):
             "about.subtitle",
             "release.body",
         )
-        settings = SettingsPage(self.locale_service)
+        settings = SettingsPage(
+            self.locale_service,
+            self.action_registry,
+            self.shortcut_profiles,
+        )
         pages: tuple[tuple[RouteId, QWidget], ...] = (
             (RouteId.STARTUP, startup),
             (RouteId.HOME, home),
@@ -196,6 +209,7 @@ class ApplicationShell(QMainWindow):
             self.gateway.preview_mode,
             snapshot,
             self.gateway,
+            self.action_registry,
         )
         workspace.home_requested.connect(lambda: self.navigate(RouteId.HOME.value))
         workspace.route_requested.connect(self.navigate)
@@ -518,6 +532,9 @@ class ApplicationShell(QMainWindow):
             self.show_message("toast.preview_applied")
             return
         self._dispatch_command("settings.update", {name: value})
+        managed = getattr(self.gateway, "settings", None)
+        if managed is not None:
+            self.shortcut_profiles.settings = managed.model_copy(deep=True)
 
     def retranslate_ui(self) -> None:
         """刷新全部已创建页面和仍打开的弹窗。"""
