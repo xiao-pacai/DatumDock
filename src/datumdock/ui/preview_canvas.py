@@ -6,7 +6,16 @@ from dataclasses import replace
 from enum import StrEnum
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPainterPath, QPen, QWheelEvent
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QMouseEvent,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
+    QWheelEvent,
+)
 from PySide6.QtWidgets import QWidget
 
 from datumdock.ui.prototype_models import AnnotationItemViewData, ImageItemViewData, LabelViewData
@@ -49,6 +58,10 @@ class PreviewAnnotationCanvas(QWidget):
         self._redo: list[list[AnnotationItemViewData]] = []
         self.empty_title = "DatumDock"
         self.empty_subtitle = ""
+        self.managed_pixmap = QPixmap()
+        self.managed_read_only = False
+        self.pan_offset = QPointF()
+        self._pan_start = QPointF()
 
     def set_empty_message(self, title: str, subtitle: str = "") -> None:
         """由工作台提供本地化空状态，画布不自行读取翻译资源。"""
@@ -66,6 +79,9 @@ class PreviewAnnotationCanvas(QWidget):
         """加载纯内存快照，切换图片不会触发任何持久化。"""
 
         self.image = image
+        self.managed_pixmap = QPixmap()
+        self.managed_read_only = False
+        self.pan_offset = QPointF()
         self.labels = {label.id: label for label in labels}
         self.annotations = list(annotations)
         self.selected_id = self.annotations[0].id if self.annotations else None
@@ -82,7 +98,28 @@ class PreviewAnnotationCanvas(QWidget):
         self.image = None
         self.annotations.clear()
         self.selected_id = None
+        self.managed_pixmap = QPixmap()
+        self.managed_read_only = False
+        self.pan_offset = QPointF()
         self.update()
+
+    def load_managed_image(self, image: ImageItemViewData, data: bytes) -> bool:
+        """普通模式只载入网关返回的图片字节，矩形编辑保持禁用。"""
+
+        pixmap = QPixmap()
+        if not pixmap.loadFromData(data, "PNG"):
+            self.clear_preview()
+            return False
+        self.image = image
+        self.managed_pixmap = pixmap
+        self.managed_read_only = True
+        self.labels.clear()
+        self.annotations.clear()
+        self.selected_id = None
+        self.zoom = 1.0
+        self.pan_offset = QPointF()
+        self.update()
+        return True
 
     def set_tool(self, tool: CanvasTool) -> None:
         """切换画布工具并更新鼠标形态。"""
@@ -139,6 +176,7 @@ class PreviewAnnotationCanvas(QWidget):
         """恢复适配窗口比例。"""
 
         self.zoom = 1.0
+        self.pan_offset = QPointF()
         self.zoom_changed.emit(100)
         self.update()
 
@@ -152,7 +190,14 @@ class PreviewAnnotationCanvas(QWidget):
             self._paint_empty(painter)
             return
         image_rect = self._image_rect()
-        self._paint_demo_image(painter, image_rect, self.image.scene_seed)
+        if self.managed_read_only and not self.managed_pixmap.isNull():
+            painter.drawPixmap(
+                image_rect,
+                self.managed_pixmap,
+                QRectF(self.managed_pixmap.rect()),
+            )
+        else:
+            self._paint_demo_image(painter, image_rect, self.image.scene_seed)
         for annotation in self.annotations:
             self._paint_annotation(painter, annotation, annotation.id == self.selected_id)
         if self._temporary is not None:
@@ -167,6 +212,12 @@ class PreviewAnnotationCanvas(QWidget):
             return super().mousePressEvent(event)
         point = event.position()
         if not self._image_rect().contains(point):
+            return
+        if self.managed_read_only:
+            if self.tool == CanvasTool.PAN:
+                self._drag_origin = point
+                self._pan_start = QPointF(self.pan_offset)
+                self.setCursor(Qt.CursorShape.ClosedHandCursor)
             return
         if self.tool == CanvasTool.RECTANGLE:
             self._drag_origin = point
@@ -189,6 +240,11 @@ class PreviewAnnotationCanvas(QWidget):
         """实时预览新框、移动或缩放，但只在释放时形成一次撤销记录。"""
 
         point = event.position()
+        if self.managed_read_only:
+            if self._drag_origin is not None and self.tool == CanvasTool.PAN:
+                self.pan_offset = self._pan_start + point - self._drag_origin
+                self.update()
+            return
         if self._temporary is not None and self._drag_origin is not None:
             self._temporary = QRectF(self._drag_origin, point).intersected(self._image_rect())
             self.update()
@@ -214,6 +270,11 @@ class PreviewAnnotationCanvas(QWidget):
         """有效手势完成后只更新内存文档并通知外层刷新列表。"""
 
         if event.button() != Qt.MouseButton.LeftButton:
+            return
+        if self.managed_read_only:
+            self._drag_origin = None
+            if self.tool == CanvasTool.PAN:
+                self.setCursor(Qt.CursorShape.OpenHandCursor)
             return
         if self._temporary is not None and self.image is not None:
             rect = self._temporary.normalized()
@@ -270,7 +331,12 @@ class PreviewAnnotationCanvas(QWidget):
             height = available.height() * self.zoom
             width = height * ratio
         center = available.center()
-        return QRectF(center.x() - width / 2, center.y() - height / 2, width, height)
+        return QRectF(
+            center.x() - width / 2 + self.pan_offset.x(),
+            center.y() - height / 2 + self.pan_offset.y(),
+            width,
+            height,
+        )
 
     def _paint_demo_image(self, painter: QPainter, rect: QRectF, seed: int) -> None:
         """绘制工业零件风格的自有抽象演示图片。"""

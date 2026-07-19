@@ -4,15 +4,21 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QThreadPool, QTimer
 from PySide6.QtGui import QCloseEvent, QResizeEvent
-from PySide6.QtWidgets import QMainWindow, QStackedWidget, QWidget
+from PySide6.QtWidgets import QDialog, QMainWindow, QMessageBox, QStackedWidget, QWidget
 
 from datumdock.i18n.catalog import LocaleService, tr
 from datumdock.ui.annotation_workspace import AnnotationWorkspace
 from datumdock.ui.components import ToastOverlay
 from datumdock.ui.managed_gateway import ManagedDatasetGateway
-from datumdock.ui.prototype_dialogs import DialogId, DialogRegistry, PreviewFlowDialog
+from datumdock.ui.managed_governance_pages import ManagedGovernancePage
+from datumdock.ui.managed_media_dialogs import (
+    ManagedImageImportDialog,
+    ManagedRenameDialog,
+    ManagedTaskCenterDialog,
+)
+from datumdock.ui.prototype_dialogs import DialogId, DialogRegistry
 from datumdock.ui.prototype_gateway import PreviewGateway, UnavailableGateway
 from datumdock.ui.prototype_models import CommandStatus, UiCommand, UiCommandResult, UiGateway
 from datumdock.ui.prototype_pages import (
@@ -78,8 +84,14 @@ class ApplicationShell(QMainWindow):
         super().__init__(parent)
         self.locale_service = locale_service
         self.gateway = gateway
+        self.managed_settings = getattr(gateway, "settings", None)
+        if (
+            self.managed_settings is not None
+            and self.managed_settings.ui_locale != locale_service.locale
+        ):
+            locale_service.set_locale(self.managed_settings.ui_locale)
         self.dialog_registry = DialogRegistry(locale_service, gateway.preview_mode)
-        self._active_dialogs: list[PreviewFlowDialog] = []
+        self._active_dialogs: list[QDialog] = []
         self.setMinimumSize(900, 540)
         self.resize(1440, 900)
         self.stack = QStackedWidget()
@@ -91,10 +103,22 @@ class ApplicationShell(QMainWindow):
         self.locale_service.subscribe(self.retranslate_ui)
         self.retranslate_ui()
         self.navigation.navigate(RouteId.STARTUP, remember=False)
-        QTimer.singleShot(360, lambda: self.navigation.navigate(RouteId.HOME, remember=False))
+        self.startup_timer = QTimer(self)
+        self.startup_timer.setSingleShot(True)
+        self.startup_timer.timeout.connect(self._finish_startup)
+        self.startup_timer.start(360)
         initial_error_key = getattr(gateway, "initial_error_key", "")
+        self.initial_error_timer = QTimer(self)
+        self.initial_error_timer.setSingleShot(True)
         if initial_error_key:
-            QTimer.singleShot(460, lambda: self.show_message(initial_error_key))
+            self.initial_error_timer.timeout.connect(lambda: self.show_message(initial_error_key))
+            self.initial_error_timer.start(460)
+
+    def _finish_startup(self) -> None:
+        """窗口仍存活时才从启动页进入主页。"""
+
+        if self.navigation.current == RouteId.STARTUP:
+            self.navigation.navigate(RouteId.HOME, remember=False)
 
     @classmethod
     def for_mode(
@@ -152,6 +176,9 @@ class ApplicationShell(QMainWindow):
             self.navigation.register(route, page)
             self._connect_page(page)
         settings.locale_change_requested.connect(self.change_locale)
+        settings.settings_change_requested.connect(self._change_setting)
+        if self.managed_settings is not None:
+            settings.apply_settings(self.managed_settings)
 
     def _register_context_pages(self, dataset_id: str | None = None) -> None:
         snapshot = self.gateway.workspace_snapshot(dataset_id)
@@ -161,6 +188,7 @@ class ApplicationShell(QMainWindow):
             self.locale_service,
             self.gateway.preview_mode,
             snapshot,
+            self.gateway,
         )
         workspace.home_requested.connect(lambda: self.navigate(RouteId.HOME.value))
         workspace.route_requested.connect(self.navigate)
@@ -177,12 +205,26 @@ class ApplicationShell(QMainWindow):
             (RouteId.DATASET_OVERVIEW, "overview"),
         )
         for route, kind in page_specs:
-            page = ManagementPage(
-                self.locale_service,
-                kind,
-                snapshot,
-                self.gateway.preview_mode,
-            )
+            if (
+                not self.gateway.preview_mode
+                and kind in {"similarity", "trash"}
+                and isinstance(self.gateway, ManagedDatasetGateway)
+            ):
+                page = ManagedGovernancePage(
+                    self.locale_service,
+                    self.gateway,
+                    snapshot.dataset.id,
+                    kind,
+                )
+                page.route_requested.connect(self.navigate)
+                page.command_requested.connect(self._dispatch_command)
+            else:
+                page = ManagementPage(
+                    self.locale_service,
+                    kind,
+                    snapshot,
+                    self.gateway.preview_mode,
+                )
             self.navigation.register(route, page)
             self._connect_page(page)
 
@@ -210,23 +252,49 @@ class ApplicationShell(QMainWindow):
         if route not in self.navigation.pages:
             self.show_message("toast.not_connected")
             return
+        refresh = getattr(self.navigation.pages[route], "refresh", None)
+        if callable(refresh):
+            refresh()
         self.navigation.navigate(route)
 
     def open_dialog(self, dialog_spec: str) -> None:
         """打开注册弹窗并连接统一命令边界。"""
 
-        dialog_text, _, dataset_id = dialog_spec.partition(":")
+        parts = dialog_spec.split(":")
+        dialog_text = parts[0]
+        dataset_id = parts[1] if len(parts) > 1 else ""
+        sample_id = parts[2] if len(parts) > 2 else ""
         allowed_managed_dialogs = {
             DialogId.CREATE_DATASET,
             DialogId.CREATE_FROM_TEMPLATE,
             DialogId.DATASET_DIAGNOSTICS,
             DialogId.RENAME_DATASET,
             DialogId.ARCHIVE_DATASET,
+            DialogId.IMAGE_IMPORT,
+            DialogId.RENAME_SAMPLES,
+            DialogId.DELETE_CURRENT,
+            DialogId.DELETE_BATCH,
+            DialogId.TASK_CENTER,
         }
         try:
             identifier = DialogId(dialog_text)
         except ValueError:
             self.show_message("toast.not_connected")
+            return
+        if not self.gateway.preview_mode and identifier == DialogId.IMAGE_IMPORT:
+            self._open_managed_import(dataset_id)
+            return
+        if not self.gateway.preview_mode and identifier == DialogId.RENAME_SAMPLES:
+            self._open_managed_rename(dataset_id)
+            return
+        if not self.gateway.preview_mode and identifier == DialogId.TASK_CENTER:
+            self._open_task_center()
+            return
+        if not self.gateway.preview_mode and identifier in {
+            DialogId.DELETE_CURRENT,
+            DialogId.DELETE_BATCH,
+        }:
+            self._confirm_managed_delete(dataset_id, (sample_id,) if sample_id else ())
             return
         if not self.gateway.preview_mode and identifier not in allowed_managed_dialogs:
             self.show_message("toast.not_connected")
@@ -281,8 +349,99 @@ class ApplicationShell(QMainWindow):
                 self.navigation.navigate(RouteId.ANNOTATION_WORKSPACE)
             elif action_id == "dataset.rename":
                 self._register_context_pages(result.affected_id)
+        if action_id.startswith(("sample.", "trash.")):
+            workspace = self.navigation.pages.get(RouteId.ANNOTATION_WORKSPACE)
+            if isinstance(workspace, AnnotationWorkspace):
+                workspace.refresh_managed_samples(select_first=True)
 
-    def _forget_dialog(self, dialog: PreviewFlowDialog) -> None:
+    def _open_managed_import(self, dataset_id: str) -> None:
+        if not dataset_id or not isinstance(self.gateway, ManagedDatasetGateway):
+            self.show_message("toast.dataset_unavailable")
+            return
+        dialog = ManagedImageImportDialog(
+            self.locale_service,
+            self.gateway,
+            dataset_id,
+            self,
+        )
+        dialog.import_finished.connect(self._managed_import_finished)
+        dialog.finished.connect(lambda: self._forget_dialog(dialog))
+        self._active_dialogs.append(dialog)
+        dialog.open()
+
+    def _managed_import_finished(self, sample_id: str) -> None:
+        workspace = self.navigation.pages.get(RouteId.ANNOTATION_WORKSPACE)
+        if isinstance(workspace, AnnotationWorkspace):
+            workspace.refresh_managed_samples(sample_id=sample_id)
+        home = self.navigation.pages.get(RouteId.HOME)
+        if isinstance(home, HomePage):
+            home.update_snapshot(self.gateway.home_snapshot())
+
+    def _open_managed_rename(self, dataset_id: str) -> None:
+        if not dataset_id or not isinstance(self.gateway, ManagedDatasetGateway):
+            self.show_message("toast.dataset_unavailable")
+            return
+        dialog = ManagedRenameDialog(
+            self.locale_service,
+            self.gateway,
+            dataset_id,
+            self,
+        )
+        dialog.command_ready.connect(self._dispatch_command)
+        dialog.finished.connect(lambda: self._forget_dialog(dialog))
+        self._active_dialogs.append(dialog)
+        dialog.open()
+
+    def _open_task_center(self) -> None:
+        if not isinstance(self.gateway, ManagedDatasetGateway):
+            self.show_message("toast.not_connected")
+            return
+        dialog = ManagedTaskCenterDialog(self.locale_service, self.gateway, self)
+        dialog.finished.connect(lambda: self._forget_dialog(dialog))
+        self._active_dialogs.append(dialog)
+        dialog.open()
+
+    def _confirm_managed_delete(
+        self,
+        dataset_id: str,
+        sample_ids: tuple[str, ...],
+    ) -> None:
+        if not sample_ids or not isinstance(self.gateway, ManagedDatasetGateway):
+            self.show_message("toast.no_sample_selected")
+            return
+        threshold = self.gateway.settings.trash_sample_threshold
+        use_trash = len(sample_ids) <= threshold
+        message_key = "dialog.delete.trash" if use_trash else "dialog.delete.permanent"
+        first = QMessageBox.question(
+            self,
+            tr(self.locale_service, "dialog.delete.title"),
+            tr(self.locale_service, message_key),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if first != QMessageBox.StandardButton.Yes:
+            return
+        action = "sample.trash" if use_trash else "sample.delete_permanent"
+        if not use_trash:
+            final = QMessageBox.warning(
+                self,
+                tr(self.locale_service, "dialog.delete.final_title"),
+                tr(self.locale_service, "dialog.delete.final_body"),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if final != QMessageBox.StandardButton.Yes:
+                return
+        self._dispatch_command(
+            action,
+            {
+                "dataset_id": dataset_id,
+                "sample_ids": sample_ids,
+                "threshold": threshold,
+            },
+        )
+
+    def _forget_dialog(self, dialog: QDialog) -> None:
         if dialog in self._active_dialogs:
             self._active_dialogs.remove(dialog)
 
@@ -296,6 +455,16 @@ class ApplicationShell(QMainWindow):
 
         if locale != self.locale_service.locale:
             self.locale_service.set_locale(locale)
+            if not self.gateway.preview_mode:
+                self._dispatch_command("settings.update", {"ui_locale": locale})
+
+    def _change_setting(self, name: str, value: object) -> None:
+        """步骤三只持久化已接入的设置字段。"""
+
+        if self.gateway.preview_mode:
+            self.show_message("toast.preview_applied")
+            return
+        self._dispatch_command("settings.update", {name: value})
 
     def retranslate_ui(self) -> None:
         """刷新全部已创建页面和仍打开的弹窗。"""
@@ -316,7 +485,14 @@ class ApplicationShell(QMainWindow):
         super().resizeEvent(event)
 
     def closeEvent(self, event: QCloseEvent) -> None:
-        """关闭时注销语言监听；原型没有需要写入的会话状态。"""
+        """关闭时取消后台任务并等待当前单样本原子步骤结束。"""
 
         self.locale_service.unsubscribe(self.retranslate_ui)
+        self.startup_timer.stop()
+        self.initial_error_timer.stop()
+        close_gateway = getattr(self.gateway, "close", None)
+        if callable(close_gateway):
+            close_gateway()
+        # 缩略图和画布解码使用 Qt 全局读取线程，退出前等待它们释放文件句柄。
+        QThreadPool.globalInstance().waitForDone()
         super().closeEvent(event)

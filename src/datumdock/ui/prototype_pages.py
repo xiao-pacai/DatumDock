@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from datumdock.domain.models import AppSettings
 from datumdock.i18n.catalog import LocaleService, tr
 from datumdock.ui.components import (
     BrandLockup,
@@ -927,6 +928,7 @@ class SettingsPage(BasePage):
     """设置页展示全部分区、即时语言和快捷键冲突状态。"""
 
     locale_change_requested = Signal(str)
+    settings_change_requested = Signal(str, object)
 
     def __init__(self, locale: LocaleService, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -1006,8 +1008,11 @@ class SettingsPage(BasePage):
 
         self.data_page = self._form_card()
         self.trash_threshold = QSpinBox()
-        self.trash_threshold.setRange(1, 10000)
+        self.trash_threshold.setRange(0, 10000)
         self.trash_threshold.setValue(50)
+        self.trash_threshold.valueChanged.connect(
+            lambda value: self.settings_change_requested.emit("trash_sample_threshold", value)
+        )
         self.trash_help_button = HelpButton()
         self.trash_help = QLabel()
         self.trash_help.setObjectName("mutedText")
@@ -1054,6 +1059,19 @@ class SettingsPage(BasePage):
         self.runtime_label.setObjectName("mutedText")
         self.about_page.body.addWidget(self.runtime_label)
         self.pages.addWidget(self.about_page)
+
+    def apply_settings(self, settings: AppSettings) -> None:
+        """只把已接入字段同步到控件，避免初始化过程反向写盘。"""
+
+        self.trash_threshold.blockSignals(True)
+        self.trash_threshold.setValue(settings.trash_sample_threshold)
+        self.trash_threshold.blockSignals(False)
+        for index in range(self.language_combo.count()):
+            if self.language_combo.itemData(index) == settings.ui_locale:
+                self.language_combo.blockSignals(True)
+                self.language_combo.setCurrentIndex(index)
+                self.language_combo.blockSignals(False)
+                break
 
     @staticmethod
     def _form_card() -> SectionCard:

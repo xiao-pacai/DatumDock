@@ -88,14 +88,14 @@ def test_qtbot_write_failure_shows_error_without_closing_application(
 
 
 def test_qtbot_language_switch_preserves_dataset_content(qtbot, tmp_path: Path) -> None:
-    """即时切换英文只刷新系统文本，数据集名称和持久化内容保持不变。"""
+    """即时切换英文会保存应用偏好，但数据集内容保持不变。"""
 
     service = DatasetLibraryService(tmp_path)
     service.create_dataset("不可翻译名称", "不可翻译描述")
     before = {
         path.relative_to(tmp_path): path.read_bytes()
         for path in tmp_path.rglob("*")
-        if path.is_file()
+        if path.is_file() and path.name != "settings.json"
     }
     window = ApplicationShell(LocaleService(), ManagedDatasetGateway(service))
     qtbot.addWidget(window)
@@ -105,8 +105,9 @@ def test_qtbot_language_switch_preserves_dataset_content(qtbot, tmp_path: Path) 
     after = {
         path.relative_to(tmp_path): path.read_bytes()
         for path in tmp_path.rglob("*")
-        if path.is_file()
+        if path.is_file() and path.name != "settings.json"
     }
 
     assert window.gateway.home_snapshot().datasets[0].name == "不可翻译名称"
     assert before == after
+    assert window.gateway.settings.ui_locale == "en_US"

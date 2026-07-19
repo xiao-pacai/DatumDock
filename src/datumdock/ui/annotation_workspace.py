@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import QModelIndex, QObject, QRunnable, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap, QResizeEvent
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from datumdock.domain.models import DatasetSample, ReviewStatus, SampleHealth, SampleSort
 from datumdock.i18n.catalog import LocaleService, tr
 from datumdock.resources import resource_root
 from datumdock.ui.components import (
@@ -36,6 +37,7 @@ from datumdock.ui.components import (
     brand_asset_path,
 )
 from datumdock.ui.icons import IconRegistry
+from datumdock.ui.managed_sample_model import ManagedSampleDelegate, ManagedSampleListModel
 from datumdock.ui.preview_canvas import CanvasTool, PreviewAnnotationCanvas
 from datumdock.ui.prototype_models import (
     ImageItemViewData,
@@ -43,6 +45,30 @@ from datumdock.ui.prototype_models import (
     WorkspaceSnapshot,
 )
 from datumdock.ui.theme import THEME
+
+
+class _ImageLoadSignals(QObject):
+    completed = Signal(int, str, object)
+    failed = Signal(int, str)
+
+
+class _ImageLoadJob(QRunnable):
+    """原图解码通过网关在后台执行，迟到结果由工作台代号丢弃。"""
+
+    def __init__(self, gateway, dataset_id: str, sample_id: str, generation: int) -> None:
+        super().__init__()
+        self.gateway = gateway
+        self.dataset_id = dataset_id
+        self.sample_id = sample_id
+        self.generation = generation
+        self.signals = _ImageLoadSignals()
+
+    def run(self) -> None:
+        try:
+            asset = self.gateway.load_image(self.dataset_id, self.sample_id)
+            self.signals.completed.emit(self.generation, self.sample_id, asset)
+        except Exception:
+            self.signals.failed.emit(self.generation, self.sample_id)
 
 
 class AnnotationWorkspace(QWidget):
@@ -58,19 +84,32 @@ class AnnotationWorkspace(QWidget):
         locale: LocaleService,
         preview_mode: bool,
         snapshot: WorkspaceSnapshot,
+        gateway=None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.locale = locale
         self.preview_mode = preview_mode
         self.snapshot = snapshot
+        self.gateway = gateway
+        self.managed_mode = (
+            not preview_mode and gateway is not None and hasattr(gateway, "query_samples")
+        )
         self.icons = IconRegistry(resource_root())
         self.current_image_id = snapshot.images[0].id if snapshot.images else None
         self.selected_shape_id: str | None = None
         self._compact = False
+        self.sample_model: ManagedSampleListModel | None = None
+        self.sample_delegate: ManagedSampleDelegate | None = None
+        self._image_generation = 0
+        self._image_jobs: set[_ImageLoadJob] = set()
+        self._managed_sample: DatasetSample | None = None
         self._build_ui()
         self.retranslate_ui()
-        self._load_current_image()
+        if self.managed_mode:
+            self._initialize_managed_browser()
+        else:
+            self._load_current_image()
 
     def _build_ui(self) -> None:
         """建立画布优先的固定四区结构。"""
@@ -129,7 +168,9 @@ class AnnotationWorkspace(QWidget):
         layout.addWidget(self.dataset_combo)
         layout.addStretch()
         self.import_button = QPushButton()
-        self.import_button.clicked.connect(lambda: self.dialog_requested.emit("image_import"))
+        self.import_button.clicked.connect(
+            lambda: self.dialog_requested.emit(f"image_import:{self.snapshot.dataset.id}")
+        )
         self.export_button = QPushButton()
         self.export_menu = QMenu(self.export_button)
         self.export_button.setMenu(self.export_menu)
@@ -263,12 +304,16 @@ class AnnotationWorkspace(QWidget):
         self.image_collapse = QPushButton("⌃")
         layout.addWidget(self._panel_heading(self.image_title, self.image_collapse))
         self.image_search = SearchBox()
-        self.image_search.textChanged.connect(self._rebuild_images)
+        self.image_search.textChanged.connect(self._on_image_filter_changed)
         layout.addWidget(self.image_search)
         filter_row = QHBoxLayout()
         self.status_combo = QComboBox()
-        self.status_combo.currentIndexChanged.connect(self._rebuild_images)
+        self.status_combo.currentIndexChanged.connect(self._on_image_filter_changed)
         filter_row.addWidget(self.status_combo, 1)
+        self.sort_combo = QComboBox()
+        self.sort_combo.currentIndexChanged.connect(self._on_image_filter_changed)
+        self.sort_combo.setVisible(self.managed_mode)
+        filter_row.addWidget(self.sort_combo, 1)
         self.list_toggle = FilterChip("")
         self.grid_toggle = FilterChip("")
         self.list_toggle.setChecked(True)
@@ -277,9 +322,14 @@ class AnnotationWorkspace(QWidget):
         filter_row.addWidget(self.list_toggle)
         filter_row.addWidget(self.grid_toggle)
         layout.addLayout(filter_row)
-        self.image_list = QListWidget()
-        self.image_list.setSpacing(4)
-        self.image_list.currentItemChanged.connect(self._on_image_selected)
+        if self.managed_mode:
+            self.image_list = QListView()
+            self.image_list.setSpacing(4)
+            self.image_list.setUniformItemSizes(True)
+        else:
+            self.image_list = QListWidget()
+            self.image_list.setSpacing(4)
+            self.image_list.currentItemChanged.connect(self._on_image_selected)
         self.image_stack = QStackedWidget()
         self.image_stack.addWidget(self.image_list)
         empty = QWidget()
@@ -294,7 +344,9 @@ class AnnotationWorkspace(QWidget):
         self.image_empty_body.setWordWrap(True)
         self.image_empty_body.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image_empty_import = PrimaryButton()
-        self.image_empty_import.clicked.connect(lambda: self.dialog_requested.emit("image_import"))
+        self.image_empty_import.clicked.connect(
+            lambda: self.dialog_requested.emit(f"image_import:{self.snapshot.dataset.id}")
+        )
         self.image_empty_labels = GhostButton()
         self.image_empty_labels.clicked.connect(lambda: self.route_requested.emit("label_manager"))
         empty_layout.addWidget(self.image_empty_title)
@@ -304,6 +356,19 @@ class AnnotationWorkspace(QWidget):
         empty_layout.addStretch()
         self.image_stack.addWidget(empty)
         layout.addWidget(self.image_stack, 1)
+        self.pagination = QWidget()
+        pagination_layout = QHBoxLayout(self.pagination)
+        pagination_layout.setContentsMargins(0, 0, 0, 0)
+        self.previous_page_button = GhostButton("‹")
+        self.next_page_button = GhostButton("›")
+        self.page_label = QLabel()
+        self.page_label.setObjectName("mutedText")
+        self.page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        pagination_layout.addWidget(self.previous_page_button)
+        pagination_layout.addWidget(self.page_label, 1)
+        pagination_layout.addWidget(self.next_page_button)
+        self.pagination.setVisible(self.managed_mode)
+        layout.addWidget(self.pagination)
         self.preview_toggle = FilterChip("")
         self.preview_toggle.setChecked(True)
         layout.addWidget(self.preview_toggle)
@@ -353,6 +418,8 @@ class AnnotationWorkspace(QWidget):
         self.image_empty_body.setText(tr(self.locale, "workspace.empty_images_body"))
         self.image_empty_import.setText(tr(self.locale, "workspace.import"))
         self.image_empty_labels.setText(tr(self.locale, "workspace.labels"))
+        self.previous_page_button.setToolTip(tr(self.locale, "browser.previous_page"))
+        self.next_page_button.setToolTip(tr(self.locale, "browser.next_page"))
         self.canvas.set_empty_message(
             tr(self.locale, "workspace.empty_canvas_title"),
             tr(self.locale, "workspace.empty_canvas_body"),
@@ -360,12 +427,29 @@ class AnnotationWorkspace(QWidget):
         current_status = self.status_combo.currentData()
         self.status_combo.clear()
         self.status_combo.addItem(tr(self.locale, "workspace.all_status"), None)
-        for status in ImageStatus:
-            self.status_combo.addItem(tr(self.locale, f"status.{status.value}"), status)
+        statuses = ReviewStatus if self.managed_mode else ImageStatus
+        for status in statuses:
+            prefix = "review" if self.managed_mode else "status"
+            self.status_combo.addItem(tr(self.locale, f"{prefix}.{status.value}"), status)
         for index in range(self.status_combo.count()):
             if self.status_combo.itemData(index) == current_status:
                 self.status_combo.setCurrentIndex(index)
                 break
+        current_sort = self.sort_combo.currentData()
+        self.sort_combo.blockSignals(True)
+        self.sort_combo.clear()
+        for key, value in (
+            ("workspace.sort_name_asc", SampleSort.FILENAME_ASC),
+            ("workspace.sort_name_desc", SampleSort.FILENAME_DESC),
+            ("workspace.sort_newest", SampleSort.IMPORTED_NEWEST),
+            ("workspace.sort_oldest", SampleSort.IMPORTED_OLDEST),
+        ):
+            self.sort_combo.addItem(tr(self.locale, key), value)
+        for index in range(self.sort_combo.count()):
+            if self.sort_combo.itemData(index) == current_sort:
+                self.sort_combo.setCurrentIndex(index)
+                break
+        self.sort_combo.blockSignals(False)
         for name, button in self.tool_buttons.items():
             button.setToolTip(tr(self.locale, f"tool.{name}"))
             button.setAccessibleName(button.toolTip())
@@ -386,9 +470,179 @@ class AnnotationWorkspace(QWidget):
             action.triggered.connect(
                 lambda checked=False, route=target: self.route_requested.emit(route)
             )
+        if self.managed_mode:
+            self.more_menu.addSeparator()
+            rename = self.more_menu.addAction(tr(self.locale, "dialog.rename.title"))
+            rename.triggered.connect(
+                lambda: self.dialog_requested.emit(f"rename_samples:{self.snapshot.dataset.id}")
+            )
+            tasks = self.more_menu.addAction(tr(self.locale, "dialog.task.title"))
+            tasks.triggered.connect(
+                lambda: self.dialog_requested.emit(f"task_center:{self.snapshot.dataset.id}")
+            )
+            self.delete_action = self.more_menu.addAction(tr(self.locale, "dialog.delete.title"))
+            self.delete_action.setEnabled(self.current_image_id is not None)
+            self.delete_action.triggered.connect(self._request_current_delete)
         self._rebuild_annotations()
         self._rebuild_images()
         self._update_status_bar()
+
+    def _initialize_managed_browser(self) -> None:
+        """普通模式装配分页模型，并禁用尚未接入的标注假操作。"""
+
+        self.sample_model = ManagedSampleListModel(
+            self.gateway,
+            self.snapshot.dataset.id,
+            self.locale,
+            self,
+        )
+        self.sample_delegate = ManagedSampleDelegate(self.locale, parent=self.image_list)
+        self.image_list.setModel(self.sample_model)
+        self.image_list.setItemDelegate(self.sample_delegate)
+        self.image_list.selectionModel().currentChanged.connect(self._on_managed_image_selected)
+        self.sample_model.page_changed.connect(self._on_page_changed)
+        self.previous_page_button.clicked.connect(self._previous_page)
+        self.next_page_button.clicked.connect(self._next_page)
+        for name in ("select", "rectangle", "ai", "undo", "redo"):
+            self.tool_buttons[name].setEnabled(False)
+        self.tool_buttons["pan"].setChecked(True)
+        self.canvas.set_tool(CanvasTool.PAN)
+        self.refresh_managed_samples(select_first=True)
+
+    def refresh_managed_samples(
+        self,
+        *,
+        select_first: bool = False,
+        sample_id: str | None = None,
+    ) -> None:
+        """导入、删除或切换筛选后仅刷新当前页。"""
+
+        if self.sample_model is None:
+            return
+        self.sample_model.refresh()
+        self.image_stack.setCurrentIndex(0 if self.sample_model.rowCount() else 1)
+        target_row = self.sample_model.row_for_id(sample_id or "")
+        if target_row < 0 and select_first and self.sample_model.rowCount():
+            target_row = 0
+        if target_row >= 0:
+            index = self.sample_model.index(target_row)
+            self.image_list.setCurrentIndex(index)
+        elif not self.sample_model.rowCount():
+            self._managed_sample = None
+            self.current_image_id = None
+            self.canvas.clear_preview()
+            self._update_status_bar()
+
+    def _on_page_changed(self, current: int, total: int, count: int) -> None:
+        self.page_label.setText(
+            tr(self.locale, "browser.page").format(page=current, total=total, count=count)
+        )
+        self.previous_page_button.setEnabled(current > 1)
+        self.next_page_button.setEnabled(current < total)
+
+    def _previous_page(self) -> None:
+        if self.sample_model is None:
+            return
+        self.sample_model.previous_page()
+        if self.sample_model.rowCount():
+            self.image_list.setCurrentIndex(self.sample_model.index(0))
+
+    def _next_page(self) -> None:
+        if self.sample_model is None:
+            return
+        self.sample_model.next_page()
+        if self.sample_model.rowCount():
+            self.image_list.setCurrentIndex(self.sample_model.index(0))
+
+    def _on_image_filter_changed(self) -> None:
+        if not self.managed_mode:
+            self._rebuild_images()
+            return
+        if self.sample_model is None:
+            return
+        self.sample_model.refresh(
+            reset_page=True,
+            search=self.image_search.text(),
+            review_status=self.status_combo.currentData(),
+            sort=self.sort_combo.currentData() or SampleSort.FILENAME_ASC,
+        )
+        self.image_stack.setCurrentIndex(0 if self.sample_model.rowCount() else 1)
+        if self.sample_model.rowCount():
+            self.image_list.setCurrentIndex(self.sample_model.index(0))
+        else:
+            self.canvas.clear_preview()
+
+    def _on_managed_image_selected(
+        self,
+        current: QModelIndex,
+        previous: QModelIndex,
+    ) -> None:
+        del previous
+        if self.sample_model is None or not current.isValid():
+            return
+        sample = self.sample_model.sample_at(current.row())
+        if sample is None:
+            return
+        self._managed_sample = sample
+        self.current_image_id = sample.id
+        if hasattr(self, "delete_action"):
+            self.delete_action.setEnabled(True)
+        self._start_managed_image_load(sample)
+        self._rebuild_annotations()
+        self._update_status_bar()
+
+    def _start_managed_image_load(self, sample: DatasetSample) -> None:
+        self._image_generation += 1
+        job = _ImageLoadJob(
+            self.gateway,
+            self.snapshot.dataset.id,
+            sample.id,
+            self._image_generation,
+        )
+        self._image_jobs.add(job)
+        job.signals.completed.connect(self._managed_image_ready)
+        job.signals.failed.connect(self._managed_image_failed)
+        job.signals.completed.connect(lambda *_args, current=job: self._image_jobs.discard(current))
+        job.signals.failed.connect(lambda *_args, current=job: self._image_jobs.discard(current))
+        from PySide6.QtCore import QThreadPool
+
+        QThreadPool.globalInstance().start(job)
+
+    def _managed_image_ready(self, generation: int, sample_id: str, asset) -> None:
+        if generation != self._image_generation or sample_id != self.current_image_id:
+            return
+        sample = self._managed_sample
+        if sample is None:
+            return
+        view = self._managed_view_data(sample)
+        if not self.canvas.load_managed_image(view, asset.data):
+            self.message_requested.emit("toast.image_load_failed")
+
+    def _managed_image_failed(self, generation: int, sample_id: str) -> None:
+        if generation != self._image_generation or sample_id != self.current_image_id:
+            return
+        self.canvas.clear_preview()
+        self.message_requested.emit("toast.image_load_failed")
+
+    @staticmethod
+    def _managed_view_data(sample: DatasetSample) -> ImageItemViewData:
+        status = {
+            ReviewStatus.UNREVIEWED: ImageStatus.UNLABELED,
+            ReviewStatus.AUTO_PENDING_REVIEW: ImageStatus.PENDING,
+            ReviewStatus.REVIEWED: ImageStatus.COMPLETED,
+            ReviewStatus.ISSUE: ImageStatus.ISSUE,
+        }[sample.review_status]
+        if sample.health != SampleHealth.READY:
+            status = ImageStatus.ERROR
+        return ImageItemViewData(
+            sample.id,
+            sample.filename,
+            status,
+            sample.width,
+            sample.height,
+            0,
+            0,
+        )
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         """窄窗口收起低频顶部操作，同时保留导入、导出和画布工具。"""
@@ -416,11 +670,20 @@ class AnnotationWorkspace(QWidget):
         self._update_status_bar()
 
     def _current_image(self) -> ImageItemViewData | None:
+        if self.managed_mode:
+            return (
+                self._managed_view_data(self._managed_sample)
+                if self._managed_sample is not None
+                else None
+            )
         return next(
             (item for item in self.snapshot.images if item.id == self.current_image_id), None
         )
 
     def _rebuild_annotations(self) -> None:
+        if self.managed_mode:
+            self.annotation_list.clear()
+            return
         current = self._current_image()
         annotations = (
             () if current is None else self.snapshot.annotations_by_image.get(current.id, ())
@@ -464,6 +727,11 @@ class AnnotationWorkspace(QWidget):
         self.annotation_list.blockSignals(False)
 
     def _rebuild_images(self) -> None:
+        if self.managed_mode:
+            if self.sample_model is not None:
+                self.sample_model.refresh()
+                self.image_stack.setCurrentIndex(0 if self.sample_model.rowCount() else 1)
+            return
         query = self.image_search.text().strip().casefold()
         status = self.status_combo.currentData()
         grid = self.image_list.viewMode() == QListView.ViewMode.IconMode
@@ -496,6 +764,12 @@ class AnnotationWorkspace(QWidget):
         dataset_id = self.dataset_combo.itemData(index)
         if dataset_id and dataset_id != self.snapshot.dataset.id:
             self.route_requested.emit(f"annotation_workspace:{dataset_id}")
+
+    def _request_current_delete(self) -> None:
+        if self.current_image_id:
+            self.dialog_requested.emit(
+                f"delete_current:{self.snapshot.dataset.id}:{self.current_image_id}"
+            )
 
     def _image_row(self, image: ImageItemViewData) -> QWidget:
         row = QWidget()
@@ -540,6 +814,12 @@ class AnnotationWorkspace(QWidget):
         )
         self.image_list.setIconSize(QSize(120, 80))
         self.image_list.setResizeMode(QListView.ResizeMode.Adjust)
+        if self.managed_mode:
+            if self.sample_delegate is not None:
+                self.sample_delegate.set_grid(grid)
+            self.image_list.setGridSize(QSize(148, 126) if grid else QSize())
+            self.image_list.viewport().update()
+            return
         self._rebuild_images()
 
     def _on_image_selected(self, current: QListWidgetItem | None) -> None:
@@ -586,21 +866,29 @@ class AnnotationWorkspace(QWidget):
             self.zoom_label.setText(tr(self.locale, "workspace.zoom").format(zoom=100))
             self.save_label.setText(tr(self.locale, "workspace.waiting_for_import"))
             return
-        index = next(
-            (
-                position
-                for position, item in enumerate(self.snapshot.images, 1)
-                if item.id == image.id
-            ),
-            1,
-        )
-        self.index_label.setText(
-            tr(self.locale, "workspace.image_index").format(
-                current=index, total=len(self.snapshot.images)
+        if self.managed_mode and self.sample_model is not None:
+            row = self.sample_model.row_for_id(image.id)
+            index = self.sample_model.offset + max(0, row) + 1
+            total = self.sample_model.total
+        else:
+            index = next(
+                (
+                    position
+                    for position, item in enumerate(self.snapshot.images, 1)
+                    if item.id == image.id
+                ),
+                1,
             )
+            total = len(self.snapshot.images)
+        self.index_label.setText(
+            tr(self.locale, "workspace.image_index").format(current=index, total=total)
         )
         self.resolution_label.setText(
             tr(self.locale, "workspace.resolution").format(width=image.width, height=image.height)
         )
         self.zoom_label.setText(tr(self.locale, "workspace.zoom").format(zoom=100))
-        self.save_label.setText("●  " + tr(self.locale, "workspace.saved"))
+        self.save_label.setText(
+            tr(self.locale, "workspace.read_only_step3")
+            if self.managed_mode
+            else "●  " + tr(self.locale, "workspace.saved")
+        )

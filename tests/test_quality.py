@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from uuid import uuid4
 
 from PIL import Image
 
@@ -22,14 +23,14 @@ def test_quality_check_reports_missing_files_and_invalid_rectangles(tmp_path: Pa
     image_path = tmp_path / "sample.png"
     Image.new("RGB", (40, 20), (100, 120, 140)).save(image_path)
     sample = DatasetSample(
-        dataset_id="dataset",
+        dataset_id=str(uuid4()),
         filename="sample.png",
         image_path=str(image_path),
         annotation_path=str(tmp_path / "missing.json"),
         width=40,
         height=20,
-        content_hash="hash",
-        perceptual_hash="perceptual",
+        content_hash="0" * 64,
+        perceptual_hash="0" * 22,
         imported_at="2026-07-18T00:00:00+00:00",
     )
     label_set = LabelSet(labels=[Label(class_id=0, name="part", alias="零件", color="#78978C")])

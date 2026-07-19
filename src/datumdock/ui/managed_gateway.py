@@ -3,9 +3,18 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from uuid import UUID
 
-from datumdock.domain.models import LabelStatus
+from datumdock.domain.models import (
+    AppSettings,
+    LabelStatus,
+    NamingPolicy,
+    ReviewStatus,
+    SampleSort,
+    SimilarityStatus,
+    utc_now,
+)
 from datumdock.services.dataset_library import (
     DatasetLibraryService,
     DatasetLibraryServiceError,
@@ -16,7 +25,34 @@ from datumdock.services.dataset_library import (
     ManagedDatasetRecord,
     format_modified_time,
 )
+from datumdock.services.image_pool import (
+    DuplicateDecision,
+    ImageAsset,
+    ImageImportPreflight,
+    ImageImportPreflightRequest,
+    ImageImportService,
+    ImagePoolError,
+    ManagedImageService,
+    ThumbnailAsset,
+    ThumbnailService,
+)
 from datumdock.services.library_repository import resolve_data_root
+from datumdock.services.sample_governance import (
+    RenamePlan,
+    SampleGovernanceError,
+    SampleRenameService,
+    TrashService,
+)
+from datumdock.services.sample_repository import (
+    DatasetSampleRepository,
+    SamplePage,
+    SampleQuery,
+    SampleRepositoryError,
+    SimilarityGroup,
+    TrashItem,
+)
+from datumdock.services.settings import AppSettingsError, AppSettingsRepository
+from datumdock.services.tasks import BackgroundTaskService, TaskSnapshot
 from datumdock.ui.prototype_models import (
     CommandStatus,
     DatasetCardViewData,
@@ -38,6 +74,10 @@ class ManagedDatasetGateway:
 
     def __init__(self, service: DatasetLibraryService) -> None:
         self.service = service
+        self.settings_repository = AppSettingsRepository(service.root)
+        self.settings = self.settings_repository.load()
+        self.tasks = BackgroundTaskService()
+        self._preflights: dict[str, ImageImportPreflight] = {}
 
     @classmethod
     def from_default_root(cls) -> ManagedDatasetGateway:
@@ -52,7 +92,7 @@ class ManagedDatasetGateway:
         return HomeSnapshot(tuple(self._card(record) for record in records), 0)
 
     def workspace_snapshot(self, dataset_id: str | None = None) -> WorkspaceSnapshot | None:
-        """打开真实空数据集上下文，不用演示图片填充普通模式。"""
+        """打开真实数据集上下文；图片内容始终通过分页接口另行请求。"""
 
         records = self.service.list_datasets(include_archived=False)
         healthy = [record for record in records if record.healthy and record.bundle is not None]
@@ -86,6 +126,162 @@ class ManagedDatasetGateway:
             models=(),
             available_datasets=available,
         )
+
+    def query_samples(
+        self,
+        dataset_id: str,
+        *,
+        offset: int = 0,
+        limit: int = 200,
+        search: str = "",
+        review_status: ReviewStatus | None = None,
+        label_id: str | None = None,
+        sort: SampleSort = SampleSort.FILENAME_ASC,
+    ) -> SamplePage:
+        """正式图片列表只读取 SQLite 当前页，不构造全量 UI 快照。"""
+
+        _bundle, _paths, repository = self._media(dataset_id)
+        return repository.query(
+            SampleQuery(
+                dataset_id,
+                offset,
+                limit,
+                search,
+                review_status,
+                label_id,
+                sort,
+            )
+        )
+
+    def load_image(self, dataset_id: str, sample_id: str) -> ImageAsset:
+        _bundle, paths, repository = self._media(dataset_id)
+        return ManagedImageService(paths, repository).load(sample_id)
+
+    def load_thumbnail(self, dataset_id: str, sample_id: str) -> ThumbnailAsset:
+        _bundle, paths, repository = self._media(dataset_id)
+        return ThumbnailService(paths, repository).load(sample_id)
+
+    def get_sample(self, dataset_id: str, sample_id: str, *, include_trashed: bool = False):
+        """管理页按稳定 ID 获取轻量样本，不解析文件路径。"""
+
+        _bundle, _paths, repository = self._media(dataset_id)
+        return repository.get_sample(sample_id, include_trashed=include_trashed)
+
+    def list_similarity_groups(
+        self,
+        dataset_id: str,
+        status: SimilarityStatus | None = None,
+    ) -> tuple[SimilarityGroup, ...]:
+        _bundle, _paths, repository = self._media(dataset_id)
+        return repository.list_similarity_groups(status)
+
+    def list_trash_items(self, dataset_id: str) -> tuple[TrashItem, ...]:
+        bundle, paths, repository = self._media(dataset_id)
+        return TrashService(paths, bundle.dataset, repository).list_items()
+
+    def start_import_preflight(self, dataset_id: str, source_paths: tuple[Path, ...]) -> str:
+        """转码、哈希和缩略图全部在线程池执行。"""
+
+        bundle, paths, repository = self._media(dataset_id)
+        importer = ImageImportService(paths, bundle.dataset, repository)
+
+        def work(context):
+            context.phase("preflight")
+            result = importer.preflight(
+                ImageImportPreflightRequest(dataset_id, source_paths),
+                progress=context.progress,
+                cancelled=context.cancelled,
+            )
+            for source, error in result.failures.items():
+                context.add_error(f"{source}: {error}")
+            self._preflights[result.session_id] = result
+            return result
+
+        return self.tasks.start(dataset_id, "image_import_preflight", work)
+
+    def start_import_commit(
+        self,
+        dataset_id: str,
+        session_id: str,
+        decisions: dict[str, DuplicateDecision],
+    ) -> str:
+        """每张图片独立提交；取消后已完成项继续有效。"""
+
+        try:
+            preflight = self._preflights.pop(session_id)
+        except KeyError as error:
+            raise ImagePoolError("导入预检会话不存在") from error
+        bundle, paths, repository = self._media(dataset_id)
+        importer = ImageImportService(paths, bundle.dataset, repository)
+
+        def work(context):
+            context.phase("commit")
+            report = importer.commit(
+                preflight,
+                decisions,
+                progress=context.progress,
+                cancelled=context.cancelled,
+            )
+            for source, error in report.failures.items():
+                context.add_error(f"{source}: {error}")
+            self.service.synchronize_statistics(dataset_id)
+            return report
+
+        return self.tasks.start(dataset_id, "image_import_commit", work)
+
+    def load_prepared_image(
+        self,
+        dataset_id: str,
+        session_id: str,
+        item_id: str,
+    ) -> bytes:
+        """重复比较只返回内部临时 PNG 字节，不暴露暂存路径。"""
+
+        preflight = self._preflights.get(session_id)
+        if preflight is None:
+            raise ImagePoolError("导入预检会话不存在")
+        item = next((candidate for candidate in preflight.items if candidate.id == item_id), None)
+        if item is None:
+            raise ImagePoolError("导入预检项不存在")
+        bundle, paths, repository = self._media(dataset_id)
+        return ImageImportService(paths, bundle.dataset, repository).load_prepared_image(item)
+
+    def discard_import_preflight(self, dataset_id: str, session_id: str) -> None:
+        """用户取消重复决策时清理内部临时转码，不触碰外部来源。"""
+
+        preflight = self._preflights.pop(session_id, None)
+        if preflight is None:
+            return
+        bundle, paths, repository = self._media(dataset_id)
+        ImageImportService(paths, bundle.dataset, repository).discard_preflight(session_id)
+
+    def task_snapshot(self, task_id: str) -> TaskSnapshot:
+        return self.tasks.snapshot(task_id)
+
+    def task_snapshots(self) -> tuple[TaskSnapshot, ...]:
+        return self.tasks.snapshots()
+
+    def task_result(self, task_id: str) -> object:
+        return self.tasks.result(task_id)
+
+    def cancel_task(self, task_id: str) -> bool:
+        return self.tasks.cancel(task_id)
+
+    def preview_rename(
+        self,
+        dataset_id: str,
+        policy: NamingPolicy,
+        sample_ids: tuple[str, ...] | None = None,
+    ) -> RenamePlan:
+        bundle, paths, repository = self._media(dataset_id)
+        return SampleRenameService(paths, bundle.dataset, repository).preview(
+            policy, sample_ids=sample_ids
+        )
+
+    def close(self) -> None:
+        """关闭应用时等待当前单样本原子步骤安全结束。"""
+
+        self.tasks.shutdown(wait=True)
 
     def dispatch(self, command: UiCommand) -> UiCommandResult:
         """执行步骤二允许的元数据操作，其余入口明确返回未接入。"""
@@ -136,12 +332,75 @@ class ManagedDatasetGateway:
                     "toast.dataset_restored",
                     affected_id=bundle.dataset.id,
                 )
+            if command.action_id == "settings.update":
+                updates = dict(command.payload)
+                settings = self.settings.model_copy(update=updates)
+                settings = AppSettings.model_validate(settings.model_dump(mode="json"))
+                self.settings_repository.save(settings)
+                self.settings = settings
+                return UiCommandResult(CommandStatus.APPLIED, "toast.settings_saved")
+            if command.action_id in {"similarity.confirm", "similarity.ignore"}:
+                dataset_id = str(command.payload.get("dataset_id", ""))
+                group_id = str(command.payload.get("group_id", ""))
+                _bundle, _paths, repository = self._media(dataset_id)
+                status = (
+                    SimilarityStatus.CONFIRMED
+                    if command.action_id == "similarity.confirm"
+                    else SimilarityStatus.IGNORED
+                )
+                repository.set_similarity_status(group_id, status, utc_now().isoformat())
+                return UiCommandResult(CommandStatus.APPLIED, "toast.operation_complete")
+            if command.action_id == "sample.rename":
+                dataset_id = str(command.payload.get("dataset_id", ""))
+                policy = NamingPolicy.model_validate(command.payload.get("policy", {}))
+                sample_ids = tuple(str(item) for item in command.payload.get("sample_ids", ()))
+                bundle, paths, repository = self._media(dataset_id)
+                service = SampleRenameService(paths, bundle.dataset, repository)
+                plan = service.preview(policy, sample_ids=sample_ids or None)
+                service.apply(plan)
+                configuration = bundle.dataset.configuration.model_copy(
+                    update={"naming_policy": policy}
+                )
+                self.service.update_configuration(dataset_id, configuration)
+                return UiCommandResult(CommandStatus.APPLIED, "toast.samples_renamed")
+            if command.action_id in {"sample.trash", "sample.delete_permanent"}:
+                dataset_id = str(command.payload.get("dataset_id", ""))
+                sample_ids = tuple(str(item) for item in command.payload.get("sample_ids", ()))
+                bundle, paths, repository = self._media(dataset_id)
+                service = TrashService(paths, bundle.dataset, repository)
+                threshold = int(
+                    command.payload.get("threshold", self.settings.trash_sample_threshold)
+                )
+                impact = service.preview(sample_ids, threshold=threshold)
+                service.delete(
+                    impact,
+                    permanent=command.action_id == "sample.delete_permanent",
+                )
+                self.service.synchronize_statistics(dataset_id)
+                return UiCommandResult(CommandStatus.APPLIED, "toast.samples_deleted")
+            if command.action_id == "trash.restore":
+                dataset_id = str(command.payload.get("dataset_id", ""))
+                sample_id = str(command.payload.get("sample_id", ""))
+                bundle, paths, repository = self._media(dataset_id)
+                TrashService(paths, bundle.dataset, repository).restore(sample_id)
+                self.service.synchronize_statistics(dataset_id)
+                return UiCommandResult(CommandStatus.APPLIED, "toast.sample_restored")
+            if command.action_id == "trash.delete_permanent":
+                dataset_id = str(command.payload.get("dataset_id", ""))
+                sample_id = str(command.payload.get("sample_id", ""))
+                bundle, paths, repository = self._media(dataset_id)
+                TrashService(paths, bundle.dataset, repository).permanently_delete(sample_id)
+                self.service.synchronize_statistics(dataset_id)
+                return UiCommandResult(CommandStatus.APPLIED, "toast.samples_deleted")
         except DuplicateDatasetNameError:
             return UiCommandResult(CommandStatus.INVALID, "toast.duplicate_dataset_name")
         except InvalidDatasetNameError:
             return UiCommandResult(CommandStatus.INVALID, "toast.invalid_name")
         except (DatasetNotFoundError, DatasetUnavailableError):
             return UiCommandResult(CommandStatus.ERROR, "toast.dataset_unavailable")
+        except (AppSettingsError, ImagePoolError, SampleGovernanceError, SampleRepositoryError):
+            logger.exception("受管图片或设置操作失败: %s", command.action_id)
+            return UiCommandResult(CommandStatus.ERROR, "toast.library_operation_failed")
         except DatasetLibraryServiceError:
             logger.exception("受管数据集业务操作失败: %s", command.action_id)
             return UiCommandResult(CommandStatus.ERROR, "toast.library_operation_failed")
@@ -149,6 +408,14 @@ class ManagedDatasetGateway:
             logger.exception("受管数据集命令发生未预期异常: %s", command.action_id)
             return UiCommandResult(CommandStatus.ERROR, "toast.library_operation_failed")
         return UiCommandResult(CommandStatus.NOT_CONNECTED, "toast.not_connected")
+
+    def _media(self, dataset_id: str):
+        """集中装配数据集级服务，禁止页面自行解析受管路径。"""
+
+        bundle = self.service.open_dataset(dataset_id)
+        paths = self.service.dataset_repository.paths(dataset_id)
+        repository = DatasetSampleRepository(paths, dataset_id)
+        return bundle, paths, repository
 
     @staticmethod
     def _card(record: ManagedDatasetRecord) -> DatasetCardViewData:

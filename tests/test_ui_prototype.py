@@ -473,7 +473,7 @@ def test_preview_create_rename_switch_and_close_preserve_real_library_hash(
 
 
 def test_every_unconnected_normal_dialog_preserves_managed_library(tmp_path: Path) -> None:
-    """普通模式所有后续阶段弹窗入口都只提示，不打开原型流程或写入文件。"""
+    """普通模式尚未接入的后续弹窗只提示，不打开原型流程或写入文件。"""
 
     application = _application()
     service = DatasetLibraryService(tmp_path)
@@ -490,6 +490,11 @@ def test_every_unconnected_normal_dialog_preserves_managed_library(tmp_path: Pat
         DialogId.DATASET_DIAGNOSTICS,
         DialogId.RENAME_DATASET,
         DialogId.ARCHIVE_DATASET,
+        DialogId.IMAGE_IMPORT,
+        DialogId.RENAME_SAMPLES,
+        DialogId.DELETE_CURRENT,
+        DialogId.DELETE_BATCH,
+        DialogId.TASK_CENTER,
     }
     for dialog_id in set(DialogId) - allowed:
         window.open_dialog(dialog_id.value)
@@ -506,7 +511,7 @@ def test_every_unconnected_normal_dialog_preserves_managed_library(tmp_path: Pat
 
 
 def test_language_switch_does_not_modify_real_dataset_content(tmp_path: Path) -> None:
-    """中英文切换只刷新系统文案，真实名称、描述和资料库字节保持不变。"""
+    """中英文切换保存全局语言，但真实数据集名称和内容保持不变。"""
 
     service = DatasetLibraryService(tmp_path)
     dataset = service.create_dataset("原始名称", "原始描述")
@@ -514,7 +519,7 @@ def test_language_switch_does_not_modify_real_dataset_content(tmp_path: Path) ->
     before = {
         path.relative_to(tmp_path): path.read_bytes()
         for path in tmp_path.rglob("*")
-        if path.is_file()
+        if path.is_file() and path.name != "settings.json"
     }
     application = _application()
     window = ApplicationShell(LocaleService(), gateway)
@@ -524,12 +529,13 @@ def test_language_switch_does_not_modify_real_dataset_content(tmp_path: Path) ->
     after = {
         path.relative_to(tmp_path): path.read_bytes()
         for path in tmp_path.rglob("*")
-        if path.is_file()
+        if path.is_file() and path.name != "settings.json"
     }
 
     assert gateway.home_snapshot().datasets[0].name == "原始名称"
     assert service.open_dataset(dataset.dataset.id).dataset.description == "原始描述"
     assert before == after
+    assert gateway.settings.ui_locale == "en_US"
 
 
 def test_corrupt_dataset_becomes_diagnostic_home_card(tmp_path: Path) -> None:

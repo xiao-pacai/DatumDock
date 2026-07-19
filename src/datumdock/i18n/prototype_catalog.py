@@ -70,18 +70,20 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "tutorial.reader.heading": "从数据集池开始建立可靠训练数据",
         "tutorial.reader.body": (
             "DatumDock 把图片复制到受管数据集池，再通过标签、标注、复核和导出形成可检查的流程。"
-            "当前版本已接入内部数据集存档；图片导入、真实标注与导出将在后续步骤接入。"
+            "当前版本已接入内部数据集存档与真实受管图片池；"
+            "标注持久化、模型与导出将在后续步骤接入。"
         ),
         "release.title": "新功能与版本说明",
         "release.subtitle": "当前安装包内置的本地版本说明。",
-        "release.current": "v0.1.0 · 内部资料库阶段",
+        "release.current": "v0.1.0 · 受管图片池阶段",
         "release.body": (
-            "新增可持久化的内部数据集资料库、真实创建、打开、切换、重命名、归档和配置复制。"
-            "图片导入、真实标注保存、模型与导出将在后续步骤接入。"
+            "新增六种常见图片导入、PNG 规范化、完全重复决策、近似图候选、"
+            "真实缩略图分页浏览、批量重命名与安全回收站。"
+            "标注持久化、模型与导出将在后续步骤接入。"
         ),
         "about.title": "关于 DatumDock",
         "about.subtitle": "本地优先的视觉数据集管理与标注桌面应用",
-        "about.version": "版本 0.1.0 · 步骤二",
+        "about.version": "版本 0.1.0 · 步骤三",
         "about.license": "MIT License",
         "workspace.back_home": "返回主页",
         "workspace.switch": "切换数据集",
@@ -104,6 +106,11 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "workspace.canvas.error": "图片加载失败",
         "workspace.canvas.loading": "正在加载图片…",
         "workspace.saved": "演示修改已保存在当前预览会话",
+        "workspace.read_only_step3": "●  图片已由 DatumDock 受管 · 标注将在步骤四接入",
+        "workspace.sort_name_asc": "名称 A → Z",
+        "workspace.sort_name_desc": "名称 Z → A",
+        "workspace.sort_newest": "最新导入",
+        "workspace.sort_oldest": "最早导入",
         "workspace.image_index": "第 {current} / {total} 张",
         "workspace.zoom": "缩放 {zoom}%",
         "workspace.resolution": "{width} × {height}",
@@ -165,6 +172,9 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "action.next": "下一步",
         "action.finish_preview": "完成界面预览",
         "action.apply": "确认应用",
+        "action.preview": "刷新预览",
+        "action.confirm": "确认",
+        "action.cancel_task": "取消选中任务",
         "action.open_workspace": "打开标注工作台",
         "action.retry": "重试",
         "action.details": "错误详情",
@@ -184,6 +194,19 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "table.file": "文件名",
         "table.similarity": "相似度",
         "table.review": "复核状态",
+        "table.group": "相似组",
+        "table.deleted_at": "删除时间",
+        "similarity.pending": "待确认",
+        "similarity.confirmed": "已确认",
+        "similarity.ignored": "已忽略",
+        "similarity.empty": "当前没有待处理的近似图片候选。",
+        "trash.empty": "数据集回收站为空。",
+        "task.queued": "等待中",
+        "task.running": "运行中",
+        "task.completed": "已完成",
+        "task.partial": "部分完成",
+        "task.cancelled": "已取消",
+        "task.failed": "失败",
         "settings.general": "常规",
         "settings.language": "界面语言",
         "settings.shortcuts": "快捷键",
@@ -229,16 +252,36 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "dialog.preview_only": "此步骤只更新内存演示数据，不会创建真实文件。",
         "dialog.managed_action": "此操作将安全更新 DatumDock 内部资料库，不会访问外部来源文件。",
         "dialog.import.title": "导入图片",
+        "dialog.import.managed_notice": (
+            "图片会复制到 DatumDock 内部、校正 EXIF 并统一转为 PNG；外部来源不会被修改。"
+        ),
+        "dialog.import.add_files": "添加图片",
+        "dialog.import.add_folder": "添加目录（递归）",
+        "dialog.import.choose_sources": "请选择图片或目录。",
+        "dialog.import.start": "开始预检",
+        "dialog.import.preparing": "正在校正方向、转码、生成缩略图并检查重复…",
+        "dialog.import.committing": "正在发布到受管图片池…",
+        "dialog.import.cancelled": "导入已取消，未提交的临时内容已清理。",
+        "dialog.import.cancelling": "正在等待当前图片原子步骤结束…",
         "dialog.import.body": (
             "支持 JPG/JPEG、PNG、BMP、WebP 和 TIFF；正式接入后会复制并统一转为 PNG。"
         ),
         "dialog.duplicate.title": "发现完全相同的图片",
         "dialog.duplicate.body": "左侧为待导入图片，右侧为已有图片。请选择跳过或同时保留。",
+        "dialog.duplicate.matches": "共匹配到 {count} 张完全相同的图片。",
+        "dialog.duplicate.keep": "仍然保留",
+        "dialog.duplicate.skip": "跳过这张",
         "dialog.rename.title": "批量重命名预览",
         "dialog.dataset_rename.title": "重命名数据集",
         "dialog.delete.title": "删除受管图片",
         "dialog.delete.body": "图片、标注、索引和缩略图会一并处理；外部来源文件不受影响。",
         "dialog.delete.scope": "受管图片 · LabelMe JSON · 索引 · 缩略图",
+        "dialog.delete.trash": "图片、关联标注和缩略图将移入数据集回收站，可以恢复。继续吗？",
+        "dialog.delete.permanent": (
+            "本次删除数量超过回收站阈值，将永久删除全部受管关联内容。继续吗？"
+        ),
+        "dialog.delete.final_title": "最终永久删除确认",
+        "dialog.delete.final_body": "此操作不可恢复。请再次确认永久删除。",
         "dialog.archive.scope": "归档不会删除图片、标注、标签、模型或任何配置，可随时恢复。",
         "dialog.export.title": "导出 YOLO Detection 数据集",
         "dialog.xany.title": "X-AnyLabeling 交换",
@@ -340,6 +383,13 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "toast.dataset_unavailable": "该数据集已归档或损坏，当前无法打开。",
         "toast.library_operation_failed": "资料库操作失败；请查看诊断信息后重试。",
         "toast.library_unavailable": "内部资料库无法安全初始化；已进入只读安全模式。",
+        "toast.settings_saved": "设置已保存。",
+        "toast.operation_complete": "操作已完成。",
+        "toast.samples_renamed": "受管图片已安全重命名。",
+        "toast.samples_deleted": "受管图片及关联内容已处理。",
+        "toast.sample_restored": "图片已从回收站恢复。",
+        "toast.image_load_failed": "图片加载失败；其他图片仍可继续浏览。",
+        "toast.no_sample_selected": "请先选择一张图片。",
     },
     "en_US": {
         "prototype.banner.preview": "UI Preview · Demo data lives in memory only",
@@ -420,22 +470,23 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "tutorial.reader.heading": "Build reliable training data from a managed dataset pool",
         "tutorial.reader.body": (
             "DatumDock copies images into a managed pool, then connects labels, annotations, "
-            "review, and export in an inspectable workflow. This version now persists internal "
-            "dataset saves; image import, annotation persistence, and export arrive later."
+            "review, and export in an inspectable workflow. This version persists internal "
+            "dataset saves and a real managed image pool; annotation persistence, models, and "
+            "export arrive later."
         ),
         "release.title": "What's New & Release Notes",
         "release.subtitle": "Local release notes included with this installation.",
-        "release.current": "v0.1.0 · Internal Library Phase",
+        "release.current": "v0.1.0 · Managed Image Pool Phase",
         "release.body": (
-            "Adds a persistent internal dataset library with real create, open, switch, rename, "
-            "archive, restore, and configuration-copy flows. Image import, annotation "
-            "persistence, models, and export arrive in later steps."
+            "Adds six-format image ingestion, normalized PNG storage, exact-duplicate decisions, "
+            "near-image candidates, paged real thumbnails, batch rename, and safe Dataset Trash. "
+            "Annotation persistence, models, and export arrive in later steps."
         ),
         "about.title": "About DatumDock",
         "about.subtitle": (
             "A local-first desktop application for visual dataset management and annotation"
         ),
-        "about.version": "Version 0.1.0 · Step Two",
+        "about.version": "Version 0.1.0 · Step Three",
         "about.license": "MIT License",
         "workspace.back_home": "Back Home",
         "workspace.switch": "Switch Dataset",
@@ -458,6 +509,11 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "workspace.canvas.error": "Image failed to load",
         "workspace.canvas.loading": "Loading image…",
         "workspace.saved": "Demo changes are saved in this preview session",
+        "workspace.read_only_step3": ("●  Managed by DatumDock · Annotation arrives in step four"),
+        "workspace.sort_name_asc": "Name A → Z",
+        "workspace.sort_name_desc": "Name Z → A",
+        "workspace.sort_newest": "Newest imported",
+        "workspace.sort_oldest": "Oldest imported",
         "workspace.image_index": "Image {current} of {total}",
         "workspace.zoom": "Zoom {zoom}%",
         "workspace.resolution": "{width} × {height}",
@@ -537,6 +593,9 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "action.next": "Next",
         "action.finish_preview": "Finish UI Preview",
         "action.apply": "Apply",
+        "action.preview": "Refresh Preview",
+        "action.confirm": "Confirm",
+        "action.cancel_task": "Cancel Selected Task",
         "action.open_workspace": "Open Annotation Workspace",
         "action.retry": "Retry",
         "action.details": "Error Details",
@@ -556,6 +615,19 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "table.file": "Filename",
         "table.similarity": "Similarity",
         "table.review": "Review Status",
+        "table.group": "Similarity Group",
+        "table.deleted_at": "Deleted At",
+        "similarity.pending": "Pending",
+        "similarity.confirmed": "Confirmed",
+        "similarity.ignored": "Ignored",
+        "similarity.empty": "There are no similar-image candidates to review.",
+        "trash.empty": "Dataset Trash is empty.",
+        "task.queued": "Queued",
+        "task.running": "Running",
+        "task.completed": "Completed",
+        "task.partial": "Partially Completed",
+        "task.cancelled": "Cancelled",
+        "task.failed": "Failed",
         "settings.general": "General",
         "settings.language": "Interface Language",
         "settings.shortcuts": "Shortcuts",
@@ -615,6 +687,20 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
             "external source files."
         ),
         "dialog.import.title": "Import Images",
+        "dialog.import.managed_notice": (
+            "Images are copied into DatumDock, EXIF-corrected, and normalized to PNG. "
+            "External sources remain unchanged."
+        ),
+        "dialog.import.add_files": "Add Images",
+        "dialog.import.add_folder": "Add Folder (Recursive)",
+        "dialog.import.choose_sources": "Choose images or a folder.",
+        "dialog.import.start": "Start Preflight",
+        "dialog.import.preparing": (
+            "Correcting orientation, transcoding, generating thumbnails, and checking duplicates…"
+        ),
+        "dialog.import.committing": "Publishing to the managed image pool…",
+        "dialog.import.cancelled": ("Import cancelled; uncommitted temporary data was removed."),
+        "dialog.import.cancelling": "Waiting for the current atomic image step to finish…",
         "dialog.import.body": (
             "Supports JPG/JPEG, PNG, BMP, WebP, and TIFF. Real import will copy and normalize "
             "images to PNG."
@@ -624,6 +710,9 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
             "The pending image is on the left and the existing image is on the right. "
             "Skip it or keep both."
         ),
+        "dialog.duplicate.matches": "{count} identical image(s) matched.",
+        "dialog.duplicate.keep": "Keep Both",
+        "dialog.duplicate.skip": "Skip This Image",
         "dialog.rename.title": "Batch Rename Preview",
         "dialog.dataset_rename.title": "Rename Dataset",
         "dialog.delete.title": "Delete Managed Images",
@@ -632,6 +721,16 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
             "sources are untouched."
         ),
         "dialog.delete.scope": "Managed Image · LabelMe JSON · Index · Thumbnail",
+        "dialog.delete.trash": (
+            "The image, annotation, and thumbnail will move to Dataset Trash and can be "
+            "restored. Continue?"
+        ),
+        "dialog.delete.permanent": (
+            "This deletion exceeds the Trash threshold and permanently removes all managed "
+            "related content. Continue?"
+        ),
+        "dialog.delete.final_title": "Final Permanent Deletion Confirmation",
+        "dialog.delete.final_body": "This cannot be undone. Confirm permanent deletion again.",
         "dialog.archive.scope": (
             "Archiving never deletes images, annotations, labels, models, or settings, "
             "and can be reversed at any time."
@@ -750,5 +849,12 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "toast.library_unavailable": (
             "The internal library could not initialize safely; read-only safe mode is active."
         ),
+        "toast.settings_saved": "Settings saved.",
+        "toast.operation_complete": "Operation complete.",
+        "toast.samples_renamed": "Managed images renamed safely.",
+        "toast.samples_deleted": "Managed images and related content were processed.",
+        "toast.sample_restored": "Image restored from Trash.",
+        "toast.image_load_failed": "Image load failed; other images remain available.",
+        "toast.no_sample_selected": "Select an image first.",
     },
 }

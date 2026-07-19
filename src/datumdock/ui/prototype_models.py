@@ -34,6 +34,7 @@ class CommandStatus(StrEnum):
     NOT_CONNECTED = "not_connected"
     INVALID = "invalid"
     ERROR = "error"
+    PARTIAL = "partial"
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,6 +146,8 @@ class UiCommandResult:
     status: CommandStatus
     message_key: str
     affected_id: str | None = None
+    task_id: str | None = None
+    data: dict[str, Any] = field(default_factory=dict)
 
 
 class UiGateway(Protocol):
@@ -162,3 +165,18 @@ class UiGateway(Protocol):
 
     def dispatch(self, command: UiCommand) -> UiCommandResult:
         """处理操作意图；原型阶段不得访问真实用户数据。"""
+
+    def query_samples(self, dataset_id: str, **filters: Any) -> Any:
+        """普通模式按页查询 SQLite；预览页面不会调用此接口。"""
+
+    def load_image(self, dataset_id: str, sample_id: str) -> Any:
+        """返回已验证图片资产，不向页面暴露受管路径。"""
+
+    def load_thumbnail(self, dataset_id: str, sample_id: str) -> Any:
+        """按需返回或重建缩略图资产。"""
+
+    def task_snapshot(self, task_id: str) -> Any:
+        """返回后台任务的不可变进度快照。"""
+
+    def cancel_task(self, task_id: str) -> bool:
+        """请求在下一个单样本原子边界取消任务。"""
