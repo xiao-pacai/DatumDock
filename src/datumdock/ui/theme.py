@@ -18,8 +18,9 @@ class ThemeTokens:
     brand_soft: str = "#E7EEFF"
     brand_orange: str = "#F2A36F"
     brand_cyan: str = "#73B9D2"
-    canvas_background: str = "#252B36"
-    canvas_surface: str = "#303846"
+    canvas_backplate: str = "#E9EEF4"
+    canvas_image_boundary: str = "#C5D0DC"
+    canvas_snap_feedback: str = "#5B83E6"
     text_primary: str = "#253047"
     text_secondary: str = "#6D778A"
     text_muted: str = "#929BAD"
@@ -39,9 +40,20 @@ class ThemeTokens:
     canvas_crosshair_alpha: int = 150
     canvas_crosshair_underlay_width: int = 2
     canvas_crosshair_width: int = 1
+    canvas_image_boundary_width: int = 1
+    canvas_snap_feedback_alpha: int = 220
+    canvas_snap_feedback_width: int = 2
+    canvas_snap_marker_size: int = 6
+    canvas_snap_tick_length: int = 18
     annotation_line_width: int = 2
     annotation_selected_line_width: int = 3
     annotation_handle_size: int = 8
+
+    @property
+    def canvas_background(self) -> str:
+        """兼容旧调用方；画布背景现在统一指向浅色语义底板。"""
+
+        return self.canvas_backplate
 
 
 class ThemeService:

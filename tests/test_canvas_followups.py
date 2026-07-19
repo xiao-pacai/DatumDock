@@ -3,16 +3,22 @@
 from __future__ import annotations
 
 import pytest
-from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRectF, QSizeF, Qt
 from PySide6.QtGui import QFocusEvent
 
-from datumdock.ui.preview_canvas import CanvasTool, PreviewAnnotationCanvas
+from datumdock.ui.preview_canvas import (
+    CanvasTool,
+    ImageEdge,
+    PreviewAnnotationCanvas,
+    project_point_to_image_bounds,
+)
 from datumdock.ui.prototype_models import (
     AnnotationItemViewData,
     ImageItemViewData,
     ImageStatus,
     LabelViewData,
 )
+from datumdock.ui.theme import THEME
 
 
 def _canvas(qtbot) -> PreviewAnnotationCanvas:
@@ -231,3 +237,180 @@ def test_cursor_only_hover_does_not_change_document_or_history(qtbot) -> None:
     assert tuple(canvas.annotations) == before
     assert canvas._undo == []
     assert changed == []
+
+
+@pytest.mark.parametrize(
+    ("point", "expected_canvas", "expected_image", "expected_edges"),
+    (
+        (QPointF(5, 80), QPointF(10, 80), QPointF(0, 90), {ImageEdge.LEFT}),
+        (QPointF(115, 80), QPointF(110, 80), QPointF(320, 90), {ImageEdge.RIGHT}),
+        (QPointF(60, 10), QPointF(60, 20), QPointF(160, 0), {ImageEdge.TOP}),
+        (QPointF(60, 150), QPointF(60, 140), QPointF(160, 180), {ImageEdge.BOTTOM}),
+        (
+            QPointF(5, 10),
+            QPointF(10, 20),
+            QPointF(0, 0),
+            {ImageEdge.LEFT, ImageEdge.TOP},
+        ),
+        (
+            QPointF(115, 10),
+            QPointF(110, 20),
+            QPointF(320, 0),
+            {ImageEdge.RIGHT, ImageEdge.TOP},
+        ),
+        (
+            QPointF(5, 150),
+            QPointF(10, 140),
+            QPointF(0, 180),
+            {ImageEdge.LEFT, ImageEdge.BOTTOM},
+        ),
+        (
+            QPointF(115, 150),
+            QPointF(110, 140),
+            QPointF(320, 180),
+            {ImageEdge.RIGHT, ImageEdge.BOTTOM},
+        ),
+        (QPointF(35, 50), QPointF(35, 50), QPointF(80, 45), set()),
+    ),
+)
+def test_projection_clamps_each_axis_to_image_edges(
+    point: QPointF,
+    expected_canvas: QPointF,
+    expected_image: QPointF,
+    expected_edges: set[ImageEdge],
+) -> None:
+    """四边、四角和图片内点必须由同一个纯函数逐轴投影。"""
+
+    projection = project_point_to_image_bounds(
+        point,
+        QRectF(10, 20, 100, 120),
+        QSizeF(320, 180),
+    )
+    assert projection.canvas_point == expected_canvas
+    assert projection.image_point == expected_image
+    assert projection.clamped_edges == frozenset(expected_edges)
+    assert projection.inside_image is (not expected_edges)
+
+
+def test_light_backplate_tokens_are_centralized() -> None:
+    """浅色底板与图片细边界必须来自语义主题令牌。"""
+
+    assert THEME.tokens.canvas_backplate == "#E9EEF4"
+    assert THEME.tokens.canvas_image_boundary == "#C5D0DC"
+    assert THEME.tokens.canvas_background == THEME.tokens.canvas_backplate
+
+
+@pytest.mark.parametrize("percent", (100, 800, 3200, 6400))
+def test_projection_and_handle_cursor_stay_accurate_at_high_zoom(percent: int, qtbot) -> None:
+    """高倍率下投影、控制点命中和系统指针不能产生倍率相关漂移。"""
+
+    canvas = _canvas_with_annotation(qtbot)
+    canvas.set_zoom_percent(percent)
+    target_source = QPointF(80.0, 45.0)
+    image_rect = canvas._image_rect()
+    target_canvas = QPointF(
+        image_rect.left() + target_source.x() * image_rect.width() / canvas.image.width,
+        image_rect.top() + target_source.y() * image_rect.height() / canvas.image.height,
+    )
+    canvas.pan_offset += QPointF(canvas.rect().center()) - target_canvas
+    canvas._clamp_pan_offset()
+    top_left = canvas._handle_points(canvas._annotation_rect(canvas.annotations[0]))["top_left"]
+    restored = canvas._canvas_to_image(top_left, canvas._image_rect())
+    assert restored.x() == pytest.approx(target_source.x(), abs=1e-9)
+    assert restored.y() == pytest.approx(target_source.y(), abs=1e-9)
+    qtbot.mouseMove(canvas, QPoint(10, 10))
+    qtbot.mouseMove(canvas, top_left.toPoint())
+    assert canvas.cursor().shape() == Qt.CursorShape.SizeFDiagCursor
+
+
+def test_drag_and_two_click_backplate_inputs_share_clamped_coordinates(qtbot) -> None:
+    """拖拽与两点创建从底板跨过图片时必须得到同一贴边矩形。"""
+
+    drag_canvas = _canvas_with_annotation(qtbot)
+    drag_rect = drag_canvas._image_rect()
+    start = QPoint(
+        round(drag_rect.left() - 18),
+        round(drag_rect.top() + drag_rect.height() * 0.25),
+    )
+    end = QPoint(
+        round(drag_rect.right() + 18),
+        round(drag_rect.bottom() - drag_rect.height() * 0.25),
+    )
+    before = len(drag_canvas.annotations)
+    drag_canvas.set_tool(CanvasTool.RECTANGLE)
+    qtbot.mousePress(drag_canvas, Qt.MouseButton.LeftButton, pos=start)
+    qtbot.mouseMove(drag_canvas, end)
+    assert drag_canvas._snap_projection is not None
+    qtbot.mouseRelease(drag_canvas, Qt.MouseButton.LeftButton, pos=end)
+    assert len(drag_canvas.annotations) == before + 1
+    dragged = drag_canvas.annotations[-1]
+
+    click_canvas = _canvas_with_annotation(qtbot)
+    click_rect = click_canvas._image_rect()
+    click_start = QPoint(
+        round(click_rect.left() - 18),
+        round(click_rect.top() + click_rect.height() * 0.25),
+    )
+    click_end = QPoint(
+        round(click_rect.right() + 18),
+        round(click_rect.bottom() - click_rect.height() * 0.25),
+    )
+    click_canvas.set_tool(CanvasTool.RECTANGLE)
+    qtbot.mouseClick(click_canvas, Qt.MouseButton.LeftButton, pos=click_start)
+    assert click_canvas._draft.anchor is not None
+    qtbot.mouseClick(click_canvas, Qt.MouseButton.LeftButton, pos=click_end)
+    clicked = click_canvas.annotations[-1]
+
+    assert (dragged.x1, dragged.y1, dragged.x2, dragged.y2) == pytest.approx(
+        (clicked.x1, clicked.y1, clicked.x2, clicked.y2),
+        abs=1e-9,
+    )
+    assert dragged.x1 == pytest.approx(0.0)
+    assert dragged.x2 == pytest.approx(320.0)
+
+
+def test_clamped_zero_area_retries_and_select_click_on_backplate_only_clears(qtbot) -> None:
+    """零面积不造假框，选择工具点击底板只执行空白选择语义。"""
+
+    canvas = _canvas_with_annotation(qtbot)
+    image_rect = canvas._image_rect()
+    outside = QPoint(round(image_rect.left() - 12), round(image_rect.top() + 50))
+    before = tuple(canvas.annotations)
+    canvas.set_tool(CanvasTool.RECTANGLE)
+    qtbot.mouseClick(canvas, Qt.MouseButton.LeftButton, pos=outside)
+    assert canvas._draft.anchor is not None
+    qtbot.mouseClick(canvas, Qt.MouseButton.LeftButton, pos=outside + QPoint(4, 0))
+    assert tuple(canvas.annotations) == before
+    assert canvas._draft.anchor is not None
+
+    canvas.cancel_current_operation()
+    canvas.select_shape(before[0].id)
+    assert canvas.selected_id == before[0].id
+    qtbot.mouseClick(canvas, Qt.MouseButton.LeftButton, pos=QPoint(4, 4))
+    assert canvas.selected_id is None
+    assert tuple(canvas.annotations) == before
+
+
+def test_backplate_clamping_requires_editable_rectangle_mode_and_middle_pan_wins(qtbot) -> None:
+    """吸附只属于可编辑矩形工具，中键在底板上不能创建或平移。"""
+
+    canvas = _canvas_with_annotation(qtbot)
+    image_rect = canvas._image_rect()
+    outside = QPoint(round(image_rect.left() - 15), round(image_rect.center().y()))
+    before = tuple(canvas.annotations)
+
+    canvas.set_tool(CanvasTool.RECTANGLE)
+    qtbot.mouseMove(canvas, outside)
+    assert canvas._snap_projection is not None
+    qtbot.mousePress(canvas, Qt.MouseButton.MiddleButton, pos=outside)
+    qtbot.mouseMove(canvas, outside + QPoint(20, 12))
+    qtbot.mouseRelease(canvas, Qt.MouseButton.MiddleButton, pos=outside + QPoint(20, 12))
+    assert tuple(canvas.annotations) == before
+    assert canvas._middle_panning is False
+    assert canvas._draft.anchor is None
+
+    canvas.managed_read_only = True
+    canvas._refresh_snap_projection()
+    assert canvas._snap_projection is None
+    qtbot.mouseClick(canvas, Qt.MouseButton.LeftButton, pos=outside)
+    assert tuple(canvas.annotations) == before
