@@ -122,7 +122,7 @@
 - 框线和内部填充均使用类别颜色。集中式令牌的外框 alpha 为 235、填充 alpha 为 38，外框清晰而内部不遮挡图片细节。
 - 选中、悬停、归档和异常状态需要额外边线、控制点或纹理，不得只通过改变标签颜色表达。
 
-> 状态：一次性矩形、边界滚动和高倍率映射已实现。十字辅助线当前实现仍只覆盖部分画布状态；上述“所有画布操作期间持续跟随”的最新规则仅完成需求整理，待后续统一修改代码和重新验收。
+> 状态：一次性矩形、边界滚动、高倍率映射、持续辅助线、上下文系统指针、浅色底板与底板输入边缘吸附均已实现，并通过 A0.5～A0.7 独立复验。
 
 ## 3. 数据集主页与数据集池体验
 
@@ -324,4 +324,4 @@
 
 ## English Summary
 
-Visual design v2 and the main revised step-four interaction model are implemented. The first effective manual annotation edit atomically completes pending model work after save; `review.mark_completed` defaults to `S` for no-edit review. One-shot rectangles, two-click creation, bounded scrolling, 6400% inspection, and the responsive quick-label dialog are active in normal mode. Pending follow-ups add persistent guides, contextual system-pointer icons, a light backplate, and image-edge clamping when rectangle input starts or ends on the backplate.
+Visual design v2 and the revised step-four interaction model are implemented. The first effective manual annotation edit atomically completes pending model work after save; `review.mark_completed` defaults to `S` for no-edit review. One-shot rectangles, two-click creation, bounded scrolling, 6400% inspection, the responsive quick-label dialog, persistent guides, contextual system-pointer icons, a light backplate, and image-edge clamping are active in normal mode.

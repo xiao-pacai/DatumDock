@@ -1,6 +1,6 @@
 # DatumDock UI 与步骤四页面清单
 
-> 状态：步骤四整改已将一次性矩形、双状态复核、全量快捷键、6400% 视图和响应式快速标签窗接入正式 UI。模型、导出、完整 X-AnyLabeling 目录交换和备份仍只提供界面或待接入提示。
+> 状态：步骤四及 A0.5～A0.7 已将一次性矩形、双状态复核、全量快捷键、6400% 视图、响应式快速标签窗、持续辅助线、上下文系统指针、浅色底板和边缘吸附接入正式 UI。模型、导出、完整 X-AnyLabeling 目录交换和备份仍只提供界面或待接入提示。
 
 ## 0. 本轮实现记录
 
@@ -8,7 +8,8 @@
 - 29 / 29 个 `DialogId` 已集中注册，包括可缩放的 `QUICK_LABEL_SELECTOR`；均可发现、切换语言、校验、取消和关闭。
 - 普通模式使用 `ManagedDatasetGateway` 和真实内部资料库；仅在初始化失败时降级为 `UnavailableGateway`。预览模式始终使用独立 `PreviewGateway`。
 - `build/ui-review/step4-revision/` 生成 30 张原生 Windows 截图：中英文均覆盖三种分辨率的真实工作台、全量快捷键和快速标签窗，1440×900 额外覆盖 6400%、弹窗尺寸、搜索、恢复默认与保存失败。
-- 独立 Python 3.11 下 Ruff、格式、`compileall`、pytest-qt、166 项通过测试和普通/预览 GUI 启动冒烟均通过；1 项符号链接权限用例跳过。
+- `build/ui-review/a0.5-a0.7/` 新增 16 张双语三分辨率画布截图和 14 张中英文 Win32 原生系统光标截图；光标清单同时记录真实 HCURSOR 与文件哈希。
+- 独立 Python 3.11 下 Ruff、格式、`compileall`、pytest-qt、196 项通过测试和普通/预览 GUI 启动冒烟均通过；1 项符号链接权限用例跳过。
 
 ## 1. 运行边界
 
@@ -101,14 +102,14 @@
 | --- | --- | --- | --- |
 | `review.mark_completed` | “确认已完成”按钮及可配置快捷键 | 用于检查后无需修改的待复核图片；若发生有效人工编辑，则编辑保存成功时自动完成 | 已由 `ActionRegistry` 注册并接入 schema v3 真实状态操作 |
 
-### 3.3 待整改画布视觉状态
+### 3.3 已复验画布视觉状态
 
 | 标识 | 界面 | 目标交互 | 当前状态 |
 | --- | --- | --- | --- |
-| `canvas.persistent_crosshair` | 中央图片画布 | 指针在实际图片内时，无论选择、画框、框编辑或中键平移都持续显示并移动水平/竖直辅助线 | 最新需求已写入文档；当前代码仍只覆盖部分画布状态，待统一实现与截图复验 |
-| `canvas.annotation_cursor` | 中央图片画布 | 改变实际系统鼠标指针图标：框内显示四向移动；八个控制点显示水平、垂直或对应对角缩放；中键平移和矩形创建使用更高优先级指针 | 最新需求已写入文档；当前代码尚未按完整映射与优先级验收 |
-| `canvas.light_backplate` | 中央图片画布 | 使用冷调浅色底板与细图片边界，替代步骤四早期深色画布 | 最新需求已写入文档；主题和截图尚未更新 |
-| `canvas.edge_clamped_rectangle` | 中央图片画布 | 矩形拖拽/两点输入落在底板时吸附到最近图片边或角，最终坐标仍在图片内 | 最新需求已写入文档；当前代码仍会拒绝部分底板输入，待统一实现 |
+| `canvas.persistent_crosshair` | 中央图片画布 | 指针在实际图片内时，无论选择、画框、框编辑或中键平移都持续显示并移动水平/竖直辅助线 | 已实现；辅助线按当前图片位置实时裁切，纯视图反馈测试通过 |
+| `canvas.annotation_cursor` | 中央图片画布 | 改变实际系统鼠标指针图标：框内显示四向移动；八个控制点显示水平、垂直或对应对角缩放；中键平移和矩形创建使用更高优先级指针 | 已实现；高倍率、DPI、只读与 14 张双语 Win32 光标证据通过 |
+| `canvas.light_backplate` | 中央图片画布 | 使用冷调浅色底板与细图片边界，替代步骤四早期深色画布 | 已实现；空/有图状态及双语三分辨率截图通过 |
+| `canvas.edge_clamped_rectangle` | 中央图片画布 | 矩形拖拽/两点输入落在底板时吸附到最近图片边或角，最终坐标仍在图片内 | 已实现；四边四角、零面积、工具优先级及后端越界拒绝通过 |
 
 ## 4. 可复用组件
 
@@ -132,4 +133,4 @@
 
 ## English Summary
 
-This inventory covers the verified main step-four UI. `review.mark_completed`, schema-v3 review state, all registered shortcuts, atomic restore-all defaults, one-shot rectangles, and the responsive quick-label selector are implemented. Newly documented pending states cover persistent guides, contextual system-pointer icons, a light canvas backplate, and rectangle input clamped from the backplate to the nearest image edge. Model inference, exports, complete X-AnyLabeling directory exchange, backups, and packaging remain future work.
+This inventory covers the verified revised step-four UI and A0.5–A0.7. `review.mark_completed`, schema-v3 review state, all registered shortcuts, atomic restore-all defaults, one-shot rectangles, responsive quick-label selection, persistent guides, contextual system-pointer icons, a light canvas backplate, and rectangle input clamped from the backplate to the nearest image edge are implemented. Model inference, exports, complete X-AnyLabeling directory exchange, backups, and packaging remain future work.

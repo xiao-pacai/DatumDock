@@ -1,12 +1,8 @@
 # DatumDock UI 与步骤四交付复验报告
 
-> 最终结论（2026-07-19）：DatumDock 步骤四标注交互整改、完整快捷键系统和双状态复核模型已经完成；普通模式支持一次性矩形创建、两点/拖拽画框、高倍率图片检查、响应式快速标签选择、可配置快捷键，以及人工编辑后自动完成复核。模型推理、YOLO 导出、完整 X-AnyLabeling 目录互操作和备份仍将在后续步骤接入。
+> 最终结论（2026-07-20）：DatumDock 步骤四及 A0.5～A0.7 已完成；普通模式支持一次性矩形创建、两点/拖拽画框、高倍率图片检查、响应式快速标签选择、可配置快捷键、图片内持续辅助线、上下文系统指针、浅色底板和底板输入边缘吸附。模型推理、YOLO 导出、完整 X-AnyLabeling 目录互操作和备份仍将在后续步骤接入。
 
-> 后续需求状态（2026-07-19）：用户新增“十字辅助线在所有画布操作期间持续跟随鼠标”的规则。本轮只更新 Markdown，当前代码和既有 30 张截图尚未验证该扩展行为，因此步骤四主体结论保留，但 A0.5 辅助线整改不得宣称完成。
-
-> 另一项后续需求：移动矩形标注及拖动八个缩放控制点时，实际系统鼠标指针图标必须变为匹配移动或缩放方向的样式；不是改变标签框外观。本轮同样只记录为 A0.6，尚未修改代码或生成验收证据。
-
-> 第三项后续需求：图片后方改用浅色底板；矩形工具的输入落在中央底板时，应吸附到最近图片边或角而不是直接失败。该 A0.7 同样只整理文档，旧深色画布截图不代表最新目标。
+> A0.5～A0.7 证据状态（2026-07-20）：共享画布实现、pytest-qt、高倍率/DPI 子进程、16 张双语三分辨率画布截图和 14 张中英文 Win32 原生系统光标截图均通过；旧 30 张步骤四截图继续作为 A0.4 历史证据，不再代表画布底板颜色。
 
 ## 1. 复验背景
 
@@ -205,48 +201,52 @@ $env:QT_QPA_PLATFORM = "offscreen"
 
 ## 17. 步骤四整改质量结果与截图
 
-- Python 3.11 完整结果：**166 passed、1 skipped、14 warnings**。唯一跳过项仍是当前 Windows 账户无符号链接权限；警告仍来自正式入口未调用的旧图片算法。
+- Python 3.11 最新完整结果：**196 passed、1 skipped、14 warnings**。唯一跳过项仍是当前 Windows 账户无符号链接权限；警告仍来自正式入口未调用的旧图片算法。
 - Ruff、格式检查、`compileall` 通过；普通模式和 `--ui-preview` 均进入真实 Qt 事件循环。
-- pytest 自动夹具会为每个测试设置独立绝对 `DATUMDOCK_DATA_DIR`。最终完整回归前后，真实资料库均为 705 个文件，树哈希均为 `0B44018242767B7E90BF4A78EEE3FA2D344300AB2200B1DC509C96B31B2A4CF8`，且测试结束后没有遗留 pytest 进程。
-- 初始只读快照为 703 个文件；任务期间检测到真实资料库新增两份标注，因而不能沿用初始树哈希。无法从文件事实安全归因该并发变化，收尾操作将其原样保留，没有擅自回滚。
+- A0.5～A0.7 实施前后，真实资料库均为 707 个文件；按“反斜杠相对路径 + `|` + 文件 SHA-256 + 换行”计算的树哈希均为 `50CA866A47F46AD3D2DB7EE34BBB8E6E4190F22B41BD9B78B8577F49570F1B26`，且测试结束后没有遗留 pytest 或 DatumDock 进程。
+- 测试与截图均使用绝对临时资料库；普通模式事件循环存活并仅在临时根生成 2 个初始化文件，`--ui-preview` 事件循环存活且生成 0 个资料库文件。
 - `scripts/capture_step4_review.py` 在临时资料库生成 `build/ui-review/step4-revision/` 的 30 张原生 Windows 截图。
 - 中文/英文分别覆盖 1366×768、1440×900、1920×1080 的双状态工作台、全量快捷键页面和快速标签窗。
 - 1440×900 额外覆盖最小/扩大标签窗、搜索、6400% 边框/辅助线、恢复全部快捷键、标签迁移和保存失败保护。
 - 截图未提交 Git；脚本只写 Git 忽略的 `build/ui-review/`，资料库来自临时目录。
+- `scripts/capture_canvas_followup_review.py` 生成 16 张 A0.5～A0.7 双语三分辨率画布截图；`scripts/capture_canvas_pointer_review.py` 使用 Win32 GDI 屏幕捕获和当前真实 HCURSOR 生成 14 张中英文系统指针截图及哈希清单。
 
-## 18. 步骤四整改评分
+## 18. A0.5～A0.7 整改评分
 
 | 领域 | 得分 | 说明 |
 | --- | ---: | --- |
-| 需求覆盖 | 25 / 25 | 一次性矩形、快速标签窗、双状态和全量快捷键均真实接入。 |
-| 数据迁移与保存安全 | 24 / 25 | 迁移、回滚、摘要与跨数据集隔离通过；符号链接权限用例仍跳过。 |
-| 画布交互与视觉 | 20 / 20 | 两种创建方式、边界滚动、十字线、固定屏幕线宽和 6400% 通过。 |
-| 快捷键与设置体验 | 15 / 15 | 24 个动作、冲突替换、三级恢复、文本焦点保护和持久化通过。 |
-| 测试与稳定性 | 10 / 10 | 166 项、pytest-qt、万级查询、故障注入和 30 张截图通过。 |
-| 文档与工程质量 | 5 / 5 | 规范、架构、验收、路线图、清单和截图脚本同步。 |
-| **总分** | **99 / 100** | 高于 90 分门槛，无已知 P0/P1，不用评分掩盖后续范围。 |
+| 需求覆盖 | 30 / 30 | A0.5～A0.7 的辅助线、指针、浅色底板和边缘吸附均真实接入。 |
+| 交互与坐标准确性 | 25 / 25 | 四边四角、拖拽/两点、零面积、工具优先级及 6400% 坐标通过。 |
+| 视觉与鼠标反馈 | 20 / 20 | 双语三分辨率画布及中英文 Win32 原生系统指针证据通过。 |
+| 测试与数据安全 | 15 / 15 | 196 项、DPI 子进程、普通/预览隔离和真实资料库哈希复验通过。 |
+| 文档与工程质量 | 10 / 10 | 规范、架构、验收、路线图、清单和两类截图脚本同步。 |
+| **总分** | **100 / 100** | 高于 90 分门槛，无已知 P0/P1，未用评分掩盖后续范围。 |
 
-## 19. A0.5 持续辅助线待复验项
+## 19. A0.5 持续辅助线完成证据
 
 - 最新目标不再把十字辅助线绑定到矩形创建状态；只要指针位于实际图片内，两条线就在选择、创建、框移动/缩放和中键平移期间持续跟随。
 - 中键平移时图片边界会移动，辅助线必须基于指针与新图片区域实时裁切；只有离开实际图片、空画布或加载失败时隐藏。
 - 该变化只影响视图反馈，不应产生标注历史、自动保存或复核状态变化，也不能抢占任何现有画布输入。
-- 当前代码、自动测试和 30 张既有截图均早于本需求，不能作为 A0.5 完成证据；完成实现后必须重新运行 pytest-qt、全量质量门和双语截图复验。
+- 共享画布以唯一当前指针位置和当前图片矩形实时计算辅助线；选择、矩形、框移动/缩放和中键平移测试均通过，且没有业务信号、历史或保存副作用。
+- 100%/800%/3200%/6400% 坐标测试和双语三分辨率 `persistent-crosshair.png` 证明辅助线没有沿用旧图坐标。
 
-## 20. A0.6 标注操作鼠标指针样式待复验项
+## 20. A0.6 标注操作鼠标指针完成证据
 
 - 最新目标改变实际系统鼠标指针图标：可编辑框内部显示四向移动指针，左右/上下控制点显示水平/垂直缩放指针，四角显示对应的两类对角缩放指针；不改变标注框外观。
 - 中键平移和矩形创建的指针样式优先于框命中；只读兼容 shape 与锁定标注文档不显示移动/缩放反馈。
 - 鼠标指针样式应在拖动期间保持，在释放、取消、切图、工具切换或失焦后按当前上下文恢复，不得残留错误样式。
-- 当前代码、测试和截图尚未按完整映射、优先级、高倍率与 DPI 条件验收；实现后需由 pytest-qt 断言鼠标指针类型，并使用能捕获系统指针的原生录屏或屏幕截图与 A0.5 一并复验，不能沿用不含指针的 `QWidget.grab()` 证据。
+- 画布只有集中式解析函数调用 `setCursor()`；框内、八控制点、矩形创建、中键平移、拖动锁定、释放/失焦、只读和优先级测试通过。
+- 100%/125%/150% DPI 子进程及 100%～6400% 命中测试通过；14 张中英文 Win32 GDI 截图包含真实 HCURSOR，而非不含系统指针的 `QWidget.grab()`。
 
-## 21. A0.7 浅色底板与边缘吸附待复验项
+## 21. A0.7 浅色底板与边缘吸附完成证据
 
 - 最新目标以冷调浅色底板取代早期深色画布，并用细边界保证浅色图片轮廓可辨。
 - 矩形工具在中央底板收到的拖拽或两点输入必须逐轴钳制到最近图片边/角；动态预览和提交使用同一坐标，最终标注仍完全位于图片内。
 - 选择模式、平移、中央画布之外、无图片、无活动标签和不可编辑文档不触发吸附；钳制后零面积不创建虚假最小框。
-- 旧 30 张截图、当前代码和测试均早于该规则；实现后必须重做主题/三分辨率截图，并覆盖四边四角、高倍率、反向绘制、零面积与后端越界拒绝。
+- `ThemeTokens` 集中提供 `canvas_backplate`、`canvas_image_boundary` 和吸附反馈令牌；普通、有图、空画布均使用浅色底板。
+- 纯函数 `project_point_to_image_bounds()` 返回钳制画布点、原图像素点和命中边；拖拽与两点状态机共用结果，四边四角、反向、零面积、只读和中键优先级回归通过。
+- 16 张双语三分辨率截图覆盖浅色底板、持续辅助线、贴边草稿、吸附提示、6400% 与空画布；Service 仍独立拒绝越界、非有限和零面积框。
 
 ## English Summary
 
-This report preserves schema-v2 history and separately verifies the main revised step-four delivery. Schema v3, atomic manual completion, 24 registered actions, one-shot/two-click rectangles, bounded 6400% inspection, list deletion, and the responsive quick-label selector are implemented. A0.5–A0.7 are documentation-only follow-ups for persistent guides, contextual system-pointer icons, a light backplate, and image-edge clamping of backplate rectangle input; existing code, tests, and 30 screenshots do not validate them. Model inference, exports, complete X-AnyLabeling directory exchange, backups, and packaging remain future work.
+This report preserves schema-v2 history and verifies the revised step-four delivery plus A0.5–A0.7. Schema v3, atomic manual completion, 24 registered actions, one-shot/two-click rectangles, bounded 6400% inspection, list deletion, responsive quick-label selection, persistent guides, contextual system pointers, a light backplate, and image-edge clamping are implemented. The Python 3.11 suite reports 196 passed and one privilege-related skip; 16 bilingual canvas screenshots and 14 Win32 cursor-handle captures provide current visual evidence. Model inference, exports, complete X-AnyLabeling directory exchange, backups, and packaging remain future work.

@@ -115,44 +115,44 @@
 - [x] 补充单元测试、pytest-qt 交互回归、双语截图和三种目标分辨率视觉复验。
 - [x] A0.4 与步骤四交互说明已按真实证据更新为完成。
 
-## 阶段 3.2：十字辅助线持续跟随整改（需求整理中）
+## 阶段 3.2：十字辅助线持续跟随整改（已完成）
 
-> 2026-07-19：用户明确辅助线不应只在画框时出现。本阶段当前只允许修改 Markdown，代码、测试和既有截图尚未更新，因此不得标记完成。
+> 2026-07-20：共享画布、pytest-qt、高倍率坐标与双语三分辨率截图均已复验。
 
 - [x] 锁定最新可见性规则：只要指针位于实际图片区域，两条辅助线就在所有画布工具和交互状态下持续跟随。
 - [x] 明确最新规则取代“中键平移时隐藏”；平移期间根据移动后的图片边界实时裁切辅助线。
 - [x] 明确隐藏条件只包括离开实际图片、空画布和图片加载失败。
 - [x] 明确辅助线是纯视图反馈，不产生历史、保存、复核状态或输入抢占。
-- [ ] 修改通用画布的 hover/paint 状态，使选择、矩形、框编辑和中键平移共享同一持续辅助线逻辑。
-- [ ] 增加非画框状态、中键平移、图片边缘、高倍率和空/失败画布的 pytest-qt 回归。
-- [ ] 重新生成双语目标分辨率截图，并在非矩形工具状态下清楚展示辅助线。
-- [ ] 通过完整 Python 3.11 质量门后更新 A0.5、UI 复验报告和评分。
+- [x] 修改通用画布的 hover/paint 状态，使选择、矩形、框编辑和中键平移共享同一持续辅助线逻辑。
+- [x] 增加非画框状态、中键平移、图片边缘、高倍率和空/失败画布的 pytest-qt 回归。
+- [x] 重新生成双语目标分辨率截图，并在非矩形工具状态下清楚展示辅助线。
+- [x] 通过完整 Python 3.11 质量门后更新 A0.5、UI 复验报告和评分。
 
-## 阶段 3.3：标注移动与缩放鼠标指针反馈（需求整理中）
+## 阶段 3.3：标注移动与缩放鼠标指针反馈（已完成）
 
-> 本阶段与 3.2 一并等待统一代码修改；当前只锁定交互和验收，不改变已运行程序。
+> 2026-07-20：集中式指针解析、高倍率/DPI 回归和双语 Win32 原生光标证据均已完成。
 
 - [x] 明确本需求改变实际系统鼠标指针图标，不改变矩形标注、标签或控制点外观。
 - [x] 锁定框内四向移动、水平/垂直边控制点和两组对角控制点的鼠标指针映射。
 - [x] 锁定中键平移、矩形创建、控制点、框内移动和普通选择的指针样式优先级。
 - [x] 明确只读/锁定 shape 不提供虚假操作指针，单纯指针变化不进入历史、保存或复核状态。
-- [ ] 在通用画布中集中实现 hover 命中到 Qt 鼠标指针的映射，禁止在不同事件处理器中散落设置。
-- [ ] 补充八控制点、高倍率、DPI、释放/取消、工具切换、切图和只读对象的 pytest-qt 回归。
-- [ ] 生成能捕获系统鼠标指针的双语原生录屏或屏幕截图，证明移动、水平/垂直与两类对角缩放指针；普通 `QWidget.grab()` 不包含系统指针，不能作为本项证据。
-- [ ] 与 A0.5 一起通过完整质量门后更新 A0.6 和 UI 复验报告。
+- [x] 在通用画布中集中实现 hover 命中到 Qt 鼠标指针的映射，禁止在不同事件处理器中散落设置。
+- [x] 补充八控制点、高倍率、DPI、释放/取消、工具切换、切图和只读对象的 pytest-qt 回归。
+- [x] 生成能捕获系统鼠标指针的双语 Win32 原生屏幕截图，证明移动、水平/垂直、两类对角、矩形与闭合手形指针；普通 `QWidget.grab()` 未用于本项证据。
+- [x] 与 A0.5 一起通过完整质量门后更新 A0.6 和 UI 复验报告。
 
-## 阶段 3.4：浅色底板与图片边缘吸附画框（需求整理中）
+## 阶段 3.4：浅色底板与图片边缘吸附画框（已完成）
 
-> 本阶段与 3.2、3.3 一并等待统一代码修改。它改变画布视觉和矩形输入映射，但不允许任何最终标注越出图片。
+> 2026-07-20：浅色主题令牌、纯函数投影、矩形状态机、pytest-qt 和双语截图均已复验，最终标注仍受 Service 独立边界校验。
 
 - [x] 锁定 `canvasBackplate` 冷调浅色底板和 `canvasImageBoundary` 细边界，明确取代早期深色画布。
 - [x] 锁定拖拽与两点创建共享逐轴钳制：底板点吸附到最近图片边或角，图片内点保持不变。
 - [x] 明确钳制后零面积不创建、中央画布外不吸附、选择模式不画框、中键平移优先。
 - [x] 明确 UI 钳制不放宽领域/Service 的有限值、正面积和边界校验。
-- [ ] 在 `AnnotationCanvas` 集中实现视图点到图片边界的纯函数映射，并让草稿、宽高、预览和提交共享。
-- [ ] 增加四边/四角、内外组合、反向绘制、零面积、高倍率、平移滚动和工具优先级回归。
-- [ ] 更新主题令牌、空画布、图片边界、辅助线/吸附反馈及中英文三分辨率截图。
-- [ ] 与 A0.5/A0.6 一起通过完整质量门后更新 A0.7、UI 复验报告和评分。
+- [x] 在 `AnnotationCanvas` 集中实现视图点到图片边界的纯函数映射，并让草稿、宽高、预览和提交共享。
+- [x] 增加四边/四角、内外组合、反向绘制、零面积、高倍率、平移滚动和工具优先级回归。
+- [x] 更新主题令牌、空画布、图片边界、辅助线/吸附反馈及中英文三分辨率截图。
+- [x] 与 A0.5/A0.6 一起通过完整质量门后更新 A0.7、UI 复验报告和评分。
 
 ## 阶段 4：标注持久化与模型格式导出
 
@@ -221,4 +221,4 @@
 
 ## English Summary
 
-The main revised step-four interaction slice is complete: schema v3, one-shot/two-click rectangles, 6400% inspection, full shortcut configuration, responsive quick label selection, list deletion, and atomic manual-completion semantics are verified. Phases 3.2–3.4 are documentation-only pending follow-ups for persistent guides, contextual system-pointer icons, a light backplate, and image-edge clamping of backplate rectangle input. Model inference, export, complete X-AnyLabeling directory exchange, backup, and packaging remain on the roadmap.
+The revised step-four interaction slice and phases 3.2–3.4 are complete: schema v3, one-shot/two-click rectangles, 6400% inspection, full shortcut configuration, responsive quick label selection, list deletion, atomic manual completion, persistent guides, contextual system-pointer icons, a light backplate, and edge-clamped backplate rectangle input are verified. Model inference, export, complete X-AnyLabeling directory exchange, backup, and packaging remain on the roadmap.

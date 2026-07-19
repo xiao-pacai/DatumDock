@@ -94,7 +94,7 @@ src/datumdock/
 - 数据模型始终保存原始图片像素坐标。
 - 画布显示坐标通过缩放与平移转换得到。
 - 写入前将矩形坐标归一化为左上角与右下角，避免反向拖拽产生无效数据。
-- A0.7 目标在 `AnnotationCanvas` 输入层增加纯函数式边界钳制：矩形工具的中央底板坐标逐轴投影到 `[0, image_width] × [0, image_height]`，动态预览和提交共享同一结果；图片内点保持不变。
+- A0.7 已在 `AnnotationCanvas` 输入层实现纯函数式 `CanvasProjection`：矩形工具的中央底板坐标逐轴投影到 `[0, image_width] × [0, image_height]`，动态预览和提交共享同一结果；图片内点保持不变。
 - `AnnotationService`、领域模型和 `LabelMeRepository` 不信任 UI 钳制，继续拒绝非有限、零面积或真正越界的矩形。选择、平移、侧栏点击和不可编辑文档不会调用该钳制创建标注。
 
 ## 5. 内部资料库、数据集池与导出边界
@@ -284,4 +284,4 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 
 ## English Summary
 
-The architecture now implements schema v3 review state, recoverable JSON/SQLite commits, an exhaustive action registry, and isolated quick-label transactions. Documented pending canvas changes add persistent guides, contextual system-pointer icons, a light backplate, and a UI-only clamp that maps central-backplate rectangle input to valid image-edge coordinates; domain and service validation still reject true out-of-bounds data. Model inference and export pipelines remain future work.
+The architecture implements schema v3 review state, recoverable JSON/SQLite commits, an exhaustive action registry, isolated quick-label transactions, persistent image-clipped guides, centralized contextual cursor resolution, a light backplate, and a pure UI projection that maps central-backplate rectangle input to valid image-edge coordinates. Domain and service validation still independently reject true out-of-bounds data. Model inference and export pipelines remain future work.

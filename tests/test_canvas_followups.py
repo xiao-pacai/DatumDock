@@ -414,3 +414,29 @@ def test_backplate_clamping_requires_editable_rectangle_mode_and_middle_pan_wins
     assert canvas._snap_projection is None
     qtbot.mouseClick(canvas, Qt.MouseButton.LeftButton, pos=outside)
     assert tuple(canvas.annotations) == before
+
+
+def test_crosshair_cursor_and_snap_feedback_have_no_business_side_effects(qtbot) -> None:
+    """辅助线、系统指针和吸附提示只刷新视图，不得伪造编辑或历史。"""
+
+    canvas = _canvas_with_annotation(qtbot)
+    changed: list[str] = []
+    document_changes: list[bool] = []
+    canvas.edit_committed.connect(changed.append)
+    canvas.document_changed.connect(lambda: document_changes.append(True))
+    before = tuple(canvas.annotations)
+    image_rect = canvas._image_rect()
+
+    canvas.set_tool(CanvasTool.RECTANGLE)
+    for point in (
+        image_rect.center().toPoint(),
+        QPoint(round(image_rect.left() - 16), round(image_rect.center().y())),
+        QPoint(round(image_rect.right() + 16), round(image_rect.bottom() + 16)),
+    ):
+        qtbot.mouseMove(canvas, point)
+
+    assert tuple(canvas.annotations) == before
+    assert canvas._undo == []
+    assert canvas._redo == []
+    assert changed == []
+    assert document_changes == []

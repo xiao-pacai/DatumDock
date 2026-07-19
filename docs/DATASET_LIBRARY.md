@@ -101,7 +101,7 @@ flowchart LR
 - 中间为占据主要空间的图片画布，负责矩形框标注、缩放、平移、选中态和直接编辑。
 - 右侧上半区显示当前图片的全部标注。列表行显示标签颜色、中文别名、英文训练名和选中状态，并与画布框双向同步。
 - 右侧下半区显示图片列表或网格，支持搜索和筛选。每一行/卡片显示缩略图、文件名、标注数量，并在末尾固定显示图片级状态。
-- 下一轮整改后，用户可见复核状态只包含“待复核”和“已完成”。纯人工标注默认已完成；模型标注进入待复核，第一次有效人工编辑保存成功后自动完成。检查后无需修改时通过按钮或可配置快捷键确认已完成。
+- 用户可见复核状态只包含“待复核”和“已完成”。纯人工标注默认已完成；模型标注进入待复核，第一次有效人工编辑保存成功后自动完成。检查后无需修改时通过按钮或可配置快捷键确认已完成。
 - 新导入且无标注的图片不显示复核徽标，“无标注”只是筛选条件；图片/JSON 损坏作为独立健康诊断。明确确认的零框负样本同样显示已完成，不再使用“已完成（无目标）”第三状态。
 - 右侧两个区域使用可调整分隔条，可分别折叠；图片列表按 SQLite 分页并延迟加载缩略图，保证万张图片规模下可用。
 - 页面标题始终明确显示当前数据集名称，避免用户误操作其他存档。
@@ -228,4 +228,4 @@ flowchart LR
 
 ## English Summary
 
-DatumDock's revised step-four library uses schema v3. The first effective manual edit completes a model-pending image in the same recoverable save operation; no-edit review uses an explicit button or configurable shortcut. Unannotated samples and health errors remain separate from the two user-visible review states. Pending canvas requirements replace the historical dark canvas with a light backplate and clamp rectangle input from that backplate to valid image-edge coordinates.
+DatumDock's revised step-four library uses schema v3. The first effective manual edit completes a model-pending image in the same recoverable save operation; no-edit review uses an explicit button or configurable shortcut. Unannotated samples and health errors remain separate from the two user-visible review states. The verified canvas uses a light backplate and clamps eligible rectangle input from that backplate to valid image-edge coordinates.
