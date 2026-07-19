@@ -1,6 +1,6 @@
 # DatumDock 内部数据集主页与存档式管理方案
 
-> 步骤三状态（2026-07-19）：步骤二内部资料库基础上，真实受管图片池、SQLite v1、PNG 转码、重复/近似图、分页缩略图、批量重命名和回收站已经实现。真实标注、模型、导出、备份和旧结构迁移仍待后续步骤接入。详细事实边界见 [受管图片池](IMAGE_POOL.md)。
+> 步骤四状态（2026-07-19）：内部资料库和受管图片池基础上，SQLite v2、数据集级标签、矩形标注、LabelMe 立即自动保存与图片级复核已经实现。模型、导出、备份和旧结构迁移仍待后续步骤接入。详细边界见 [受管图片池](IMAGE_POOL.md) 与 [标注工作流](ANNOTATION_WORKFLOW.md)。
 
 > 状态：2026-07-19 已确认产品方向；本文件仅整理需求与实现边界，当前不修改应用代码。
 >
@@ -198,7 +198,7 @@ flowchart LR
 4. [已完成] 将正式标注工作台上下文收敛为单一当前数据集；旧代码只保留作迁移参考。
 5. [部分完成] 样本索引、图片池、回收站已迁入新边界；标签、模型、备份、导出和跨数据集操作待接入。
 6. [部分完成] 移除正式入口中用户可见的工作区、项目树和打开目录文案；旧代码翻译键随迁移继续清理。
-7. [部分完成] 重启恢复、数据隔离、10,000 条索引和步骤三 GUI 回归已验收；升级/安装包保留仍待发布阶段。
+7. [部分完成] 重启恢复、数据隔离、100 图连续标注、10,000 条索引和步骤四 GUI 回归已验收；升级/安装包保留仍待发布阶段。
 
 ## 10. 验收清单
 
@@ -206,7 +206,7 @@ flowchart LR
 - [x] 每次启动先显示包含完整 Logo、数据集列表和“新建数据集”的主页。
 - [x] 新建空数据集后直接进入空标注工作台；返回主页后立即出现对应卡片。
 - [x] 点击已有卡片直接进入正确数据集的标注工作台。
-- [x] 重启软件后可恢复数据集卡片、元数据、配置和标签定义；缺失索引与未登记 UUID 目录也可安全对账。图片、标注与复核状态将在相应功能接入后验收。
+- [x] 重启软件后可恢复数据集卡片、元数据、配置、标签定义、图片、标注与复核状态；缺失索引与未登记 UUID 目录也可安全对账。
 - [x] 中文和英文界面均不出现“打开工作区”“选择项目根目录”等过时主流程。
 - [x] 导入图片会复制并转为受管 PNG，删除受管样本不会修改外部来源。
 - [x] 两个数据集使用独立 UUID 目录、元数据、标签文件、索引、池、模型和回收站目录；真实样本导入、切换、任务和缓存隔离回归已通过。
@@ -227,4 +227,4 @@ flowchart LR
 
 ## English Summary
 
-DatumDock step three extends the game-save-like managed library with a real SQLite-backed image pool. Normal mode can ingest normalized PNG copies, review exact and near-image candidates, page through real thumbnails, rename samples, and use per-dataset trash without changing external sources. Startup reconciliation repairs interrupted managed operations or retains ambiguous evidence for diagnosis. Preview mode remains memory-only. Persistent annotations, models, exports, backups, installer preservation, and legacy-data migration remain planned.
+DatumDock step four extends the game-save-like managed library and image pool with SQLite v2 labels, editable rectangles, ordered LabelMe persistence, immediate autosave, image-level review, label inspection, and bounded recovery. Preview mode remains memory-only. Models, complete directory interchange, exports, backups, installer preservation, and legacy-data migration remain planned.

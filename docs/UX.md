@@ -2,7 +2,7 @@
 
 ## 0. 最新入口规范（步骤二入口已实现）
 
-用户入口以 [内部数据集主页与存档式管理方案](DATASET_LIBRARY.md) 为准：DatumDock 每次启动先显示存档式数据集主页，用户不选择工作区、项目根目录或外部保存位置。步骤三已在此基础上实现真实图片导入、缩略图/画布浏览、相似图、重命名和回收站；矩形标注、模型与导出交互仍按本文规范等待后续接入。
+用户入口以 [内部数据集主页与存档式管理方案](DATASET_LIBRARY.md) 为准：DatumDock 每次启动先显示存档式数据集主页，用户不选择工作区、项目根目录或外部保存位置。步骤四已在真实图片池上接入数据集标签、矩形编辑、立即自动保存、图片级复核和标签检查；模型与导出交互仍按本文规范等待后续接入。
 
 ## 1. 主窗口布局
 
@@ -264,4 +264,4 @@
 
 ## English Summary
 
-Visual design v2, the managed-dataset entry, and step-three image-pool interactions are implemented. Normal mode opens the friendly dataset home and a compact four-zone workspace with real paged thumbnails, managed-PNG canvas browsing, similarity review, rename, and dataset trash. Owned brand assets and bilingual responsive layouts remain intact. Persistent annotation, model, export, backup, and final tutorial behavior still follow this specification as future work.
+Visual design v2, the managed-dataset entry, the image pool, and step-four annotation interactions are implemented. Normal mode provides dataset labels, editable rectangles, immediate autosave, image-level review states, label inspection, and on-demand thumbnail overlays in the compact four-zone workspace. Model inference, export, backup, complete directory interchange, and final tutorial behavior remain future work.

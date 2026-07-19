@@ -53,7 +53,7 @@ def _workspace_with_label(qtbot, tmp_path: Path):
         class_id=0,
         name="metal_part",
         alias="金属零件",
-        description="需要框选的零件",
+        description="需要框选的 target assembly 零件",
     )
     gateway = ManagedDatasetGateway(library)
     source = tmp_path / "source.png"
@@ -87,6 +87,13 @@ def test_real_canvas_draws_moves_undoes_and_autosaves(qtbot, tmp_path: Path) -> 
         qtbot, tmp_path
     )
     assert workspace.tool_buttons["rectangle"].isEnabled() is True
+    line_edit = workspace.label_combo.lineEdit()
+    assert line_edit is not None
+    line_edit.clear()
+    qtbot.keyClicks(line_edit, "target")
+    qtbot.waitUntil(lambda: workspace.label_combo.count() == 1, timeout=2000)
+    assert workspace.label_combo.itemData(0) == label.id
+    workspace.label_combo.setCurrentIndex(0)
 
     _draw_rectangle(qtbot, workspace)
 

@@ -1,12 +1,12 @@
-# DatumDock UI 与步骤三交付复验报告
+# DatumDock UI 与步骤四交付复验报告
 
-> 最终结论（2026-07-19）：DatumDock 步骤三受管图片池已完成，可以在普通模式导入、转换、浏览、筛选、重命名和安全删除图片；真实标注持久化、模型和导出逻辑将在后续步骤接入。
+> 最终结论（2026-07-19）：DatumDock 步骤四真实标签与矩形标注闭环已完成，可以在普通模式管理数据集标签、绘制和编辑矩形框、立即自动保存 LabelMe JSON，并进行图片级人工复核；模型自动标注、YOLO 导出、完整 X-AnyLabeling 互操作和备份将在后续步骤接入。
 
 ## 1. 复验背景
 
 步骤二首次交付后的独立审计把状态暂时降为“部分完成”，评分 78 / 100，并确认两个 P1：底层写盘异常可能越过 Service/Gateway；`library.json` 缺失或进程在“发布目录—登记索引”窗口中中断后，有效数据集目录可能从主页隐藏。普通损坏诊断还会混入步骤一演示统计，稳定标签映射与统计关系验证不足，Python 3.11 和 pytest-qt 也尚未实际运行。
 
-本轮先把这些复现固化为失败回归，再修改实现。旧实现上新增选择性测试出现 17 项失败；修复后相同测试与扩展用例全部通过。本报告只记录证据已经覆盖的事实，不把图片、标注、模型、导出、备份或安装包描述为完成。
+本轮继续在已复验的资料库和图片池上接入步骤四。本报告只记录证据已经覆盖的事实：图片池、标签和受管标注已经完成；模型、完整外部目录互操作、导出、备份或安装包不描述为完成。
 
 ## 2. 已完成修复
 
@@ -36,7 +36,7 @@
 
 - `python -m datumdock` 使用 `ManagedDatasetGateway` 与 `%LOCALAPPDATA%\DatumDock` 真实资料库；只有初始化无法安全完成时才降级为 `UnavailableGateway`。
 - `python -m datumdock --ui-preview` 始终使用独立 `PreviewGateway`，创建、改名、切换和关闭都不读取或修改真实资料库。
-- 普通模式不使用演示图片、标签、模型或统计。步骤三已将图片导入、画布浏览、重命名、回收站和永久删除接为真实功能；标注持久化、AI、模型、YOLO/X-AnyLabeling 与备份仍明确提示后续接入。
+- 普通模式不使用演示图片、标签、模型或统计。步骤四已将真实标签、矩形编辑、自动保存和复核接入；AI、模型、YOLO、完整 X-AnyLabeling 目录交换与备份仍明确提示后续接入。
 - 新建和已有空数据集进入同一个真实工作台；顶部切换会重建当前数据集上下文，不会串入另一个数据集的数据。
 
 ## 4. Python 3.11 与自动化证据
@@ -126,14 +126,65 @@ $env:QT_QPA_PLATFORM = "offscreen"
 | 文档与工程质量 | 10 / 10 | 边界、启动、资料库、验收、路线图和图片池文档同步。 |
 | **总分** | **97 / 100** | 高于 90 分门槛，无已知 P0/P1，不以评分抵消未完成边界。 |
 
-## 11. 尚未完成的产品能力
+## 11. 步骤四标签与标注实施证据
 
-- 矩形标注持久化、自动保存和图片级复核；
-- 标签管理真实写入与 LabelMe/X-AnyLabeling 交换；
+- 数据集标签使用稳定 UUID、类别 ID、英文训练名、中文别名、描述、同义词、唯一颜色、状态、修订号和时间；显示字段修改不会改写 JSON。
+- 训练名修改先预览图片/框影响，以备份迁移标准 `shape.label`；中断操作可从有限恢复目录回滚，类别 ID 修改不触碰 JSON。
+- LabelMe 读写保留矩形与兼容 shape 原顺序、未知根字段和扩展负载；内部稳定 ID 只存在受管 JSON，交换负载递归剔除。
+- SQLite v2 保存标注摘要、版本、框数、更新时间、复核状态和 `sample_labels`，标签/状态筛选和样本定位不全量解析 JSON。
+- 正式画布支持创建、选择、移动、八点缩放、删除、换标签、撤销/重做；右侧列表与画布双向同步。
+- 每个有效编辑排入串行自动保存；版本与磁盘摘要按样本 UUID 隔离。保存失败保留内存状态，离开前明确要求重试、放弃或取消。
+- 未复核、待审核、已完成、已完成（无目标）和有问题为互斥图片级状态；异常由图片健康与标注诊断派生。
+- 重命名和回收站恢复会同步 `imagePath`、文件名与摘要；故障注入证明可恢复原 JSON 字节和旧摘要。
+
+## 12. 步骤四 Python 3.11 结果
+
+最终命令：
+
+```powershell
+.\.venv\Scripts\python.exe -m ruff check src tests scripts
+.\.venv\Scripts\python.exe -m ruff format --check src tests scripts
+.\.venv\Scripts\python.exe -m compileall -q src
+$env:QT_QPA_PLATFORM = "offscreen"
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
+- Ruff、格式检查和 `compileall` 通过。
+- **153 passed、1 skipped、14 warnings**；跳过项仅因当前 Windows 账户没有创建测试符号链接的权限。
+- 14 条警告来自正式入口未调用的旧 `services.dataset` 图片算法中 Pillow `getdata()` 未来弃用提示。
+- 自动回归包含 100 图连续保存/重开、10,000 条标签/状态分页定位、双数据集隔离、写盘/SQLite 故障、训练名迁移恢复和真实 pytest-qt 鼠标手势。
+- 普通模式与 `--ui-preview` 的原生 Qt 事件循环均保持运行；普通临时根生成 2 个初始化文件，预览临时根生成 0 个文件。
+- 真实 `%LOCALAPPDATA%\DatumDock` 复验前后均为 7 个文件；按“相对路径 + 文件 SHA-256”计算的本轮树哈希保持 `A31F897611CF1541B7F0C354D92EFFC504AE487B850CFD912311A6818997A6F4`。
+
+## 13. 步骤四原生截图
+
+`scripts/capture_step4_review.py` 使用临时资料库创建两个数据集，导入三张图片，建立三个标签与三种复核状态，并保存真实矩形后截图。
+
+- `build/ui-review/step4-annotation/` 共 22 张原生 Windows 截图。
+- 中英文均覆盖 1366×768、1440×900、1920×1080 的标注工作台、标签管理和标签图片检查。
+- 1440×900 额外覆盖训练映射编辑和保存失败离开保护。
+- 脚本在抓取前断言当前路由，并要求同一语言/尺寸的三个核心页面哈希互不相同。
+- 人工抽查修正了英文标签表头裁切、描述列挤压、检查页文件名裁切和原始 ISO 时间过长问题。
+
+## 14. 步骤四评分
+
+| 领域 | 得分 | 说明 |
+| --- | ---: | --- |
+| 需求覆盖 | 29 / 30 | 标签、矩形、LabelMe、复核、检查和治理闭环完成；检查页网格模式可后续增强。 |
+| 数据正确性与安全 | 30 / 30 | 路径、摘要、原子文件、SQLite 事务、有限恢复、跨样本/数据集隔离和损坏原件保护通过。 |
+| GUI 接入与体验 | 14 / 15 | 双语三尺寸真实页面和核心鼠标操作通过；更多可配置快捷键留待后续设置阶段。 |
+| 测试与稳定性 | 14 / 15 | 153 项通过，100 图、10,000 条与 22 张截图通过；1 项符号链接用例受权限跳过。 |
+| 文档与工程质量 | 9 / 10 | 架构、工作流、验收、路线图、清单、脚本和启动说明同步；安装包不属于步骤四。 |
+| **总分** | **96 / 100** | 高于 90 分门槛，无已知 P0/P1，不以评分抵消未完成边界。 |
+
+## 15. 尚未完成的产品能力
+
 - ONNX/PT 模型导入、CPU/GPU 推理和自动标注；
+- X-AnyLabeling 完整目录导入导出及独立应用实际打开验证；
 - YOLO Detection 导出、备份和跨数据集转移；
+- 完整快捷键设置、离线教程校订；
 - PyInstaller/Inno Setup 安装、卸载和无 Python 环境验证。
 
 ## English Summary
 
-DatumDock step three completes the real managed image-pool slice and scores 97/100 with no known P0/P1 issues. Six-format EXIF-aware normalized PNG ingestion, exact-duplicate decisions, reviewable near-image groups, SQLite v1 paging, real thumbnails/canvas, batch rename, trash/restore, permanent deletion, task cancellation, and restart reconciliation are implemented behind the gateway. Python 3.11 passes 127 tests; one symlink test is skipped for Windows account permissions. Twenty native bilingual screenshots cover the three target resolutions and step-three governance pages. Persistent annotations, X-AnyLabeling, models, exports, backups, and installer delivery remain future work.
+DatumDock step four completes dataset-level labels, editable rectangles, ordered LabelMe persistence, immediate autosave, SQLite v2, image-level review, label inspection, and governance consistency, scoring 96/100 with no known P0/P1 issues. Python 3.11 passes 153 tests; one symlink test is skipped for Windows account permissions. Twenty-two native bilingual screenshots cover all three target resolutions plus migration editing and save-failure protection. Models, complete X-AnyLabeling directory exchange, YOLO export, backups, transfer, and installer delivery remain future work.

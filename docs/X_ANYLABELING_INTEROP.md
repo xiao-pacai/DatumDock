@@ -1,5 +1,7 @@
 # X-AnyLabeling 互操作规范
 
+> 实现状态（2026-07-19）：步骤四已完成受管池内 LabelMe 矩形编辑、混合 shape 保序、兼容字段保留和私有字段剔除。本文描述的完整目录导入、独立目录导出、`labels.txt` 及 X-AnyLabeling 实际打开验证尚未实现，因此当前不得宣称完整互操作。
+
 ## 1. 目标
 
 用户可以将已有的 X-AnyLabeling 图片标注目录导入 DatumDock，继续进行数据集管理和矩形框标注；也可以从 DatumDock 导出一个目录，让 X-AnyLabeling 直接打开图片并加载对应标注。
@@ -70,4 +72,4 @@ xanylabeling-export/
 
 ## English Summary
 
-DatumDock imports X-AnyLabeling image directories with same-name LabelMe JSON sidecars and exports a directory that X-AnyLabeling can open directly. Rectangles become editable DatumDock annotations. Unsupported X-AnyLabeling shapes and fields such as score, group ID, flags, attributes, and descriptions are retained as compatibility payload and merged back during export, rather than being silently lost. The export writes PNG images, same-name LabelMe JSON files, and an optional `labels.txt`; DatumDock-only management metadata is not exported.
+Step four implements ordered LabelMe rectangle editing and compatibility-payload preservation inside the managed pool. Complete X-AnyLabeling directory import, independent export with `labels.txt`, and actual reopen verification are still planned requirements described by this specification; DatumDock does not yet claim full interoperability.

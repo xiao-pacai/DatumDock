@@ -1,5 +1,7 @@
 # X-AnyLabeling 对标完成基线
 
+> 当前状态（2026-07-19）：步骤四已达到 L2 中的标签、矩形画布、撤销重做、自动保存与复核子项，但完整 X-AnyLabeling 目录双向互操作尚未完成，因此本版本不宣称整体达到 L2。
+
 ## 1. 目的
 
 DatumDock 以 X-AnyLabeling 的成熟标注体验、格式兼容性和本地 AI 辅助工作流作为质量参照，但不以“复制所有上游功能”为模糊完成定义。
@@ -88,4 +90,4 @@ DatumDock 的差异化重点是多项目/多数据集池、项目级标签知识
 
 ## English Summary
 
-DatumDock uses X-AnyLabeling as a workflow benchmark, not as a promise to clone every upstream feature or visual asset. L1 requires the managed dataset home, modern visual v2, and YOLO Detection. L2 requires a reliable canvas-focused annotation workspace with direct tools, synchronized right panels, and lossless X-AnyLabeling/LabelMe exchange. The friendly home may draw general inspiration from Scratch, while all shipped branding, icons, components, and layouts remain DatumDock's own. L3 and L4 cover reviewed AI, common formats, and separately accepted advanced tasks.
+DatumDock uses X-AnyLabeling as a workflow benchmark, not as a promise to clone every upstream feature or visual asset. Step four completes the label, rectangle-canvas, undo/redo, autosave, and review portions of L2, but full directory interoperability is still missing, so the product does not yet claim complete L2. L3 and L4 cover reviewed AI, common formats, and separately accepted advanced tasks.

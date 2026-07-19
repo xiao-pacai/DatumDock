@@ -1,12 +1,12 @@
 # DatumDock 架构说明
 
-## 0. 目标架构覆盖说明（步骤三已接入受管图片池）
+## 0. 目标架构覆盖说明（步骤四已接入标签与标注闭环）
 
 2026-07-19 已将正式入口从用户可见的 `Workspace -> Project -> Dataset` 改为 [内部数据集主页与存档式管理方案](DATASET_LIBRARY.md) 定义的 `AppLibrary -> ManagedDataset`。步骤二已实现资料库初始化、UUID 目录、事务创建、启动对账恢复、打开/切换、重命名、归档/恢复、损坏项隔离和模板配置复制。
 
-本文件中仍出现的 `Workspace`、`Project`、`WorkspaceService` 和“项目级”描述只用于标记旧实现来源；正式入口不再调用它们，新增代码不得继续扩大该层级。步骤三已将图片池、样本索引、缩略图、重命名与回收站迁入 `ManagedDataset`；真实标注、模型和导出尚未迁移。
+本文件中仍出现的 `Workspace`、`Project`、`WorkspaceService` 和“项目级”描述只用于标记旧实现来源；正式入口不再调用它们，新增代码不得继续扩大该层级。步骤三已将图片池、样本索引、缩略图、重命名与回收站迁入 `ManagedDataset`；步骤四已迁入标签、矩形标注、LabelMe、自动保存与图片级复核。模型和导出尚未迁移。
 
-当前模块边界为：`services.sample_repository` 是 SQLite v1 样本查询事实来源；`services.image_pool` 负责两阶段转码、哈希、缩略图与启动对账；`services.sample_governance` 负责重命名和删除事务；`ui.managed_gateway` 只向页面暴露数据对象或图片字节，不暴露受管路径。详见 [受管图片池](IMAGE_POOL.md)。
+当前模块边界为：`services.sample_repository` 是 SQLite v2 样本、标签反向索引和复核查询事实来源；`services.image_pool` 负责两阶段转码、哈希、缩略图与启动对账；`services.managed_labels` 负责标签和训练名迁移；`services.annotations` 与 `services.labelme` 负责有序 JSON、恢复和自动保存；`services.sample_governance` 负责重命名和删除事务；`ui.managed_gateway` 只向页面暴露数据对象或图片字节，不暴露受管路径。详见 [受管图片池](IMAGE_POOL.md) 与 [标注工作流](ANNOTATION_WORKFLOW.md)。
 
 ## 1. 原则
 
@@ -46,7 +46,7 @@ src/datumdock/
 | `Project` | 旧实现对象，仅用于把所属标签和模型配置迁移到独立受管数据集；目标产品不再展示项目层级。 |
 | `LabelSet` | 单个数据集的标签集合，维护标签的稳定 ID、英文训练名、中文别名、描述、同义词、颜色和 YOLO 类别 ID。 |
 | `LabelColorService` | 为活动标签分配高辨识度唯一颜色，验证手动颜色选择，并提供统一的 shape 渲染颜色。 |
-| `LabelMigrationService` | 预检标签修改影响范围，并将需要持久化的名称变更安全地批量同步到所有相关标注文件。 |
+| `ManagedLabelMigrationService` | 预检标签修改影响范围，以恢复备份将英文训练名安全同步到相关标注文件；类别 ID 变化不改写 JSON。 |
 | `LabelSetComparisonService` | 计算标签集训练映射签名和逐字段差异，作为模板、转移、合并的安全门槛。 |
 | `LabelSetMergeService` | 在无训练映射冲突时，以明确目标版本为主安全合并标签定义并记录来源。 |
 | `LabelInspectionService` | 以当前数据集标签 ID 为条件查询样本，构建不复制文件的实时标签检查集合。 |
@@ -56,11 +56,13 @@ src/datumdock/
 | `Dataset` | 现有代码名称；目标重构后由独立拥有标签、模型、索引和受管池的 `ManagedDataset` 取代。 |
 | `NamingPolicy` | 数据集的图片命名模板、前缀、起始编号、补零位数和扩展名保留规则。 |
 | `ImageImportProfile` | MVP 导入图片的支持格式和统一 PNG 转码规则；后续可扩展其他受管格式策略。 |
-| `DatasetSample` | 样本稳定 UUID、数据集 UUID、受管相对路径、原文件名、尺寸/模式、内容/文件/感知哈希、导入时间、图片/健康/缩略图/回收站状态。 |
-| `ImageDocument` | 当前打开图片及其标注集合和脏状态。 |
-| `RectangleShape` | 类别、两个图像坐标点、可选属性。 |
-| `Label` | 单个数据集标签的稳定 ID、英文训练名、中文别名、描述、同义词、颜色和状态。 |
-| `LabelMeRepository` | LabelMe JSON 的读取、校验与写入。 |
+| `DatasetSample` | 样本稳定 UUID、受管相对路径、尺寸/哈希、图片健康、复核状态、标注摘要/版本/框数及回收站状态。 |
+| `AnnotationDocument` | 当前样本、图片名/尺寸、有序矩形和兼容 shape、LabelMe 根字段、文档版本与图片级复核状态。 |
+| `RectangleShape` | 稳定 shape UUID、稳定 `label_id`、原图像素坐标、兼容字段、可选模型来源与置信度。 |
+| `Label` | 单个数据集标签的稳定 UUID、类别 ID、英文训练名、中文别名、描述、同义词、唯一颜色、状态和时间。 |
+| `LabelMeRepository` | 有序读取、验证和原子写入 LabelMe JSON；外部负载剔除 `datumdock_` 私有字段。 |
+| `AnnotationService` | 校验并协调 JSON、SQLite v2 和有限恢复标记，不同步扫描全部标注。 |
+| `AnnotationAutosaveService` | 按数据集串行保存不可变快照，并按样本 UUID 隔离最后版本和磁盘摘要。 |
 | `XAnyLabelingInteropService` | 递归导入 X-AnyLabeling 图片与同名 LabelMe JSON，并生成可被 X-AnyLabeling 重新打开的交换目录。 |
 | `CompatibilityPayloadRepository` | 保存并回写当前不可编辑的 X-AnyLabeling shape 与扩展字段，保证保存、迁移、重命名和导出不会静默丢失它们。 |
 | `WorkspaceService` | 旧实现服务，迁移完成后由 `DatasetLibraryService` 取代。 |
@@ -69,7 +71,7 @@ src/datumdock/
 | `ImageImportService` | 在后台复制或转码常见静态图片，生成导入报告并原子写入受管池与数据集索引。 |
 | `DuplicateDetectionService` | 基于最终像素内容哈希检测完全相同图片，并在导入前提供已有样本的对比与确认信息。 |
 | `SimilarityGroupService` | 在后台以感知哈希生成近似图片候选组，维护用户确认的相似组并为分组划分提供约束。 |
-| `DatasetSampleRepository` | 步骤三正式 SQLite v1 边界，维护样本、感知哈希分桶、相似组、回收站、可恢复操作和命名计数器；旧 `ProjectIndexRepository` 不在正式入口使用。 |
+| `DatasetSampleRepository` | 步骤四正式 SQLite v2 边界，维护样本、标注摘要、`sample_labels`、复核状态、感知哈希、相似组、回收站、操作日志和分页定位；旧 `ProjectIndexRepository` 不在正式入口使用。 |
 | `ThumbnailService` | 在后台按需生成和缓存缩略图，以稳定样本 ID 为键，并提供可取消的优先级队列。 |
 | `SampleRenameService` | 预览并安全执行池内样本批量重命名，同步 LabelMe、索引、缓存和路径引用。 |
 | `SampleDeletionService` | 预检并以受管事务删除样本的图片、标注、索引与派生信息。 |
@@ -127,13 +129,13 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 - `color` 是数据集标签定义的一部分。`LabelColorService` 使用预定义的可访问调色板及色差校验生成候选色；活动标签颜色不得重复，归档标签颜色可复用。
 - 全局应用设置保存 `ui_locale`（初始值 `zh_CN`）、`shortcut_overrides`、默认数据划分比例和回收站少量样本阈值，不保存在数据集元数据中；翻译资源随应用安装包提供，例如 `i18n/datumdock_zh_CN.qm` 与 `i18n/datumdock_en_US.qm`。
 - 每个模型在数据集 `models/{model-id}/` 中受管存放，`model.json` 记录 `{id, display_name, format, task_type, source_filename, runtime_config, model_classes, label_mapping, status}`。模型二进制和配置只属于其所在数据集；数据集备份只保留模型配置并在导入后标记二进制待重新导入。
-- `index.sqlite` 是单个受管数据集内万级样本的查询事实来源，至少包含 `samples`、`sample_labels`、`sample_review`、`similarity_groups`、`similarity_members`、`import_jobs` 和回收站记录。对 `filename`、`review_status`、`label_id`、相似组 ID、更新时间建立索引。
-- `sample_review` 是互斥的图片级状态，至少区分 `unreviewed`、`auto_pending_review`、`reviewed` 与 `issue`；加载失败另由样本健康状态表示。显示状态按明确顺序计算：健康检查失败为异常；`issue` 为有问题；`reviewed` 为已完成；`auto_pending_review` 或 `unreviewed` 且已有 shape 为待审核；其余 `unreviewed` 为未标注。从 `issue` 完成复核时必须原子切换为 `reviewed`。自动标注 shape 保存 `model_id`、推理时间和置信度，人工标注不被模型任务覆盖。
-- `reviewed` 不能由 shape 数量自动推导；零 shape 样本也可通过明确的负样本确认进入 `reviewed`，并在 UI 显示“已完成（无目标）”。右侧列表状态从索引字段读取，不在控件层临时猜测。
+- `index.sqlite` 是单个受管数据集内万级样本的查询事实来源。schema v2 在 `samples` 维护标注摘要、版本、框数、更新时间和复核状态，并以 `sample_labels(sample_id, label_id, shape_id)` 支持标签使用量、筛选和跨页定位；v1→v2 不同步解析全部 JSON。
+- 图片级复核状态固定为 `unreviewed`、`pending_review`、`completed`、`completed_negative` 与 `issue`。加载失败另由图片健康或 `annotation_state` 表示；异常不允许用户手工设置。自动标注来源字段已在模型中预留，但模型推理仍未接入。
+- `completed` 不能由 shape 数量自动推导；零 shape 样本只可通过明确的负样本确认进入 `completed_negative`。删除最后一个框回到 `pending_review`，有问题图片编辑后保持 `issue`，直到用户重新确认。
 - `trash/` 只保存被选择“移入回收站”的完整样本包及恢复元数据；永久删除和大批量删除不进入该目录。
-- 图片及其 LabelMe JSON 在导入时复制到目标数据集池；池内可使用样本 ID 命名以避免同名文件冲突，并在元数据中保留原始来源路径。
+- 图片导入时只复制/转码图片，不创建空 LabelMe JSON；首次画框或确认负样本时才创建。索引只保留原始文件名，不持久化外部绝对来源路径。
 - 外部 X-AnyLabeling/LabelMe 文件的兼容载荷与 DatumDock 的可编辑矩形框分层存储：矩形框解析为内部 `label_id` 与像素坐标；其他 shape 及 `flags`、`attributes`、`description`、`difficult`、`score` 等未知或未支持字段保留为只读兼容载荷。`LabelMeRepository` 在写回或导出时按原顺序合并该载荷，不将私有稳定 ID、复核状态或模型元数据泄漏到交换 JSON。
-- `XAnyLabelingInteropService` 的导入流程为“扫描配对 → 校验 JSON → 复制并转 PNG → 解析/保留 shape → 原子写入索引”；导出流程为“生成临时目录 → 写 PNG、同名 JSON 与 `labels.txt` → 校验配对和 `imagePath` → 原子替换目标目录”。具体兼容契约见 `docs/X_ANYLABELING_INTEROP.md`。
+- `XAnyLabelingInteropService` 的目录导入导出仍是后续边界。步骤四只实现受管池内 LabelMe 的有序兼容读写和私有字段剔除；完整流程仍应遵循“扫描配对 → 校验 → 临时目录 → 交换验证 → 原子发布”。
 - `dataset.json` 包含可选 `naming_policy`。它只定义受管池中图片的整理名称，绝不回写外部来源文件；`DatasetSample.id` 是不随文件名变化的内部身份。
 - 样本 ID 必须独立于文件排序；建议由导入时生成 UUID，并记录原始规范化路径、最终 PNG 内容哈希和文件指纹用于完全重复检测。
 - 标注数据优先存储稳定标签 ID，并在读写 LabelMe/YOLO 时解析到英文训练名或类别 ID；这能避免中文别名或描述修改影响既有标注。
@@ -263,4 +265,4 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 
 ## English Summary
 
-Step three extends the official `AppLibrary -> ManagedDataset` architecture with `DatasetSampleRepository`, two-phase normalized PNG ingestion, perceptual-hash candidates, paged real media, batch rename, dataset trash, and restart-recoverable operation journals. UI pages receive query objects or media bytes through `ManagedDatasetGateway`, never managed paths. Persistent annotations, models, exports, backups, and legacy migration remain future layers.
+Step four extends the official `AppLibrary -> ManagedDataset` architecture with SQLite v2 annotation indexes, managed labels, ordered LabelMe persistence, per-sample autosave versions, image review states, label inspection, and bounded recovery journals. UI pages receive view data or media bytes through `ManagedDatasetGateway`, never managed paths. Models, complete X-AnyLabeling directory exchange, exports, backups, and legacy migration remain future layers.

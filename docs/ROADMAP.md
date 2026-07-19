@@ -25,8 +25,8 @@
 - [ ] 编写并校验 DatumDock 全流程、YOLO Detection、数据划分/泄露、导出训练准备、X-AnyLabeling、备份恢复和常见问题教程，标注第三方内容适用版本。
 - [x] 实现空数据集与从已有数据集复制配置的真实创建流程；复制标签和配置，不复制图片、标注、模型、缩略图或回收站。
 - [x] 将正式标注工作台上下文收敛为单一当前数据集，并移除用户可见的工作区、项目树和打开目录入口；旧代码保留但不再由正式入口启动。
-- [-] 按 UX 固定标注工作台布局：顶部数据集/导入/导出操作栏、左侧标注与 AI 工具、中央画布、右侧当前标注和带状态的图片列表；内存画布交互完成，持久化待接入。
-- [-] 将标签、模型、索引、回收站、备份、导出和跨数据集操作迁移为数据集级边界：步骤三已完成索引与回收站，其余保持未接入。
+- [x] 按 UX 固定标注工作台布局：顶部数据集/导入/导出操作栏、左侧标注与 AI 工具、中央画布、右侧当前标注和带状态图片列表；步骤四已接入真实矩形持久化。
+- [-] 将标签、模型、索引、回收站、备份、导出和跨数据集操作迁移为数据集级边界：标签、索引和回收站已完成；模型、备份、导出和转移仍未接入。
 - [ ] 提供旧 `Workspace -> Project -> Dataset` 结构的只读迁移预检、备份、校验、提交与失败回滚。
 - [-] 完成正式入口中英文旧术语清理，以及首次启动、启动对账、双数据集隔离和损坏元数据的 GUI / 自动化回归；旧代码词条、安装升级保留与旧结构迁移仍待后续验证。
 - [x] 步骤二子阶段严格复验达到 97 分，无 P0/P1；阶段 0.5 其余教程、旧迁移和后续业务任务按各自条目继续推进。
@@ -44,16 +44,16 @@
 - [-] 实现全局设置、简体中文/英文翻译资源和即时界面语言切换：全量 UI 原型完成且翻译键一致，真实偏好持久化待接入。
 - [ ] 覆盖首页教程首次显示、折叠/恢复、功能跳转、离线阅读、双语章节保持、内容版本迁移和损坏资源降级测试。
 - [-] 实现集中式操作注册、快捷键设置页面、冲突检测、即时应用和恢复默认值：预览会话交互完成，真实快捷键注册与偏好保存待接入。
-- [ ] 实现数据集级标签集与独立标签管理页面：表格、搜索、筛选、增删改查、归档和稳定类别 ID 分配。
+- [x] 实现数据集级标签集与独立标签管理页面：表格、搜索、新增/编辑、归档/恢复和稳定类别 ID 分配。
 - [-] 实现标签集签名比较、差异报告与无冲突标签集合并：旧代码已提供严格信息比较、稳定 ID 映射和无冲突合并入口；迁移到数据集级边界、差异报告与数据集合并向导仍待完成。
-- [ ] 实现活动标签唯一颜色的自动分配、手动颜色选择、冲突校验和跨画布/列表一致渲染。
+- [x] 实现活动标签唯一颜色的自动分配、手动颜色选择、冲突校验和跨画布/列表一致渲染。
 - [x] 实现 Scratch 式友好主页外壳、X-AnyLabeling 式紧凑标注工作台、可调整右侧分区、深色画布与基础状态栏，并保持 DatumDock 自有视觉。
 - [x] 建立中文/英文、空/有数据、100%/125%/150% DPI、选中/禁用状态的主页和标注工作台截图基线，逐项排除视觉规范禁止项。
 - [x] 为领域模型、资料库 Repository、Service、Gateway 和 GUI 接入建立测试框架。
 
 ## 阶段 2：数据集池与图片浏览
 
-> 2026-07-19 步骤三状态：图片池主线已完成并通过 10,000 条索引压力、操作中断恢复和原生双语截图复验。X-AnyLabeling 导入、标注预览和导出划分约束属于后续步骤。
+> 2026-07-19 步骤四状态：图片池保持完成，标注预览已按需接入。X-AnyLabeling 目录导入和导出划分约束仍属于后续步骤。
 
 - [x] 实现导入文件/递归文件夹到当前数据集受管池、样本索引与去重提示；不跟随符号链接。
 - [x] 实现 JPG/JPEG、PNG、BMP、WebP、TIFF 导入与统一 PNG 转码、EXIF 校正、重复图对比确认、进度、取消和失败报告。
@@ -61,7 +61,7 @@
 - [-] 实现近似图片候选扫描、相似组人工确认/忽略，并提供已确认组稳定查询；组内编辑/拆分和导出 `SplitPlanner` 约束待后续实现。
 - [x] 实现 SQLite v1 数据集索引、虚拟样本列表、按需缩略图和可取消后台任务，10,000 条压力测试不全量实例化。
 - [x] 实现数据集池列表/网格、搜索、基础状态筛选、排序、分页与当前图片后台加载。
-- [-] 实现右侧虚拟图片列表/网格和图片级状态文字；标注数、图标徽标和可编辑复核状态待标注阶段接入。
+- [x] 实现右侧虚拟图片列表/网格、图片级状态、真实框数、标签筛选和按需标注预览。
 - [x] 实现数据集命名规则、重命名预览和安全批量重命名；若未来同名 LabelMe 已存在，同步文件名与 `imagePath`。
 - [x] 实现标注工作台的样本删除确认、回收站恢复/清空与大批量永久删除。
 - [x] 实现全局回收站少量样本阈值原子持久化、帮助说明与删除影响范围。
@@ -70,21 +70,23 @@
 
 ## 阶段 3：矩形框标注
 
-- [ ] 实现数据集级标签数据模型、标签管理面板和颜色显示。
-- [ ] 实现可搜索标签选择器，支持中文别名、英文名、同义词和描述，并显示完整标签说明。
-- [-] 实现当前数据集内按标签提取样本的标签检查视图、索引查询和目标标注框高亮跳转：旧代码已实现部分分页索引检索、跳转与首个目标框高亮；迁移到新边界、网格/列表视图切换和更多复合筛选仍待完成。
-- [ ] 实现标签修改影响预检、确认对话框和可恢复的 LabelMe 批量迁移。
-- [ ] 实现矩形框创建、选中、移动、缩放和删除。
-- [ ] 实现右侧当前图片标注列表与画布选中状态双向同步、双击切换标签和分区折叠/调节。
-- [ ] 实现图片级“已完成”确认和无目标负样本确认；自动标注进入待审核，完成问题处理后清除问题状态。
-- [ ] 实现立即自动保存、写入失败待处理状态和重试/放弃保护提示。
+> 2026-07-19 步骤四状态：真实标签、矩形、LabelMe、自动保存和人工复核闭环完成。模型产生的自动标注仍属于后续模型阶段。
+
+- [x] 实现数据集级标签数据模型、标签管理面板和唯一颜色显示。
+- [x] 实现可搜索标签选择器，支持中文别名、英文名、同义词和描述，并显示标签说明。
+- [x] 实现按标签提取样本的分页检查视图、SQLite 查询和目标标注框高亮跳转；网格式检查可后续增强。
+- [x] 实现标签修改影响预检、确认对话框和可恢复的 LabelMe 批量迁移。
+- [x] 实现矩形框创建、选中、移动、八点缩放和删除。
+- [x] 实现右侧标注列表与画布双向选择、双击切换标签和分区折叠。
+- [x] 实现图片级未复核、待审核、已完成、已完成（无目标）和有问题状态及转换规则。
+- [x] 实现立即自动保存、写入失败待处理状态和重试/放弃/取消保护提示。
 
 ## 阶段 4：标注持久化与模型格式导出
 
-- [ ] 实现 LabelMe JSON 读取和矩形框写入。
+- [x] 实现受管池内 LabelMe JSON 有序读取、矩形框原子写入和私有稳定 ID。
 - [ ] 实现 X-AnyLabeling 交换目录导出（PNG、同名 LabelMe JSON、`labels.txt`），并以 X-AnyLabeling 实际打开作为回归验证。
-- [ ] 实现兼容载荷回写，覆盖未支持 X shape、`flags`、`attributes`、`description`、`difficult` 与 `score` 在保存、重命名、标签迁移和导出后的不丢失测试。
-- [ ] 覆盖正常、损坏和缺失 JSON 的测试。
+- [-] 实现兼容载荷回写：受管保存、重命名和标签迁移已覆盖，完整目录导出后的不丢失仍待 X-AnyLabeling 阶段验证。
+- [x] 覆盖正常、损坏、缺失和未知标签 JSON 的测试；损坏文件原字节保持不变。
 - [ ] 实现数据集级模型目录、模型管理页面和模型条目增删改查。
 - [ ] 实现 ONNX 模型导入、元数据/输入输出探测、本地校验与可编辑运行配置。
 - [ ] 实现受支持 PT 变体识别；对未知或不兼容文件给出明确提示。
@@ -96,13 +98,13 @@
 - [ ] 定义可扩展的模型格式导出器接口。
 - [ ] 实现 YOLO Detection 标签转换、目录导出与 `data.yaml`。
 - [ ] 覆盖比例校验、确定性划分及 YOLO 标签格式的测试。
-- [ ] 验证 100 张图片连续标注流程。
+- [x] 验证 100 张图片连续保存、加载和重启恢复流程。
 - [ ] 对照 `docs/ACCEPTANCE.md` 完成 MVP 验收。
 - [ ] 完成 X-AnyLabeling 对标基线 L1，并发布支持范围和已知限制。
 
 ## 阶段 4.5：核心标注工作流对标（L2）
 
-- [ ] 实现撤销/重做、标注复制/粘贴（如适用）和核心快捷键回归测试。
+- [x] 实现撤销/重做、Delete、Esc、Ctrl+S 等当前矩形工作流核心操作；复制/粘贴不属于步骤四门槛。
 - [-] 实现标注质量检查：旧代码已覆盖空/未知标签、越界框、无效面积和受管文件缺失；待处理状态与数据集级批量质量报告仍待完成。
 - [ ] 完成 100 张以上图片的浏览、编辑、保存、重开与导出回归验证。
 - [ ] 对照 `docs/X_ANYLABELING_BASELINE.md` 完成 L2 必需项并发布差异清单。
@@ -136,7 +138,7 @@
 - [x] Python 3.11 独立环境的步骤二/三依赖与 GUI 复验已恢复。
   - 原阻塞：Python 3.11 自带旧 pip 在构建隔离子进程中访问 PyPI 时出现 TLS `SSLEOFError`；未关闭 TLS 校验。
   - 安全恢复：使用已正常联网的新版 pip 从官方 PyPI 下载明确面向 CPython 3.11 / Windows x64 的 wheels，再由 `.venv` 以 `--no-index` 本地安装 `PySide6`、Pydantic、Pillow、PyYAML、pytest、pytest-qt、Ruff、PyInstaller 等步骤二与开发依赖。
-  - 验证结果：独立 Python 3.11 下 Ruff、格式、`compileall`、127 项通过测试、pytest-qt 真实控件回归、普通/预览事件循环和 20 张步骤三原生截图均通过；1 项符号链接测试因当前账户缺少 Windows 权限跳过。
+  - 验证结果：独立 Python 3.11 下 Ruff、格式、`compileall`、153 项通过测试、pytest-qt 真实控件回归、普通/预览事件循环和 22 张步骤四原生截图均通过；1 项符号链接测试因当前账户缺少 Windows 权限跳过。
   - 剩余边界：ONNX Runtime、Ultralytics 和真实模型推理依赖未在本步骤安装，因为模型功能不属于步骤二；正式 PyInstaller/Inno Setup 隔离安装验收仍属于安装包阶段。
 - [-] Windows 符号链接自动回归权限受限。
   - 原因：当前账户创建测试目录符号链接时返回 `WinError 1314`，未取得所需特权。
@@ -146,4 +148,4 @@
 
 ## English Summary
 
-Step three completes the managed image-pool slice: normalized six-format PNG ingestion, exact-duplicate decisions, manual near-image groups, SQLite v1 paging, real thumbnails/canvas, batch rename, trash/restore, permanent deletion, operation recovery, and a 10,000-row index regression. Python 3.11 passes 127 tests plus quality checks and twenty native bilingual screenshots; one symlink test remains skipped because this Windows account lacks symlink privileges. Persistent annotations, X-AnyLabeling, models, exports, backups, migration, and installer verification remain later phases.
+Step four completes dataset-level labels, editable rectangles, ordered LabelMe persistence, immediate autosave, SQLite v2, image review states, label inspection, governance consistency, 100-image continuity, and 10,000-row label/status paging. Python 3.11 passes 153 tests plus quality checks and twenty-two native bilingual screenshots; one symlink test remains skipped because this Windows account lacks symlink privileges. Models, complete X-AnyLabeling directory exchange, exports, backups, transfer, and installer verification remain later phases.

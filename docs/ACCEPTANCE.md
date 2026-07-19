@@ -56,7 +56,7 @@
 - [x] 1366×768、1440×900、1920×1080 的中英文主页和空工作台已完成原生截图检查。
 - [x] 独立 Python 3.11 环境下 Ruff、格式、`compileall`、pytest-qt 和完整测试通过：88 passed、1 skipped；普通/预览 Qt 事件循环启动通过，真实用户资料库前后哈希一致。
 
-步骤二当时未勾选的图片池条目已由下方步骤三记录覆盖；标注持久化、模型、导出、备份和安装包仍需后续阶段真实实现。
+步骤二当时未勾选的图片池条目已由下方步骤三记录覆盖，标签与标注由步骤四记录覆盖；模型、导出、备份和安装包仍需后续阶段真实实现。
 
 ### A0.2 步骤三验收记录（2026-07-19）
 
@@ -74,7 +74,30 @@
 - [x] 10,000 条合成索引分页、搜索、状态和排序通过，当前页最多 200 个领域对象，不创建 10,000 个 QWidget。
 - [x] Python 3.11 完整回归为 127 passed、1 skipped；20 张原生 Windows 截图覆盖中英文、三种分辨率与图片池核心页面。
 
-步骤三不勾选 X-AnyLabeling 目录导入、矩形标注持久化、图片级复核编辑、模型、YOLO 导出、备份或安装包条目。
+步骤三当时未勾选的标签与标注条目已由下方步骤四记录覆盖。X-AnyLabeling 完整目录导入导出、模型、YOLO 导出、备份和安装包仍未完成。
+
+### A0.3 步骤四验收记录（2026-07-19）
+
+- [x] 数据集级 `LabelSet` 使用稳定 UUID、修订号和时间；类别 ID 全集合唯一，活动训练名大小写不敏感唯一，活动颜色唯一。
+- [x] 标签管理页可新增、编辑显示字段、归档/恢复和搜索；别名、描述、同义词或颜色变化不会改写任何标注 JSON。
+- [x] 英文训练名变化先显示图片/框影响并以备份迁移相关 JSON；类别 ID 变化不改写 JSON；中断可由有限恢复目录回滚。
+- [x] SQLite 原子迁移到 v2，维护标注摘要、版本、框数、复核状态及 `sample_labels(sample_id, label_id, shape_id)`。
+- [x] LabelMe 读写保持矩形与未支持 shape 原顺序，保留未知根字段、`imageData` 与兼容载荷；外部负载递归剔除 `datumdock_` 私有字段。
+- [x] 正式画布支持矩形创建、点击选择、框内移动、八点缩放、删除、标签改派、撤销/重做、滚轮缩放、平移和适配窗口。
+- [x] 矩形以原图像素坐标保存；零面积、非有限和越界坐标被拒绝，面积大于零的极小框保存时产生质量警告。
+- [x] 新建、移动、缩放、删除、换标签、撤销、重做和复核变化立即排入串行自动保存；保存版本和磁盘摘要按 sample UUID 隔离。
+- [x] JSON 临时文件验证、原子替换、重读摘要和 SQLite 更新使用恢复标记协调；JSON 已提交但索引失败可在启动后有限回放。
+- [x] 损坏 JSON 原字节保持不变并以异常只读显示；未知标签、缺图和待恢复操作不会被普通编辑覆盖。
+- [x] 图片级状态持久化为未复核、待审核、已完成、已完成（无目标）和有问题；异常由健康/标注状态派生。
+- [x] 已完成要求至少一个框；已完成（无目标）要求零框；删除最后一个框回到待审核，有问题图片编辑后仍保持有问题。
+- [x] 标签检查页从 SQLite 分页提取包含目标标签的图片，并可通过结构化导航目标跨页定位和高亮首个相关框。
+- [x] 图片列表按需显示真实框数、状态和标签筛选；缩略图标注预览仅在视图请求时加载，不扫描全部 JSON。
+- [x] 重命名、回收站恢复和永久删除同步维护标注文件名、`imagePath`、摘要与反向索引；失败回滚恢复原 JSON 字节与摘要。
+- [x] 100 张图片连续保存/重开、10,000 条标签/状态分页定位以及两个数据集快速自动保存隔离通过。
+- [x] pytest-qt 使用真实鼠标覆盖画框、移动/八点缩放、换标签、删除、撤销/重做和复核。
+- [x] Python 3.11 完整回归为 153 passed、1 skipped；22 张原生 Windows 截图覆盖双语、三种分辨率、标签管理、标签检查及保存失败保护。
+
+步骤四不宣称模型自动标注、YOLO 导出、完整 X-AnyLabeling 目录互操作、备份、跨数据集转移或安装包完成。
 
 ## A. 启动与界面
 
@@ -218,4 +241,4 @@
 
 ## English Summary
 
-The acceptance gate now records both the revalidated managed library and step-three managed image pool. Six-format normalized PNG ingestion, explicit duplicate decisions, reviewable near-image groups, SQLite v1 paging, real thumbnails/canvas, rename, trash/restore, permanent deletion, operation recovery, and a 10,000-row index regression are verified. Python 3.11 passes 127 tests; one symlink test is skipped because this Windows account lacks the required privilege. Persistent annotations, models, exports, backups, and installer delivery remain unchecked and must not be claimed as complete.
+The acceptance gate now records step four: dataset-level labels, editable rectangles, ordered LabelMe persistence, immediate autosave, SQLite v2, image review, label inspection, governance consistency, 100-image continuity, and 10,000-row label/status paging are verified. Python 3.11 passes 153 tests; one symlink test is skipped because this Windows account lacks the required privilege. Models, complete X-AnyLabeling directory interchange, YOLO export, backups, transfer, and installer delivery remain unchecked.

@@ -1,14 +1,14 @@
-# DatumDock UI 与步骤三页面清单
+# DatumDock UI 与步骤四页面清单
 
-> 状态：步骤三已将受管图片池接入正式 UI。资料库、图片导入、真实缩略图/画布、相似图、重命名、回收站和删除为真实功能；标注、模型、导出和备份仍只提供界面或待接入提示。
+> 状态：步骤四已将数据集标签、矩形编辑、LabelMe 自动保存、图片级复核和标签检查接入正式 UI。模型、导出、完整 X-AnyLabeling 目录交换和备份仍只提供界面或待接入提示。
 
 ## 0. 本轮实现记录
 
 - 16 / 16 个 `RouteId` 已注册并完成遍历测试；预览专用组件页只在 `--ui-preview` 出现。
 - 28 / 28 个 `DialogId` 已集中注册，可打开、切换语言、校验、取消和关闭。
 - 普通模式使用 `ManagedDatasetGateway` 和真实内部资料库；仅在初始化失败时降级为 `UnavailableGateway`。预览模式始终使用独立 `PreviewGateway`。
-- `build/ui-review/step3-image-pool/` 生成 20 张原生 Windows 截图：中英文均覆盖三种分辨率的主页/真实图片工作台，1440×900 额外覆盖导入、相似图、回收站和设置。
-- 独立 Python 3.11 下 Ruff、格式、`compileall`、pytest-qt、127 项通过测试和普通/预览 GUI 启动冒烟均通过；1 项符号链接权限用例跳过。
+- `build/ui-review/step4-annotation/` 生成 22 张原生 Windows 截图：中英文均覆盖三种分辨率的真实标注工作台、标签管理和标签检查，1440×900 额外覆盖迁移编辑与保存失败。
+- 独立 Python 3.11 下 Ruff、格式、`compileall`、pytest-qt、153 项通过测试和普通/预览 GUI 启动冒烟均通过；1 项符号链接权限用例跳过。
 
 ## 1. 运行边界
 
@@ -31,7 +31,9 @@
 | 图片列表/网格与画布 | SQLite 分页、真实缩略图、真实 PNG、缩放/平移 | 保留演示图片与内存矩形 |
 | 相似图检查 | 显示真实候选组、文件名、缩略图和相似度，可确认/忽略 | 只更新内存状态 |
 | 重命名/回收站/删除 | 真实预览和受管事务，恢复与永久删除有明确确认 | 只更新内存状态 |
-| 标注/模型/导出/备份入口 | 明确提示后续接入，不伪造成功 | 展示可交互视觉流程 |
+| 标签管理与标签检查 | 真实增改、归档/恢复、使用量、训练名迁移和分页图片定位 | 只更新内存标签 |
+| 矩形标注与复核 | 真实画框/移动/缩放/删除/换标签/撤销重做，立即保存 LabelMe 与状态 | 保留内存矩形演示 |
+| 模型/导出/备份入口 | 明确提示后续接入，不伪造成功 | 展示可交互视觉流程 |
 
 ## 2. 页面路由
 
@@ -44,8 +46,8 @@
 | `release_notes` | 新功能与版本说明 | 首页和关于入口 | 当前版本、本地内容说明 |
 | `about` | 关于 DatumDock | 首页和设置 | 完整 Logo、版本、许可证 |
 | `annotation_workspace` | 标注工作台 | 数据集卡片、新建完成 | 顶部、左侧、画布、右侧和状态栏四区布局 |
-| `label_manager` | 标签管理 | 工作台顶部 | 表格、筛选、详情、颜色和使用量 |
-| `label_inspection` | 标签图片检查 | 标签行“查看图片” | 网格/列表、状态、框数、高亮跳转 |
+| `label_manager` | 标签管理 | 工作台顶部 | 真实表格、搜索、编辑、颜色、状态和使用量 |
+| `label_inspection` | 标签图片检查 | 标签管理“检查标签图片” | 真实分页、状态、框数和高亮跳转 |
 | `label_comparison` | 标签集比较与合并 | 标签管理、数据集操作 | 一致、显示差异、缺失、阻断冲突 |
 | `model_manager` | 模型管理 | 工作台顶部 | 模型表、验证状态、标签映射 |
 | `similarity_review` | 相似图片检查 | 更多操作、数据治理 | 候选组、相似度、确认/忽略 |
@@ -63,7 +65,7 @@
 | `dataset_diagnostics` | 损坏数据集诊断 | 单页只读真实名称、UUID、原因与原文件保护说明；普通模式不显示演示统计 |
 | `rename_dataset` | 重命名数据集 | 名称校验和预览 |
 | `archive_dataset` | 归档数据集 | 影响说明与确认 |
-| `label_editor` | 标签创建/编辑 | 英文名、别名、描述、同义词、类别 ID |
+| `label_editor` | 标签创建/编辑 | 普通模式真实保存英文名、别名、描述、同义词、类别 ID 和颜色 |
 | `label_color` | 标签颜色选择 | 调色板、占用颜色和冲突提示 |
 | `model_import` | 模型导入 | 文件外观、解析阶段与格式提示 |
 | `model_inspection` | 参数探测结果 | 输入输出、尺寸、类别和警告 |
@@ -83,8 +85,8 @@
 | `backup_import` | 备份导入与完整性检查 | 版本、清单、校验和迁入名称 |
 | `dataset_transfer` | 数据集复制/移动/合并 | 标签签名、重复图和执行方式 |
 | `task_center` | 后台任务 | 进度、取消和错误详情 |
-| `save_error` | 保存失败 | 重试、放弃内存修改、取消 |
-| `json_error` | 损坏 JSON | 原文件保护和诊断详情 |
+| `save_error` | 保存失败 | 普通模式真实阻止离开，并提供重试、放弃内存修改、取消 |
+| `json_error` | 损坏 JSON | 普通模式保持原字节、只读异常和诊断详情 |
 | `unsupported_model` | 不支持模型 | 原因、支持范围和下一步 |
 
 ## 4. 可复用组件
@@ -102,11 +104,11 @@
 - 路由注册测试遍历全部页面并验证可创建、进入和返回。
 - 对话框注册测试遍历全部弹窗并验证可打开和关闭。
 - 中英文键集合一致，切换语言不改写演示数据内容。
-- 普通模式的图片池仅在用户明确导入/重命名/删除后修改受管文件；标注、模型、导出和备份入口不产生副作用。预览模式不接触资料库。
+- 普通模式的图片池仅在用户明确操作后修改受管文件；标签与标注通过真实服务原子保存，模型、导出和备份入口不产生副作用。预览模式不接触资料库。
 - 普通模式启动会对账资料库索引与 UUID 目录；恢复、写盘故障和 Gateway 最终异常边界均有正式回归。
 - 1366×768、1440×900、1920×1080 与 100%、125%、150% DPI 完成布局和截图检查。
-- 步骤三核心截图包含主页、真实图片工作台、导入、相似图、回收站和设置。
+- 步骤四核心截图包含真实标注工作台、标签管理、标签检查、迁移编辑和保存失败保护。
 
 ## English Summary
 
-This inventory covers the step-three managed image-pool UI. Normal mode now performs real image/folder ingestion, explicit duplicate decisions, paged thumbnails, managed-PNG canvas browsing, similarity review, batch rename, trash/restore, permanent deletion, settings persistence, and task reporting through gateway/service boundaries. The Python 3.11 suite passes 127 tests and twenty native bilingual screenshots; preview mode remains disposable and isolated. Annotation, model, export, and backup actions remain unconnected in normal mode.
+This inventory covers the step-four annotation UI. Normal mode now provides real dataset labels, editable rectangles, ordered LabelMe autosave, image-level review, label inspection, on-demand thumbnail overlays, and governance consistency through gateway/service boundaries. The Python 3.11 suite passes 153 tests and twenty-two native bilingual screenshots; preview mode remains disposable and isolated. Model, export, complete X-AnyLabeling directory exchange, and backup actions remain unconnected.

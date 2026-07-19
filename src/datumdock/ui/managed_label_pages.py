@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
@@ -203,7 +205,10 @@ class ManagedLabelPage(QWidget):
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.table.verticalHeader().setVisible(False)
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        header = self.table.horizontalHeader()
+        for column in (0, 1, 2, 4, 5, 6):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         self.table.cellDoubleClicked.connect(lambda _row, _column: self._edit())
         root.addWidget(self.table, 1)
         self.retranslate_ui()
@@ -335,7 +340,13 @@ class ManagedLabelInspectionPage(QWidget):
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.table.verticalHeader().setVisible(False)
-        self.table.horizontalHeader().setStretchLastSection(True)
+        inspection_header = self.table.horizontalHeader()
+        inspection_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for column in (1, 2, 3):
+            inspection_header.setSectionResizeMode(
+                column,
+                QHeaderView.ResizeMode.ResizeToContents,
+            )
         self.table.cellDoubleClicked.connect(self._open_sample)
         root.addWidget(self.table, 1)
         pagination = QHBoxLayout()
@@ -391,7 +402,7 @@ class ManagedLabelInspectionPage(QWidget):
                 sample.filename,
                 str(sample.annotation_count),
                 tr(self.locale, f"review.{sample.review_status.value}"),
-                sample.annotation_updated_at,
+                _display_timestamp(sample.annotation_updated_at),
             )
             for column, value in enumerate(values):
                 self.table.setItem(row, column, QTableWidgetItem(value))
@@ -445,3 +456,14 @@ class ManagedLabelInspectionPage(QWidget):
                     shape_id=None,
                 )
             )
+
+
+def _display_timestamp(value: str) -> str:
+    """表格使用本地分钟精度，避免把原始 ISO 字符串挤压其他列。"""
+
+    if not value:
+        return "—"
+    try:
+        return datetime.fromisoformat(value).astimezone().strftime("%Y-%m-%d %H:%M")
+    except ValueError:
+        return value

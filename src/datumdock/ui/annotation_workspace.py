@@ -338,6 +338,8 @@ class AnnotationWorkspace(QWidget):
         self.label_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.label_combo.setMaxVisibleItems(16)
         self.label_combo.currentIndexChanged.connect(self._on_label_combo_changed)
+        if self.label_combo.lineEdit() is not None:
+            self.label_combo.lineEdit().textEdited.connect(self._search_active_labels)
         layout.addWidget(self.label_combo)
         action_row = QHBoxLayout()
         self.review_combo = QComboBox()
@@ -1174,6 +1176,31 @@ class AnnotationWorkspace(QWidget):
             self.canvas.select_shape(self._reassign_shape_id)
             self.canvas.change_selected_label(label_id)
             self._reassign_shape_id = None
+
+    def _search_active_labels(self, text: str) -> None:
+        """正式模式把训练名、别名、描述和同义词搜索交给标签服务。"""
+
+        if not self.managed_mode:
+            return
+        labels = self.gateway.list_labels(
+            self.snapshot.dataset.id,
+            text,
+            include_archived=False,
+        )
+        self.label_combo.blockSignals(True)
+        self.label_combo.clear()
+        for label in labels:
+            self.label_combo.addItem(f"{label.alias} · {label.name}", label.id)
+            self.label_combo.setItemData(
+                self.label_combo.count() - 1,
+                label.description,
+                Qt.ItemDataRole.ToolTipRole,
+            )
+        self.label_combo.setCurrentIndex(-1)
+        self.label_combo.setEditText(text)
+        self.label_combo.blockSignals(False)
+        if labels:
+            self.label_combo.showPopup()
 
     def _request_shape_reassignment(self, shape_id: str) -> None:
         if not self.managed_mode:
