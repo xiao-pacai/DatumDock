@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QCloseEvent, QResizeEvent
 from PySide6.QtWidgets import QMainWindow, QStackedWidget, QWidget
@@ -12,7 +14,7 @@ from datumdock.ui.components import ToastOverlay
 from datumdock.ui.managed_gateway import ManagedDatasetGateway
 from datumdock.ui.prototype_dialogs import DialogId, DialogRegistry, PreviewFlowDialog
 from datumdock.ui.prototype_gateway import PreviewGateway, UnavailableGateway
-from datumdock.ui.prototype_models import CommandStatus, UiCommand, UiGateway
+from datumdock.ui.prototype_models import CommandStatus, UiCommand, UiCommandResult, UiGateway
 from datumdock.ui.prototype_pages import (
     BasePage,
     ComponentGalleryPage,
@@ -25,6 +27,8 @@ from datumdock.ui.prototype_pages import (
     StartupPage,
     TutorialReaderPage,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class NavigationController:
@@ -261,7 +265,11 @@ class ApplicationShell(QMainWindow):
     def _dispatch_command(self, action_id: str, payload: dict) -> None:
         """所有原型操作只经过网关，窗口回调不伪造业务成功。"""
 
-        result = self.gateway.dispatch(UiCommand(action_id, payload))
+        try:
+            result = self.gateway.dispatch(UiCommand(action_id, payload))
+        except Exception:
+            logger.exception("UI 网关命令越过安全边界: %s", action_id)
+            result = UiCommandResult(CommandStatus.ERROR, "toast.library_operation_failed")
         self.show_message(result.message_key)
         home = self.navigation.pages.get(RouteId.HOME)
         if isinstance(home, HomePage):

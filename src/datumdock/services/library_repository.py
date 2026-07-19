@@ -94,12 +94,17 @@ class DatasetLibraryRepository:
     def initialize(self) -> AppLibrary:
         """首次启动创建空索引，已有索引只读取且绝不猜测覆盖。"""
 
-        self._ensure_roots()
-        if self.path.exists():
-            return self.load()
-        library = AppLibrary()
-        self.save(library)
-        return library
+        try:
+            self._ensure_roots()
+            if self.path.exists():
+                return self.load()
+            library = AppLibrary()
+            self.save(library)
+            return library
+        except LibraryRepositoryError:
+            raise
+        except (OSError, DatasetRepositoryError) as error:
+            raise LibraryRepositoryError(f"资料库初始化失败: {error}") from error
 
     def load(self) -> AppLibrary:
         """读取资料库索引；损坏时保留原始字节供诊断和恢复。"""
@@ -113,11 +118,11 @@ class DatasetLibraryRepository:
     def save(self, library: AppLibrary) -> None:
         """完整验证后使用同目录临时文件原子替换资料库索引。"""
 
-        self._ensure_roots()
-        validated = AppLibrary.model_validate(library.model_dump(mode="json"))
         try:
+            self._ensure_roots()
+            validated = AppLibrary.model_validate(library.model_dump(mode="json"))
             write_json_atomic(self.path, validated)
-        except OSError as error:
+        except (OSError, ValidationError, DatasetRepositoryError) as error:
             raise LibraryRepositoryError(f"资料库索引写入失败: {error}") from error
 
     def _ensure_roots(self) -> None:
@@ -179,20 +184,29 @@ class DatasetRepository:
     ) -> None:
         """在未登记临时目录中写入完整空数据集并执行结构验证。"""
 
-        if staging_root.parent != self.datasets_root or not staging_root.name.startswith(
-            f".creating-{dataset.id}-"
-        ):
-            raise DatasetRepositoryError("临时数据集目录不在受管创建区域")
-        if staging_root.exists():
-            raise DatasetRepositoryError("临时数据集目录已存在")
-        staging_root.mkdir(parents=True)
-        paths = self._paths_for_root(staging_root)
-        for relative in self.REQUIRED_DIRECTORIES:
-            (staging_root / relative).mkdir(parents=True, exist_ok=False)
-        write_json_atomic(paths.metadata, dataset)
-        write_json_atomic(paths.label_set, label_set)
-        ProjectIndexRepository(paths.index)
-        self.validate_at(staging_root, expected_id=dataset.id)
+        try:
+            validated_dataset = ManagedDataset.model_validate(dataset.model_dump(mode="json"))
+            validated_label_set = LabelSet.model_validate(label_set.model_dump(mode="json"))
+            if staging_root.parent != self.datasets_root or not staging_root.name.startswith(
+                f".creating-{validated_dataset.id}-"
+            ):
+                raise DatasetRepositoryError("临时数据集目录不在受管创建区域")
+            if staging_root.exists():
+                raise DatasetRepositoryError("临时数据集目录已存在")
+            staging_root.mkdir(parents=True)
+            paths = self._paths_for_root(staging_root)
+            for relative in self.REQUIRED_DIRECTORIES:
+                (staging_root / relative).mkdir(parents=True, exist_ok=False)
+            write_json_atomic(paths.metadata, validated_dataset)
+            write_json_atomic(paths.label_set, validated_label_set)
+            ProjectIndexRepository(paths.index)
+            self.validate_at(staging_root, expected_id=validated_dataset.id)
+        except DatasetRepositoryError:
+            raise
+        except ValidationError as error:
+            raise DatasetRepositoryError(f"数据集创建前验证失败: {error}") from error
+        except OSError as error:
+            raise DatasetRepositoryError(f"数据集临时目录写入失败: {error}") from error
 
     def publish_staging(self, staging_root: Path, dataset_id: str) -> Path:
         """把已验证临时目录一次移动为稳定 UUID 目录。"""
@@ -201,7 +215,10 @@ class DatasetRepository:
         if final_root.exists():
             raise DatasetRepositoryError("目标数据集 UUID 目录已存在")
         self.validate_at(staging_root, expected_id=dataset_id)
-        os.replace(staging_root, final_root)
+        try:
+            os.replace(staging_root, final_root)
+        except OSError as error:
+            raise DatasetRepositoryError(f"数据集目录发布失败: {error}") from error
         return final_root
 
     def move_unregistered_to_recovery(self, dataset_id: str) -> Path | None:
@@ -211,7 +228,10 @@ class DatasetRepository:
         if not final_root.exists():
             return None
         recovery = self.recovery_root / f"unregistered-{dataset_id}-{uuid4()}"
-        os.replace(final_root, recovery)
+        try:
+            os.replace(final_root, recovery)
+        except OSError as error:
+            raise DatasetRepositoryError(f"未登记数据集移入恢复区失败: {error}") from error
         return recovery
 
     def remove_staging(self, staging_root: Path) -> None:
@@ -224,18 +244,23 @@ class DatasetRepository:
         if not staging_root.exists():
             return
         _reject_symlink(staging_root, "临时数据集目录")
-        children = sorted(
-            staging_root.rglob("*"),
-            key=lambda item: len(item.parts),
-            reverse=True,
-        )
-        for child in children:
-            _reject_symlink(child, "临时数据集内容")
-            if child.is_file():
-                child.unlink()
-            elif child.is_dir():
-                child.rmdir()
-        staging_root.rmdir()
+        try:
+            children = sorted(
+                staging_root.rglob("*"),
+                key=lambda item: len(item.parts),
+                reverse=True,
+            )
+            for child in children:
+                _reject_symlink(child, "临时数据集内容")
+                if child.is_file():
+                    child.unlink()
+                elif child.is_dir():
+                    child.rmdir()
+            staging_root.rmdir()
+        except DatasetRepositoryError:
+            raise
+        except OSError as error:
+            raise DatasetRepositoryError(f"临时数据集清理失败: {error}") from error
 
     def load(self, dataset_id: str) -> tuple[ManagedDataset, LabelSet]:
         """读取并验证数据集元数据、标签集、目录和 SQLite 索引。"""
@@ -251,21 +276,72 @@ class DatasetRepository:
             raise CorruptDatasetError("dataset.json 与 label-set.json 的稳定 ID 不一致")
         return dataset, label_set
 
+    def load_metadata_for_recovery(self, dataset_id: str) -> ManagedDataset:
+        """只读取可验证的 dataset.json，用于损坏目录的主页摘要恢复。"""
+
+        paths = self.paths(dataset_id)
+        if not paths.root.is_dir():
+            raise CorruptDatasetError("数据集目录缺失")
+        _reject_symlink(paths.root, "数据集目录")
+        if not paths.metadata.is_file():
+            raise CorruptDatasetError("数据集元数据缺失")
+        _reject_symlink(paths.metadata, "数据集元数据")
+        try:
+            dataset = read_json_model(paths.metadata, ManagedDataset)
+        except (OSError, json.JSONDecodeError, ValidationError) as error:
+            raise CorruptDatasetError(f"数据集元数据无法读取: {error}") from error
+        if dataset.id != dataset_id:
+            raise CorruptDatasetError("数据集元数据 UUID 与受管目录不一致")
+        return dataset
+
     def save_dataset(self, dataset: ManagedDataset) -> None:
         """只更新 UUID 目录内的元数据，不修改目录名称。"""
 
-        paths = self.paths(dataset.id)
+        try:
+            validated = ManagedDataset.model_validate(dataset.model_dump(mode="json"))
+        except ValidationError as error:
+            raise DatasetRepositoryError(f"数据集元数据验证失败: {error}") from error
+        paths = self.paths(validated.id)
         if not paths.root.is_dir():
             raise DatasetRepositoryError("数据集目录不存在")
-        write_json_atomic(paths.metadata, dataset)
+        try:
+            write_json_atomic(paths.metadata, validated)
+        except OSError as error:
+            raise DatasetRepositoryError(f"数据集元数据写入失败: {error}") from error
 
     def save_label_set(self, dataset_id: str, label_set: LabelSet) -> None:
         """保存数据集独立标签定义，稳定标签集 ID 由调用方校验。"""
 
+        try:
+            validated = LabelSet.model_validate(label_set.model_dump(mode="json"))
+        except ValidationError as error:
+            raise DatasetRepositoryError(f"标签集验证失败: {error}") from error
         paths = self.paths(dataset_id)
         if not paths.root.is_dir():
             raise DatasetRepositoryError("数据集目录不存在")
-        write_json_atomic(paths.label_set, label_set)
+        try:
+            write_json_atomic(paths.label_set, validated)
+        except OSError as error:
+            raise DatasetRepositoryError(f"标签集写入失败: {error}") from error
+
+    def discover_managed_directories(self) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """发现规范 UUID 目录；未知项与符号链接只报告且绝不跟随。"""
+
+        discovered: list[str] = []
+        ignored: list[str] = []
+        try:
+            entries = sorted(self.datasets_root.iterdir(), key=lambda item: item.name.casefold())
+        except OSError as error:
+            raise DatasetRepositoryError(f"无法扫描受管数据集目录: {error}") from error
+        for entry in entries:
+            if entry.is_symlink() or not entry.is_dir():
+                ignored.append(entry.name)
+                continue
+            try:
+                discovered.append(_canonical_uuid(entry.name))
+            except DatasetRepositoryError:
+                ignored.append(entry.name)
+        return tuple(discovered), tuple(ignored)
 
     def validate_at(self, dataset_root: Path, *, expected_id: str) -> None:
         """验证固定结构、稳定 ID 和 SQLite 可读性，不扫描任何图片。"""

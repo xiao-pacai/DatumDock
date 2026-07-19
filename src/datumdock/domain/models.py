@@ -106,7 +106,7 @@ class AnnotationDocument(BaseModel):
 
 
 class Label(BaseModel):
-    """项目级标签；稳定 ID、训练类别 ID 与英文名受迁移保护。"""
+    """数据集级标签；稳定 ID、训练类别 ID 与英文名受迁移保护。"""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -119,6 +119,8 @@ class Label(BaseModel):
     color: str = Field(pattern=r"^#[0-9A-Fa-f]{6}$")
     status: LabelStatus = LabelStatus.ACTIVE
 
+    _validate_id = field_validator("id")(_validate_uuid)
+
     @field_validator("synonyms")
     @classmethod
     def remove_empty_synonyms(cls, value: list[str]) -> list[str]:
@@ -128,12 +130,36 @@ class Label(BaseModel):
 
 
 class LabelSet(BaseModel):
-    """一个项目唯一的标签集合。"""
+    """一个数据集独立持有的标签集合。"""
 
     model_config = ConfigDict(extra="forbid")
 
     id: str = Field(default_factory=new_id)
     labels: list[Label] = Field(default_factory=list)
+
+    _validate_id = field_validator("id")(_validate_uuid)
+
+    @model_validator(mode="after")
+    def validate_unique_mappings(self) -> LabelSet:
+        """保护稳定映射，并让活动标签颜色与训练名保持可辨识。"""
+
+        identifiers = [label.id for label in self.labels]
+        if len(identifiers) != len(set(identifiers)):
+            raise ValueError("标签集包含重复的标签 ID")
+
+        class_ids = [label.class_id for label in self.labels]
+        if len(class_ids) != len(set(class_ids)):
+            raise ValueError("标签集包含重复的类别 ID")
+
+        active = [label for label in self.labels if label.status == LabelStatus.ACTIVE]
+        training_names = [label.name.casefold() for label in active]
+        if len(training_names) != len(set(training_names)):
+            raise ValueError("活动标签包含重复的训练名")
+
+        colors = [label.color.upper() for label in active]
+        if len(colors) != len(set(colors)):
+            raise ValueError("活动标签包含重复的颜色")
+        return self
 
     def training_signature(self) -> str:
         """计算影响标注迁移和数据集合并的稳定训练映射签名。"""
@@ -223,6 +249,14 @@ class DatasetStatistics(BaseModel):
     image_count: int = Field(default=0, ge=0)
     label_count: int = Field(default=0, ge=0)
     reviewed_count: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def validate_reviewed_count(self) -> DatasetStatistics:
+        """复核数量不能超过当前数据集的图片总数。"""
+
+        if self.reviewed_count > self.image_count:
+            raise ValueError("复核数量不能超过图片总数")
+        return self
 
     @property
     def reviewed_percent(self) -> int:

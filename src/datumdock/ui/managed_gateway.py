@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from uuid import UUID
 
 from datumdock.domain.models import LabelStatus
@@ -26,6 +27,8 @@ from datumdock.ui.prototype_models import (
     UiCommandResult,
     WorkspaceSnapshot,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ManagedDatasetGateway:
@@ -140,6 +143,10 @@ class ManagedDatasetGateway:
         except (DatasetNotFoundError, DatasetUnavailableError):
             return UiCommandResult(CommandStatus.ERROR, "toast.dataset_unavailable")
         except DatasetLibraryServiceError:
+            logger.exception("受管数据集业务操作失败: %s", command.action_id)
+            return UiCommandResult(CommandStatus.ERROR, "toast.library_operation_failed")
+        except Exception:
+            logger.exception("受管数据集命令发生未预期异常: %s", command.action_id)
             return UiCommandResult(CommandStatus.ERROR, "toast.library_operation_failed")
         return UiCommandResult(CommandStatus.NOT_CONNECTED, "toast.not_connected")
 

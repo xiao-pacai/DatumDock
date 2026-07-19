@@ -257,3 +257,230 @@ def test_repository_rejects_non_uuid_dataset_paths(tmp_path: Path) -> None:
     for identifier in ("../outside", "dataset", "C:/outside"):
         with pytest.raises(DatasetRepositoryError):
             service.dataset_repository.paths(identifier)
+
+
+def test_missing_library_index_rebuilds_valid_dataset_registration(tmp_path: Path) -> None:
+    """library.json 丢失时从有效 UUID 数据集目录恢复主页登记。"""
+
+    service = DatasetLibraryService(tmp_path)
+    created = service.create_dataset("断电后恢复")
+    (tmp_path / "library.json").unlink()
+
+    restarted = DatasetLibraryService(tmp_path)
+
+    assert [item.id for item in restarted.library.datasets] == [created.dataset.id]
+    assert restarted.open_dataset(created.dataset.id).dataset.name == "断电后恢复"
+    assert restarted.recovery_report.recovered_dataset_ids == (created.dataset.id,)
+
+
+def test_unregistered_published_directory_is_reconciled_on_restart(tmp_path: Path) -> None:
+    """发布目录后若登记被中断，下次启动应重新登记而不是隐藏数据。"""
+
+    service = DatasetLibraryService(tmp_path)
+    created = service.create_dataset("发布后中断")
+    empty_library = service.library.model_copy(deep=True)
+    empty_library.datasets.clear()
+    service.library_repository.save(empty_library)
+
+    restarted = DatasetLibraryService(tmp_path)
+
+    assert restarted.library.datasets[0].id == created.dataset.id
+    assert restarted.recovery_report.recovered_dataset_ids == (created.dataset.id,)
+
+
+def test_damaged_unregistered_directory_becomes_diagnostic_record(tmp_path: Path) -> None:
+    """损坏孤儿目录必须保留并显示诊断卡片，不能被删除或静默忽略。"""
+
+    service = DatasetLibraryService(tmp_path)
+    created = service.create_dataset("损坏孤儿")
+    empty_library = service.library.model_copy(deep=True)
+    empty_library.datasets.clear()
+    service.library_repository.save(empty_library)
+    paths = service.dataset_repository.paths(created.dataset.id)
+    original = b"{broken-dataset"
+    paths.metadata.write_bytes(original)
+
+    restarted = DatasetLibraryService(tmp_path)
+    record = restarted.list_datasets()[0]
+
+    assert record.entry.id == created.dataset.id
+    assert record.bundle is None
+    assert record.diagnostic
+    assert paths.metadata.read_bytes() == original
+    assert restarted.recovery_report.damaged_dataset_ids == (created.dataset.id,)
+
+
+def test_damaged_orphan_uses_valid_metadata_for_home_summary(tmp_path: Path) -> None:
+    """标签或索引损坏时仍以有效 dataset.json 恢复真实名称和描述。"""
+
+    service = DatasetLibraryService(tmp_path)
+    created = service.create_dataset("可识别的损坏项", "保留真实摘要")
+    empty_library = service.library.model_copy(deep=True)
+    empty_library.datasets.clear()
+    service.library_repository.save(empty_library)
+    paths = service.dataset_repository.paths(created.dataset.id)
+    paths.index.write_bytes(b"not-a-sqlite-database")
+
+    restarted = DatasetLibraryService(tmp_path)
+    record = restarted.list_datasets()[0]
+
+    assert record.entry.name == "可识别的损坏项"
+    assert record.entry.description == "保留真实摘要"
+    assert record.bundle is None
+    assert record.diagnostic
+
+
+def test_reconciliation_refreshes_stale_library_summary(tmp_path: Path) -> None:
+    """dataset.json 是摘要事实来源，启动对账应原子刷新过期主页索引。"""
+
+    service = DatasetLibraryService(tmp_path)
+    created = service.create_dataset("真实名称", "真实描述")
+    stale = service.library.model_copy(deep=True)
+    stale.datasets[0].name = "过期摘要"
+    stale.datasets[0].description = "错误描述"
+    service.library_repository.save(stale)
+
+    restarted = DatasetLibraryService(tmp_path)
+
+    assert restarted.library.datasets[0].name == "真实名称"
+    assert restarted.library.datasets[0].description == "真实描述"
+    assert restarted.recovery_report.refreshed_dataset_ids == (created.dataset.id,)
+
+
+def test_reconciliation_reports_unknown_directory_without_modifying_it(tmp_path: Path) -> None:
+    """非 UUID 目录只进入恢复报告，不删除、不移动也不登记。"""
+
+    DatasetLibraryService(tmp_path)
+    unknown = tmp_path / "datasets" / "manual-folder"
+    unknown.mkdir()
+    marker = unknown / "keep.txt"
+    marker.write_text("必须保留", encoding="utf-8")
+
+    restarted = DatasetLibraryService(tmp_path)
+
+    assert restarted.library.datasets == []
+    assert marker.read_text(encoding="utf-8") == "必须保留"
+    assert "manual-folder" in restarted.recovery_report.ignored_entries
+
+
+def test_dataset_metadata_write_failure_is_wrapped_by_service(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """底层数据集写入失败只能以业务异常离开 Service。"""
+
+    service = DatasetLibraryService(tmp_path)
+    created = service.create_dataset("写盘失败")
+
+    def fail_save(_dataset) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(service.dataset_repository, "save_dataset", fail_save)
+    with pytest.raises(DatasetLibraryServiceError, match="元数据写入失败"):
+        service.rename_dataset(created.dataset.id, "不会生效")
+    assert service.library.datasets[0].name == "写盘失败"
+
+
+def test_registration_and_recovery_failure_preserves_both_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """登记与恢复同时失败时不得用清理异常覆盖原始写盘原因。"""
+
+    service = DatasetLibraryService(tmp_path)
+
+    def fail_library_save(_library) -> None:
+        raise OSError("library disk full")
+
+    def fail_recovery(_dataset_id: str) -> None:
+        raise OSError("recovery locked")
+
+    monkeypatch.setattr(service.library_repository, "save", fail_library_save)
+    monkeypatch.setattr(service.dataset_repository, "move_unregistered_to_recovery", fail_recovery)
+
+    with pytest.raises(DatasetLibraryServiceError) as captured:
+        service.create_dataset("保留现场")
+
+    message = str(captured.value)
+    assert "library disk full" in message
+    assert "recovery locked" in message
+    assert any(path.is_dir() for path in (tmp_path / "datasets").iterdir())
+
+
+def test_initial_dataset_write_failure_leaves_no_registered_or_staging_data(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """首次写入失败应保持空索引，并清理本轮已经建立的临时目录。"""
+
+    service = DatasetLibraryService(tmp_path)
+    original = service.dataset_repository.create_in_staging
+
+    def fail_after_creating(staging, dataset, label_set) -> None:
+        original(staging, dataset, label_set)
+        raise OSError("metadata flush failed")
+
+    monkeypatch.setattr(service.dataset_repository, "create_in_staging", fail_after_creating)
+
+    with pytest.raises(DatasetLibraryServiceError, match="metadata flush failed"):
+        service.create_dataset("首次写入失败")
+
+    assert service.library.datasets == []
+    assert list((tmp_path / "datasets").iterdir()) == []
+
+
+def test_metadata_rollback_failure_is_explicit_and_reconciles_after_restart(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """摘要写入与元数据回滚同时失败时保留现场，并可由下次启动对账。"""
+
+    service = DatasetLibraryService(tmp_path)
+    created = service.create_dataset("回滚前名称")
+    real_save_dataset = service.dataset_repository.save_dataset
+    calls = 0
+
+    def fail_second_dataset_save(dataset) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("rollback locked")
+        real_save_dataset(dataset)
+
+    def fail_library_save(_library) -> None:
+        raise OSError("library locked")
+
+    monkeypatch.setattr(service.dataset_repository, "save_dataset", fail_second_dataset_save)
+    monkeypatch.setattr(service.library_repository, "save", fail_library_save)
+
+    with pytest.raises(DatasetLibraryServiceError) as captured:
+        service.rename_dataset(created.dataset.id, "磁盘现场名称")
+
+    assert "library locked" in str(captured.value)
+    assert "rollback locked" in str(captured.value)
+    monkeypatch.undo()
+    restarted = DatasetLibraryService(tmp_path)
+    assert restarted.library.datasets[0].name == "磁盘现场名称"
+    assert restarted.recovery_report.refreshed_dataset_ids == (created.dataset.id,)
+
+
+def test_uuid_symlink_is_reported_without_being_followed_or_registered(tmp_path: Path) -> None:
+    """UUID 名称的符号链接仍属于未知入口，启动对账不得跟随。"""
+
+    DatasetLibraryService(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    marker = outside / "keep.txt"
+    marker.write_text("外部内容", encoding="utf-8")
+    link_name = "8cb9ff2f-c6f1-4e7c-8ce4-5fcc59b9cdfa"
+    link = tmp_path / "datasets" / link_name
+    try:
+        link.symlink_to(outside, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"当前 Windows 环境不允许创建测试符号链接: {error}")
+
+    restarted = DatasetLibraryService(tmp_path)
+
+    assert restarted.library.datasets == []
+    assert link_name in restarted.recovery_report.ignored_entries
+    assert marker.read_text(encoding="utf-8") == "外部内容"

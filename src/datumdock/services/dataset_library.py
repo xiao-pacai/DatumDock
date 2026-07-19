@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from datumdock.domain.models import (
@@ -69,6 +69,16 @@ class ManagedDatasetRecord:
         return self.bundle is not None
 
 
+@dataclass(frozen=True, slots=True)
+class LibraryRecoveryReport:
+    """记录启动对账的只读结果，不对未知目录执行任何修改。"""
+
+    recovered_dataset_ids: tuple[str, ...] = ()
+    damaged_dataset_ids: tuple[str, ...] = ()
+    refreshed_dataset_ids: tuple[str, ...] = ()
+    ignored_entries: tuple[str, ...] = ()
+
+
 _WINDOWS_RESERVED_NAMES = {
     "CON",
     "PRN",
@@ -106,6 +116,7 @@ class DatasetLibraryService:
         self.library_repository = DatasetLibraryRepository(root)
         self.dataset_repository = DatasetRepository(root)
         self._library = self.library_repository.initialize()
+        self.recovery_report = self._reconcile_library()
 
     @property
     def library(self) -> AppLibrary:
@@ -187,13 +198,25 @@ class DatasetLibraryService:
             new_library.updated_at = timestamp
             self.library_repository.save(new_library)
         except Exception as error:
-            if staging.exists():
-                self.dataset_repository.remove_staging(staging)
+            recovery_notes: list[str] = []
+            try:
+                if staging.exists():
+                    self.dataset_repository.remove_staging(staging)
+            except Exception as cleanup_error:
+                recovery_notes.append(f"临时目录清理失败: {cleanup_error}")
             if published:
-                self.dataset_repository.move_unregistered_to_recovery(dataset.id)
+                try:
+                    recovery_path = self.dataset_repository.move_unregistered_to_recovery(
+                        dataset.id
+                    )
+                    if recovery_path is not None:
+                        recovery_notes.append(f"未登记数据已保留在恢复区: {recovery_path.name}")
+                except Exception as recovery_error:
+                    recovery_notes.append(f"恢复区转移失败: {recovery_error}")
             if isinstance(error, DatasetLibraryServiceError):
                 raise
-            raise DatasetLibraryServiceError(f"创建数据集失败: {error}") from error
+            suffix = f"；{'；'.join(recovery_notes)}" if recovery_notes else ""
+            raise DatasetLibraryServiceError(f"创建数据集失败: {error}{suffix}") from error
         self._library = new_library
         return ManagedDatasetBundle(dataset, label_set)
 
@@ -288,12 +311,23 @@ class DatasetLibraryService:
                 ),
             },
         )
+        label_saved = False
         try:
             self.dataset_repository.save_label_set(dataset_id, label_set)
+            label_saved = True
             self._save_dataset_and_entry(bundle.dataset, updated_dataset)
-        except Exception:
-            self.dataset_repository.save_label_set(dataset_id, old_label_set)
-            raise
+        except Exception as error:
+            if label_saved:
+                try:
+                    self.dataset_repository.save_label_set(dataset_id, old_label_set)
+                except Exception as rollback_error:
+                    raise DatasetLibraryServiceError(
+                        "标签集更新失败且原标签集恢复失败: "
+                        f"原始错误={error}；恢复错误={rollback_error}"
+                    ) from error
+            if isinstance(error, DatasetLibraryServiceError):
+                raise
+            raise DatasetLibraryServiceError(f"标签集更新失败: {error}") from error
         return ManagedDatasetBundle(updated_dataset, label_set.model_copy(deep=True))
 
     def dataset_directory(self, dataset_id: str) -> Path:
@@ -313,7 +347,10 @@ class DatasetLibraryService:
         index = self._entry_index(updated.id, library=new_library)
         new_library.datasets[index] = self._entry_from_dataset(updated)
         new_library.updated_at = updated.modified_at
-        self.dataset_repository.save_dataset(updated)
+        try:
+            self.dataset_repository.save_dataset(updated)
+        except Exception as error:
+            raise DatasetLibraryServiceError(f"数据集元数据写入失败: {error}") from error
         try:
             self.library_repository.save(new_library)
         except Exception as error:
@@ -321,12 +358,86 @@ class DatasetLibraryService:
                 self.dataset_repository.save_dataset(original)
             except Exception as rollback_error:
                 raise DatasetLibraryServiceError(
-                    f"资料库写入失败且元数据回滚失败: {rollback_error}"
+                    f"资料库写入失败且元数据回滚失败: 原始错误={error}；回滚错误={rollback_error}"
                 ) from error
             raise DatasetLibraryServiceError(
                 f"资料库写入失败，数据集修改已回滚: {error}"
             ) from error
         self._library = new_library
+
+    def _reconcile_library(self) -> LibraryRecoveryReport:
+        """以 dataset.json 为摘要事实来源，安全找回未登记 UUID 目录。"""
+
+        try:
+            discovered, ignored = self.dataset_repository.discover_managed_directories()
+        except DatasetRepositoryError as error:
+            raise DatasetLibraryServiceError(f"资料库启动对账失败: {error}") from error
+
+        new_library = self._library.model_copy(deep=True)
+        registered = {entry.id: index for index, entry in enumerate(new_library.datasets)}
+        recovered: list[str] = []
+        damaged: list[str] = []
+        refreshed: list[str] = []
+
+        for dataset_id in discovered:
+            try:
+                dataset, _label_set = self.dataset_repository.load(dataset_id)
+                expected = self._entry_from_dataset(dataset)
+            except DatasetRepositoryError:
+                damaged.append(dataset_id)
+                if dataset_id not in registered:
+                    try:
+                        metadata = self.dataset_repository.load_metadata_for_recovery(dataset_id)
+                        expected = self._entry_from_dataset(metadata)
+                    except DatasetRepositoryError:
+                        expected = self._placeholder_entry(dataset_id)
+                else:
+                    continue
+
+            index = registered.get(dataset_id)
+            if index is None:
+                registered[dataset_id] = len(new_library.datasets)
+                new_library.datasets.append(expected)
+                recovered.append(dataset_id)
+                continue
+            current = new_library.datasets[index]
+            if current.model_dump(mode="json") != expected.model_dump(mode="json"):
+                new_library.datasets[index] = expected
+                refreshed.append(dataset_id)
+
+        if recovered or refreshed:
+            new_library.updated_at = utc_now()
+            try:
+                self.library_repository.save(new_library)
+            except Exception as error:
+                raise DatasetLibraryServiceError(f"资料库对账结果写入失败: {error}") from error
+            self._library = new_library
+
+        return LibraryRecoveryReport(
+            recovered_dataset_ids=tuple(recovered),
+            damaged_dataset_ids=tuple(damaged),
+            refreshed_dataset_ids=tuple(refreshed),
+            ignored_entries=ignored,
+        )
+
+    def _placeholder_entry(self, dataset_id: str) -> DatasetLibraryEntry:
+        """为损坏孤儿建立只读诊断入口，名称使用中立稳定标识。"""
+
+        root = self.dataset_repository.paths(dataset_id).root
+        try:
+            timestamp = datetime.fromtimestamp(root.stat().st_mtime, tz=UTC)
+        except OSError:
+            timestamp = utc_now()
+        return DatasetLibraryEntry(
+            id=dataset_id,
+            relative_path=f"datasets/{dataset_id}",
+            name=f"dataset-{dataset_id[:8]}",
+            description="",
+            created_at=timestamp,
+            modified_at=timestamp,
+            archived=False,
+            statistics=DatasetStatistics(),
+        )
 
     def _entry(self, dataset_id: str) -> DatasetLibraryEntry:
         return self._library.datasets[self._entry_index(dataset_id)]
