@@ -216,6 +216,11 @@
 
 ## 当前外部阻塞记录
 
+- [-] A0.8 需求文档提交暂未同步远端。
+  - 原因：2026-07-20 推送提交 `0618c90` 时，三次 HTTPS 尝试分别出现连接重置和 `github.com:443` 无法连接，已按最多三次策略停止重试。
+  - 影响范围：A0.8 的 Logo 放大、默认选择模式辅助线与 `Ctrl + 滚轮` 缩放规范已安全提交在本地 `main`，但远端 `origin/main` 暂时不可见；没有代码或用户资料库受影响。
+  - 恢复条件：本机到 GitHub HTTPS 443 的连接恢复。
+  - 下一步：网络恢复后执行 `git push origin main`，确认远端包含 `0618c90` 及本阻塞记录提交；不得重写本地历史。
 - [x] GitHub `main` 推送阻塞已恢复：2026-07-19 已将现代视觉设计规范提交 `f28dc79` 成功推送到远端 `main`。
 - [x] 步骤一与步骤二推送阻塞已恢复：早前连接重置、`curl 55` 和 `github.com:443` 失败均为临时网络问题；2026-07-19 已成功将 `f28dc79..e7e8aa9` 推送到远端 `main`，包含步骤一 UI 与步骤二内部资料库提交。
 - [x] 步骤二严格复验与步骤三提交已恢复远端同步。
@@ -235,4 +240,4 @@
 
 ## English Summary
 
-The revised step-four interaction slice and phases 3.2–3.4 remain the historical baseline. Phase 3.5/A0.8 is the active pending usability gate: enlarge the visible workbench wordmark, ensure guides work in default unarmed selection mode, and add pointer-anchored Ctrl+wheel zoom. Model inference, export, complete X-AnyLabeling directory exchange, backup, and packaging remain on the roadmap.
+The revised step-four interaction slice and phases 3.2–3.4 remain the historical baseline. Phase 3.5/A0.8 is the active pending usability gate: enlarge the visible workbench wordmark, ensure guides work in default unarmed selection mode, and add pointer-anchored Ctrl+wheel zoom. The local specification commit is currently ahead of `origin/main` because three HTTPS push attempts failed; no local history was rewritten. Model inference, export, complete X-AnyLabeling directory exchange, backup, and packaging remain on the roadmap.
