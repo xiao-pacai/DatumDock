@@ -548,6 +548,8 @@ class PreviewAnnotationCanvas(QWidget):
         self._snap_projection = None
         if self._drag_snapshot is None or self._drag_origin is None:
             self._refresh_cursor(point)
+            # 默认选择模式也必须立即刷新，不能等到切换工具后才显示最新辅助线。
+            self.update()
             return
         delta = self._canvas_delta_to_image(point - self._drag_origin)
         original = self._drag_snapshot
@@ -584,6 +586,7 @@ class PreviewAnnotationCanvas(QWidget):
             self._hover_point = event.position()
             self._refresh_snap_projection()
             self._refresh_cursor(event.position())
+            self.update()
             return
         if self.managed_read_only:
             return
