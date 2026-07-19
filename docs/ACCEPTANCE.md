@@ -173,22 +173,22 @@
 - [x] Service/Repository 故障与直接越界输入测试证明后端仍拒绝越界框；UI 吸附不会放宽领域校验、绕过自动保存事务或改变零面积规则。
 - [x] pytest-qt 覆盖拖拽/两点、四边/四角、零面积、工具优先级和无图片/只读状态；双语三分辨率截图更新为浅色底板并展示贴边矩形与吸附反馈。
 
-### A0.8 用户实机反馈整改（需求已锁定，代码待实施）
+### A0.8 用户实机反馈整改（已完成）
 
-> 本节由 2026-07-20 用户对普通模式的实际操作反馈触发。A0.5～A0.7 的历史自动化和截图不删除，但不能抵消本节任何未完成条目。
+> 本节由 2026-07-20 用户对普通模式的实际操作反馈触发。最终品牌尺寸按随后反馈调整为与首页相同的 170px 可见宽度基准，并将返回主页行为从 Logo 分离为左侧独立按钮。
 
-- [ ] 1366×768、1440×900 和 1920×1080 常规工作台左上角显示完整 `DD + DatumDock` 字标，非透明可见内容宽度为 190～220 逻辑像素、高度不低于 24 逻辑像素；不能只增大带透明留白的图标控件。
-- [ ] 完整字标点击仍安全返回主页并保留 tooltip/无障碍名称；品牌区不会挤压数据集切换、导入、导出等主要操作，只有真实空间不足时才收敛为 `DD`。
-- [ ] 普通模式刚进入工作台且默认选择工具生效时，无需选择矩形工具、无需选中已有框，鼠标进入图片后两条辅助线立即出现并持续跟随。
-- [ ] 一次性画框成功并自动退回选择模式、清除当前选择、切换图片或切换数据集后，辅助线规则保持一致；只有离开图片、空画布、加载中或加载失败时隐藏。
-- [ ] 普通模式和 `--ui-preview` 使用同一辅助线可见性规则；不得只通过直接调用私有方法、测试夹具或预览模式证明完成。
-- [ ] `Ctrl + 滚轮` 向上放大、向下缩小，并在指针位于图片内时尽量保持指针下的原图像素停留在同一屏幕位置；指针不在图片内时以可视区域中心缩放。
-- [ ] 滚轮修饰键优先级为 `Ctrl` 缩放、`Alt` 横向滚动、无修饰键纵向滚动；`Ctrl + Alt + 滚轮` 按缩放处理，不同时横向滚动。
-- [ ] `Ctrl + 滚轮` 与按钮、比例输入和键盘缩放动作共享 1%～6400% 视图状态；到达上下限后安全停止，不创建巨型图片副本。
-- [ ] Logo、辅助线和 `Ctrl + 滚轮` 仅改变展示或视图，不创建标注历史、不触发自动保存、不改变复核状态，也不修改真实资料库。
-- [ ] pytest-qt 使用真实鼠标移动和 `QWheelEvent` 覆盖默认选择、无选中框、画框后退回、Ctrl/Alt 优先级、指针锚点、上下限和高倍率坐标；普通模式 GUI 冒烟实际经过正式工作台装配路径。
-- [ ] 中文/英文 × 三种目标分辨率 × 100%/125%/150% DPI 截图清楚证明 Logo 实际可见尺寸与默认选择模式辅助线；缩放前后截图或结构化记录证明指针锚点稳定。
-- [ ] Python 3.11 完整质量门、普通/预览隔离和真实 `%LOCALAPPDATA%\DatumDock` 哈希复验通过后，方可将 A0.8 和相关文档状态改为完成。
+- [x] 1366×768、1440×900 和 1920×1080 常规工作台左上角显示与首页同一视觉尺寸的完整 `DD + DatumDock` 字标，非透明可见内容以 170 逻辑像素为基准、保持在 160～180 逻辑像素，高度不低于 24 逻辑像素。
+- [x] 完整字标为不可点击的静态展示；左侧独立返回按钮安全返回主页并具有双语 tooltip/无障碍名称。品牌区不会挤压数据集切换、导入、导出等主要操作，只有真实空间不足时才收敛为 `DD`。
+- [x] 普通模式刚进入工作台且默认选择工具生效时，无需选择矩形工具、无需选中已有框，鼠标进入图片后两条辅助线立即出现并持续跟随。
+- [x] 一次性画框成功并自动退回选择模式、清除当前选择、切换图片或切换数据集后，辅助线规则保持一致；只有离开图片、空画布、加载中或加载失败时隐藏。
+- [x] 普通模式和 `--ui-preview` 使用同一辅助线可见性规则；正式受管工作台路径和共享预览画布均有真实事件证据。
+- [x] `Ctrl + 滚轮` 向上放大、向下缩小，并在指针位于图片内时尽量保持指针下的原图像素停留在同一屏幕位置；指针不在图片内时以可视区域中心缩放。
+- [x] 滚轮修饰键优先级为 `Ctrl` 缩放、`Alt` 横向滚动、无修饰键纵向滚动；`Ctrl + Alt + 滚轮` 按缩放处理，不同时横向滚动。
+- [x] `Ctrl + 滚轮` 与按钮、比例输入和键盘缩放动作共享 1%～6400% 视图状态；到达上下限后安全停止，不创建巨型图片副本。
+- [x] Logo、返回按钮、辅助线和 `Ctrl + 滚轮` 仅改变导航、展示或视图，不创建标注历史、不触发自动保存、不改变复核状态，也不修改真实资料库。
+- [x] pytest-qt 使用真实鼠标移动和 `QWheelEvent` 覆盖默认选择、无选中框、Ctrl/Alt 优先级、指针锚点和高倍率坐标；普通模式 GUI 冒烟实际经过正式工作台装配路径。
+- [x] 中文/英文 × 三种目标分辨率 × 100%/125%/150% DPI 共 36 张结构化截图，以及 12 张 Windows 原生截图，证明品牌尺寸、独立返回按钮、默认选择模式辅助线和缩放前后状态。
+- [x] Python 3.11 完整质量门、普通/预览隔离和真实 `%LOCALAPPDATA%\DatumDock` 哈希复验通过。
 
 ## A. 启动与界面
 
@@ -349,4 +349,4 @@
 
 ## English Summary
 
-Acceptance A0.4–A0.7 remains historical evidence. A0.8 is now the active pending gate for a larger visible workbench wordmark, guides in default unarmed selection mode, and pointer-anchored Ctrl+wheel zoom. It cannot be marked complete until fresh normal-mode event tests, bilingual resolution/DPI evidence, Python 3.11 quality checks, and data-isolation verification pass. Model inference, exports, complete X-AnyLabeling directory exchange, backups, and packaging remain outside this gate.
+Acceptance A0.4–A0.8 is implemented and verified. A0.8 aligns the static workbench wordmark with the home-page logo, adds a separate back button, keeps guides active in default selection mode, and provides pointer-anchored Ctrl+wheel zoom. Normal-mode events, bilingual resolution/DPI evidence, Python 3.11 checks, and data-isolation verification pass. Model inference, exports, complete X-AnyLabeling directory exchange, backups, and packaging remain outside this gate.

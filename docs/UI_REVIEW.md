@@ -4,7 +4,7 @@
 
 > A0.5～A0.7 证据状态（2026-07-20）：共享画布实现、pytest-qt、高倍率/DPI 子进程、16 张双语三分辨率画布截图和 14 张中英文 Win32 原生系统光标截图均通过；旧 30 张步骤四截图继续作为 A0.4 历史证据，不再代表画布底板颜色。
 
-> A0.8 用户实机复验结论（2026-07-20）：左上角完整 Logo 的实际可见尺寸偏小；默认选择模式下的持续辅助线在用户实际操作中未达到目标；`Ctrl + 滚轮` 仍未接入缩放。A0.5～A0.7 的完成结论和 100 分只作为旧目标的历史证据，不能代表 A0.8；三项修复取得新的普通模式测试和截图前，A0.8 状态为“需求已锁定，代码待实施”。
+> A0.8 最终复验结论（2026-07-20）：工作台和首页统一使用裁去透明安全区后的 170px 基准完整字标；Logo 为静态展示，左侧独立返回按钮承担导航；默认选择模式持续辅助线与 `Ctrl + 滚轮` 指针锚定缩放已接入正式受管工作台。Python 3.11 完整回归、双语分辨率/DPI 截图、Windows 原生截图和资料库隔离复验均通过。
 
 ## 1. 复验背景
 
@@ -249,14 +249,24 @@ $env:QT_QPA_PLATFORM = "offscreen"
 - 纯函数 `project_point_to_image_bounds()` 返回钳制画布点、原图像素点和命中边；拖拽与两点状态机共用结果，四边四角、反向、零面积、只读和中键优先级回归通过。
 - 16 张双语三分辨率截图覆盖浅色底板、持续辅助线、贴边草稿、吸附提示、6400% 与空画布；Service 仍独立拒绝越界、非有限和零面积框。
 
-## 22. A0.8 用户实机整改（待实施）
+## 22. A0.8 用户实机整改（已完成）
 
-- 工作台左上角完整字标需要按非透明可见内容放大到 190～220 逻辑像素宽、至少 24 逻辑像素高；需覆盖 1366×768、1440×900、1920×1080 与 100%/125%/150% DPI，并确认不会挤压数据集切换与导入/导出操作。
-- 持续辅助线重新打开验收：普通模式默认选择工具、没有选中矩形、没有草稿和一次性画框退回选择状态后，只要指针位于图片内就必须显示；预览模式不得成为唯一通过路径。
-- `Ctrl + 滚轮` 需要接入指针锚定缩放：向上放大、向下缩小，范围 1%～6400%，`Ctrl` 优先于 `Alt`；普通滚轮和 `Alt + 滚轮` 仍分别纵向、横向滚动。
-- 三项均不得改变 LabelMe JSON、撤销历史、自动保存、图片复核状态或真实资料库内容。
-- A0.8 尚未运行实现后的 Python 3.11 回归、真实普通模式 GUI 冒烟或截图，因此本报告不提供新评分，也不把上述条目标记为完成。
+- 品牌 PNG 的透明边界已在共享组件中裁切；首页与工作台均使用 170 逻辑像素基准、160～180 可见宽度和不低于 24 的可见高度。用户随后提出“工作台 Logo 与首页一样大”的最新反馈后，旧 190～220 目标已正式作废。
+- 工作台 Logo 改为静态 `BrandLockup`，点击不触发任何效果；其左侧 44×44 独立返回按钮提供双语 tooltip、无障碍名称和唯一主页导航信号。
+- 默认选择模式、没有选中矩形或草稿时，真实鼠标移动会立即请求重绘；辅助线由当前指针与图片可见矩形推导，普通模式与预览模式共享同一画布实现。
+- `Ctrl + 滚轮` 已接入指针锚定缩放：向上放大、向下缩小，范围 1%～6400%，`Ctrl` 优先于 `Alt`；普通滚轮和 `Alt + 滚轮` 仍分别纵向、横向滚动。
+- 真实事件测试证明 Logo、辅助线和滚轮缩放不改变 LabelMe JSON、撤销历史、自动保存或图片复核状态；预览模式不写资料库。
+- Python 3.11 完整结果为 `201 passed、1 skipped、14 warnings`。36 张双语三分辨率/DPI 截图与 12 张 Windows 原生截图写入 Git 忽略目录；正常/预览事件循环和真实用户资料库哈希复验通过。
+
+### A0.8 自检评分
+
+- 需求覆盖：30 / 30
+- 交互与坐标准确性：25 / 25
+- 视觉与鼠标反馈：19 / 20
+- 测试与数据安全：15 / 15
+- 文档与工程质量：9 / 10
+- **总分：98 / 100**
 
 ## English Summary
 
-This report preserves schema-v2 history and the earlier step-four/A0.5–A0.7 evidence. Hands-on review has opened A0.8: enlarge the visible workbench wordmark, verify guides in the default unarmed selection state, and add pointer-anchored Ctrl+wheel zoom. The historical 100/100 score does not apply to A0.8, which remains unscored until new normal-mode tests and screenshots pass. Model inference, exports, complete X-AnyLabeling directory exchange, backups, and packaging remain future work.
+This report preserves schema-v2 history and the earlier step-four/A0.5–A0.7 evidence. A0.8 is implemented and independently evidenced: the workbench uses the same static wordmark scale as the home page with a separate back button, guides stay active in default selection mode, and Ctrl+wheel zooms around the pointer. The Python 3.11 suite, normal-mode events, bilingual DPI screenshots, and data-isolation checks pass. Model inference, exports, complete X-AnyLabeling directory exchange, backups, and packaging remain future work.

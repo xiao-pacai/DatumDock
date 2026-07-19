@@ -50,15 +50,23 @@ class BrandLockup(QLabel):
     def refresh(self) -> None:
         """加载仓库自有品牌资产，缺失时保留可读文字。"""
 
+        self.clear()
         filename = "datumdock-app-icon.png" if self.compact else "datumdock-wordmark-v3.png"
-        path = resource_root() / "assets" / "brand" / filename
-        pixmap = QPixmap(str(path))
+        pixmap = cropped_brand_pixmap(filename)
         if pixmap.isNull():
             self.setText("DD" if self.compact else "DatumDock")
             return
         width = 38 if self.compact else 170
         self.setPixmap(pixmap.scaledToWidth(width, Qt.TransformationMode.SmoothTransformation))
-        self.setFixedHeight(42 if self.compact else 48)
+        self.setFixedSize(42 if self.compact else 170, 42 if self.compact else 48)
+
+    def set_compact(self, compact: bool) -> None:
+        """切换完整字标与 DD 标记，不改变组件的静态展示语义。"""
+
+        if compact == self.compact:
+            return
+        self.compact = compact
+        self.refresh()
 
 
 def cropped_brand_pixmap(filename: str) -> QPixmap:

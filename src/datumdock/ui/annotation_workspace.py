@@ -59,7 +59,6 @@ from datumdock.ui.components import (
     SearchBox,
     StatusBadge,
     ToolButton,
-    cropped_brand_pixmap,
 )
 from datumdock.ui.icons import IconRegistry
 from datumdock.ui.managed_sample_model import ManagedSampleDelegate, ManagedSampleListModel
@@ -235,11 +234,14 @@ class AnnotationWorkspace(QWidget):
         layout = QHBoxLayout(bar)
         layout.setContentsMargins(12, 7, 12, 7)
         layout.setSpacing(8)
-        self.home_button = GhostButton()
-        self.home_button.setAccessibleName("DatumDock")
-        self._set_brand_compact(False)
-        self.home_button.clicked.connect(self.home_requested)
-        layout.addWidget(self.home_button)
+        self.back_button = GhostButton()
+        self.back_button.setIcon(self.icons.icon("back"))
+        self.back_button.setIconSize(QSize(22, 22))
+        self.back_button.setFixedSize(44, 44)
+        self.back_button.clicked.connect(self.home_requested)
+        layout.addWidget(self.back_button)
+        self.workbench_brand = BrandLockup(False)
+        layout.addWidget(self.workbench_brand)
         self.dataset_combo = QComboBox()
         self.dataset_combo.setMinimumWidth(210)
         available = self.snapshot.available_datasets or (self.snapshot.dataset,)
@@ -285,22 +287,9 @@ class AnnotationWorkspace(QWidget):
         return bar
 
     def _set_brand_compact(self, compact: bool) -> None:
-        """按工作台宽度切换完整字标与 DD 标记，并使用裁去透明区的资产。"""
+        """按工作台宽度切换静态完整字标与 DD 标记。"""
 
-        filename = "datumdock-app-icon.png" if compact else "datumdock-wordmark-v3.png"
-        pixmap = cropped_brand_pixmap(filename)
-        self.home_button.setText("")
-        if pixmap.isNull():
-            self.home_button.setIcon(QIcon())
-            self.home_button.setText("DD" if compact else "DatumDock")
-        else:
-            self.home_button.setIcon(QIcon(pixmap))
-        if compact:
-            self.home_button.setIconSize(QSize(38, 30))
-            self.home_button.setFixedSize(52, 48)
-        else:
-            self.home_button.setIconSize(QSize(210, 36))
-            self.home_button.setFixedSize(226, 48)
+        self.workbench_brand.set_compact(compact)
 
     def _build_tool_rail(self) -> QFrame:
         rail = QFrame()
@@ -542,8 +531,10 @@ class AnnotationWorkspace(QWidget):
         """即时刷新系统文案，演示文件名和标签内容保持原样。"""
 
         self.banner.retranslate_ui()
-        self.home_button.setToolTip(tr(self.locale, "workspace.back_home"))
-        self.home_button.setAccessibleDescription(tr(self.locale, "workspace.back_home"))
+        back_home = tr(self.locale, "workspace.back_home")
+        self.back_button.setToolTip(back_home)
+        self.back_button.setAccessibleName(back_home)
+        self.back_button.setAccessibleDescription(back_home)
         self.dataset_combo.setToolTip(tr(self.locale, "workspace.switch"))
         self.import_button.setText(tr(self.locale, "workspace.import"))
         self.export_button.setText(tr(self.locale, "workspace.export"))

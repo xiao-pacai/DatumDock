@@ -96,8 +96,8 @@ src/datumdock/
 - 写入前将矩形坐标归一化为左上角与右下角，避免反向拖拽产生无效数据。
 - A0.7 已在 `AnnotationCanvas` 输入层实现纯函数式 `CanvasProjection`：矩形工具的中央底板坐标逐轴投影到 `[0, image_width] × [0, image_height]`，动态预览和提交共享同一结果；图片内点保持不变。
 - `AnnotationService`、领域模型和 `LabelMeRepository` 不信任 UI 钳制，继续拒绝非有限、零面积或真正越界的矩形。选择、平移、侧栏点击和不可编辑文档不会调用该钳制创建标注。
-- A0.8 要求辅助线状态只由“最新指针画布坐标 + 当前图片可见矩形 + 加载健康状态”推导，不得读取当前工具、当前选中 shape 或矩形草稿作为显示前置条件；普通模式和预览模式必须调用同一推导函数。
-- A0.8 的滚轮分派集中在 `AnnotationCanvas`：`Ctrl` 缩放优先于 `Alt` 横向滚动，`Alt` 优先于普通纵向滚动。缩放命令接收画布锚点并通过统一双精度视图变换保持锚点下原图像素稳定，不改变领域文档、历史或复核状态。
+- A0.8 已将辅助线状态统一为“最新指针画布坐标 + 当前图片可见矩形 + 加载健康状态”推导，不读取当前工具、当前选中 shape 或矩形草稿作为显示前置条件；普通模式和预览模式调用同一共享画布实现。
+- A0.8 的滚轮分派集中在共享画布：`Ctrl` 缩放优先于 `Alt` 横向滚动，`Alt` 优先于普通纵向滚动。缩放命令接收画布锚点并通过统一双精度视图变换保持锚点下原图像素稳定，不改变领域文档、历史或复核状态。
 
 ## 5. 内部资料库、数据集池与导出边界
 
@@ -287,4 +287,4 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 
 ## English Summary
 
-The architecture implements schema v3 review state, recoverable JSON/SQLite commits, an exhaustive action registry, isolated quick-label transactions, contextual cursor resolution, a light backplate, and image-edge projection. A0.8 is pending and centralizes tool-independent guide derivation, Ctrl-first wheel dispatch with pointer-anchored zoom, and visible-bounds-aware workbench branding. Domain and service validations still independently reject true out-of-bounds data. Model inference and export pipelines remain future work.
+The architecture implements schema v3 review state, recoverable JSON/SQLite commits, an exhaustive action registry, isolated quick-label transactions, contextual cursor resolution, a light backplate, and image-edge projection. A0.8 centralizes tool-independent guide derivation, Ctrl-first wheel dispatch with pointer-anchored zoom, and visible-bounds-aware branding shared by the home page and workbench. Domain and service validations still independently reject true out-of-bounds data. Model inference and export pipelines remain future work.

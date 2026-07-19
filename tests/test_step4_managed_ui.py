@@ -11,7 +11,7 @@ from PySide6.QtCore import QPoint, QPointF, Qt
 from PySide6.QtGui import QWheelEvent
 from PySide6.QtWidgets import QApplication, QDialog
 
-from datumdock.domain.models import ReviewStatus
+from datumdock.domain.models import AnnotationState, ReviewStatus
 from datumdock.i18n.catalog import LocaleService
 from datumdock.services.annotations import AutosaveState
 from datumdock.services.dataset_library import DatasetLibraryService
@@ -222,6 +222,51 @@ def test_two_click_rectangle_zero_area_retry_and_high_zoom_navigation(
     negative_limit = QPointF(canvas.pan_offset)
     assert negative_limit.x() < 0
     assert negative_limit.y() < 0
+
+
+def test_managed_workspace_crosshair_and_ctrl_wheel_have_no_annotation_side_effects(
+    qtbot, tmp_path: Path
+) -> None:
+    """普通模式正式工作台必须持续显示辅助线并通过真实事件执行指针锚点缩放。"""
+
+    _library, gateway, _window, workspace, dataset_id, sample_id, _label = _workspace_with_label(
+        qtbot, tmp_path
+    )
+    canvas = workspace.canvas
+    canvas.set_tool(CanvasTool.SELECT)
+    canvas.set_zoom_percent(400)
+    edits: list[str] = []
+    canvas.edit_committed.connect(edits.append)
+    point = canvas.rect().center() + QPoint(75, 40)
+    qtbot.mouseMove(canvas, QPoint(4, 4))
+    qtbot.mouseMove(canvas, point)
+
+    geometry = canvas._crosshair_geometry()
+    assert geometry is not None
+    before_source = canvas._canvas_to_image(QPointF(point), canvas._image_rect())
+    before_zoom = canvas.zoom
+    event = QWheelEvent(
+        QPointF(point),
+        QPointF(canvas.mapToGlobal(point)),
+        QPoint(),
+        QPoint(0, 120),
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.ControlModifier,
+        Qt.ScrollPhase.ScrollUpdate,
+        False,
+    )
+    QApplication.sendEvent(canvas, event)
+    after_source = canvas._canvas_to_image(QPointF(point), canvas._image_rect())
+
+    assert event.isAccepted()
+    assert canvas.zoom > before_zoom
+    assert after_source.x() == pytest.approx(before_source.x(), abs=1e-9)
+    assert after_source.y() == pytest.approx(before_source.y(), abs=1e-9)
+    assert edits == []
+    persisted = gateway.load_annotation(dataset_id, sample_id)
+    assert persisted.annotation_state == AnnotationState.MISSING
+    assert persisted.document is not None
+    assert persisted.document.rectangles == []
 
 
 def test_quick_label_dialog_searches_resizes_and_remembers_size(

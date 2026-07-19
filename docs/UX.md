@@ -21,7 +21,7 @@
 
 打开数据集
 ┌──────────────────────────────────────────────────────────────────────┐
-│ Logo / 返回主页  当前数据集⌄  导入图片  导出⌄  标签  模型  设置     │
+│ ←  Logo（静态）  当前数据集⌄  导入图片  导出⌄  标签  模型  设置   │
 ├──────┬──────────────────────────────────────────┬────────────────────┤
 │ 选择 │                                          │ 当前图片的标注     │
 │ 矩形 │                                          │ 颜色 标签名 操作   │
@@ -37,7 +37,7 @@
 ### 1.1 顶部标题与主操作栏
 
 - 顶部区域参考 X-AnyLabeling 的高频操作组织方式，但使用 DatumDock 自有品牌、图标和现代视觉 v2，不复制其品牌资产。
-- 左侧显示 DatumDock 品牌/返回主页入口；中部突出当前数据集名称。点击数据集名称或下拉箭头，打开支持搜索的快速切换菜单，列出最近数据集并提供“查看全部数据集”。
+- 左侧先显示独立返回主页按钮，再显示不可点击的 DatumDock 静态品牌；中部突出当前数据集名称。点击数据集名称或下拉箭头，打开支持搜索的快速切换菜单，列出最近数据集并提供“查看全部数据集”。
 - 快速切换数据集不得弹出外部目录选择器。切换前等待当前图片自动保存；保存失败时阻止切换并提供重试、放弃内存修改或取消。
 - 常驻高频操作至少包含“导入图片”和“导出”。“导入图片”把外部图片复制到当前受管池；“导出”打开菜单或向导，区分训练数据集导出、X-AnyLabeling 交换目录和数据集备份，避免把不同含义都写成模糊的“导出图片”。
 - 标签管理、模型管理、设置和低频数据治理操作可放在标题栏右侧或“更多”菜单。标题栏不得堆满文字按钮；窗口较窄时，低频操作自动收进菜单，高频操作仍可到达。
@@ -123,7 +123,7 @@
 - 框线和内部填充均使用类别颜色。集中式令牌的外框 alpha 为 235、填充 alpha 为 38，外框清晰而内部不遮挡图片细节。
 - 选中、悬停、归档和异常状态需要额外边线、控制点或纹理，不得只通过改变标签颜色表达。
 
-> 状态：一次性矩形、边界滚动、高倍率映射、上下文系统指针、浅色底板与底板输入边缘吸附已有 A0.5～A0.7 历史证据。A0.8 的默认选择模式持续辅助线与 `Ctrl + 滚轮` 缩放已锁定但代码待重新实施和实机复验。
+> 状态：一次性矩形、边界滚动、高倍率映射、上下文系统指针、浅色底板、底板输入边缘吸附、默认选择模式持续辅助线与 `Ctrl + 滚轮` 锚定缩放均已实现并复验。工作台完整字标与首页保持同一 170px 可见宽度基准。
 
 ## 3. 数据集主页与数据集池体验
 
@@ -173,8 +173,8 @@
 
 ### 品牌使用
 
-- 数据集主页顶部和标注工作台标题栏左端固定设置品牌区：主页使用完整 `DD + DatumDock` 字标；工作台在空间允许时也显示完整字标，点击它返回数据集主页，不应触发数据修改。
-- 工作台常规宽度（含 1366×768 目标窗口）下，左上角完整字标的实际可见宽度目标为 190～220 逻辑像素，可见图形高度不低于 24 逻辑像素；品牌点击区域建议为 210～230 × 44～48 逻辑像素。验收按非透明可见图形测量，不能只看控件或图标画布尺寸。
+- 数据集主页顶部和标注工作台标题栏左端固定设置品牌区：主页和工作台在空间允许时均显示同一视觉尺寸的完整 `DD + DatumDock` 字标。Logo 是静态展示，点击没有任何效果；工作台在 Logo 左侧提供 44×44 逻辑像素的独立返回按钮。
+- 工作台常规宽度（含 1366×768 目标窗口）下，左上角完整字标以 170 逻辑像素为基准，实际可见宽度保持在 160～180 逻辑像素，可见图形高度不低于 24 逻辑像素。验收按非透明可见图形测量，不能只看控件或图标画布尺寸。
 - 左侧窄标注工具栏顶部使用浅橙色与浅蓝色的 `DD` 标记作为紧凑品牌锚点；鼠标悬停显示 `DatumDock` tooltip。窗口较窄时，标题栏完整字标可收敛为 `DD`，不得把文字挤压到难以辨认，也不得占用矩形框和 AI 标注的必要空间。
 - 首次启动空主页、数据集主页、新建数据集向导首屏与“关于 DatumDock”页面使用完整字标；普通内容页不重复放置大 Logo，避免挤占数据管理与标注空间。
 - 所有应用内展示统一使用 `assets/brand/datumdock-wordmark-v3.png`；在 GUI 资源打包阶段将它纳入 Qt 资源。后续的小尺寸窗口图标、托盘图标和安装包图标从同一 `DD` 标记派生，不以文字截图替代。
@@ -326,4 +326,4 @@
 
 ## English Summary
 
-Visual design v2 and the revised step-four interaction model form the current baseline. A0.8 remains pending after hands-on review: enlarge the visible workbench wordmark, keep guides active in the default unarmed selection state, and support pointer-anchored Ctrl+wheel zoom. Existing A0.5–A0.7 evidence is historical until those three corrections pass fresh normal-mode verification.
+Visual design v2 and the revised step-four interaction model form the current baseline. A0.8 aligns workbench and home-page branding, keeps guides active in default selection mode, and supports pointer-anchored Ctrl+wheel zoom. Fresh normal-mode and DPI evidence covers all three corrections.

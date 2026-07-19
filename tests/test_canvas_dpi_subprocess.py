@@ -1,4 +1,4 @@
-"""在独立 Qt 进程中验证 A0.5～A0.7 的 DPI 逻辑坐标。"""
+"""在独立 Qt 进程中验证 A0.5～A0.8 的 DPI 逻辑坐标。"""
 
 from __future__ import annotations
 
@@ -17,9 +17,13 @@ def test_canvas_hit_testing_and_projection_are_dpi_independent(scale_factor: str
     project_root = Path(__file__).resolve().parents[1]
     source_root = project_root / "src"
     program = r"""
-from PySide6.QtCore import QPointF, QSizeF, Qt
+from PySide6.QtCore import QPoint, QPointF, QSizeF, Qt
+from PySide6.QtGui import QRegion, QWheelEvent
 from PySide6.QtWidgets import QApplication
+from datumdock.i18n.catalog import LocaleService
+from datumdock.ui.annotation_workspace import AnnotationWorkspace
 from datumdock.ui.preview_canvas import CanvasTool, PreviewAnnotationCanvas
+from datumdock.ui.prototype_gateway import PreviewGateway
 from datumdock.ui.prototype_models import (
     AnnotationItemViewData,
     ImageItemViewData,
@@ -28,6 +32,21 @@ from datumdock.ui.prototype_models import (
 )
 
 application = QApplication([])
+gateway = PreviewGateway()
+workspace = AnnotationWorkspace(
+    LocaleService(), True, gateway.workspace_snapshot(), gateway
+)
+workspace.resize(1366, 768)
+workspace.show()
+application.processEvents()
+brand_pixmap = workspace.workbench_brand.pixmap()
+assert brand_pixmap is not None
+brand_bounds = QRegion(brand_pixmap.mask()).boundingRect()
+logical_brand_width = brand_bounds.width() / brand_pixmap.devicePixelRatio()
+logical_brand_height = brand_bounds.height() / brand_pixmap.devicePixelRatio()
+assert 160 <= logical_brand_width <= 180
+assert logical_brand_height >= 24
+
 canvas = PreviewAnnotationCanvas()
 canvas.resize(760, 520)
 label = LabelViewData("label-1", 0, "part", "零件", "DPI 验证", (), "#5B83E6", 1)
@@ -41,6 +60,24 @@ canvas.load_preview(
 )
 canvas.show()
 application.processEvents()
+canvas.set_zoom_percent(400)
+pointer = canvas.rect().center() + QPoint(80, 45)
+source_before = canvas._canvas_to_image(QPointF(pointer), canvas._image_rect())
+wheel = QWheelEvent(
+    QPointF(pointer),
+    QPointF(canvas.mapToGlobal(pointer)),
+    QPoint(),
+    QPoint(0, 120),
+    Qt.MouseButton.NoButton,
+    Qt.KeyboardModifier.ControlModifier,
+    Qt.ScrollPhase.ScrollUpdate,
+    False,
+)
+application.sendEvent(canvas, wheel)
+source_after = canvas._canvas_to_image(QPointF(pointer), canvas._image_rect())
+assert wheel.isAccepted()
+assert abs(source_after.x() - source_before.x()) < 1e-9
+assert abs(source_after.y() - source_before.y()) < 1e-9
 canvas.set_zoom_percent(6400)
 image_rect = canvas._image_rect()
 source = QPointF(80.0, 45.0)
@@ -62,6 +99,7 @@ assert projection.image_point == QPointF(0, 0)
 assert len(projection.clamped_edges) == 2
 assert canvas._cursor_shape(outside) == Qt.CursorShape.CrossCursor
 canvas.close()
+workspace.close()
 """
     environment = os.environ.copy()
     environment["QT_QPA_PLATFORM"] = "offscreen"
