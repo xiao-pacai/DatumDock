@@ -167,7 +167,7 @@ DatumDock/
 3. 完成 Python 3.11、X-AnyLabeling、真实模型和隔离安装包验收后再创建 Release。
 4. 首次发布后确认 README Logo、Issue 模板和默认 `main` 分支显示正常。
 
-当你提供 GitHub 仓库链接后，我可以继续完成远程地址绑定、首次提交、推送及仓库页面配置。
+当前远端已绑定到 `https://github.com/xiao-pacai/DatumDock.git`，步骤一与步骤二提交已经推送到 `main`。
 
 ## 品牌资产
 

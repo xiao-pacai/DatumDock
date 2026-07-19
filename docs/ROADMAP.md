@@ -126,11 +126,7 @@
 ## 当前外部阻塞记录
 
 - [x] GitHub `main` 推送阻塞已恢复：2026-07-19 已将现代视觉设计规范提交 `f28dc79` 成功推送到远端 `main`。
-- [-] 步骤一 UI 原型推送：2026-07-19 连续三次执行 `git push origin main`，分别因连接重置、`curl 55` 发送失败和无法连接 `github.com:443` 失败。
-  - 原因：当前环境到 GitHub HTTPS 的网络连接不稳定；本地 Git 对象、提交历史和工作树检查正常。
-  - 影响范围：提交 `4d0b6f4`、`173edc4`、`8cf4672` 及本条阻塞记录只存在本地 `main`，远端仍停留在 `f28dc79`。
-  - 恢复条件：当前设备可稳定连接 GitHub 443 端口，并能完成远端引用读取。
-  - 下一步：网络恢复后在仓库根目录执行 `git push origin main`，再用 `git status -sb` 确认本地不再领先远端。
+- [x] 步骤一与步骤二推送阻塞已恢复：早前连接重置、`curl 55` 和 `github.com:443` 失败均为临时网络问题；2026-07-19 已成功将 `f28dc79..e7e8aa9` 推送到远端 `main`，包含步骤一 UI 与步骤二内部资料库提交。
 - [-] Python 3.11 独立环境的依赖安装：当前网络环境在访问 PyPI 时出现 TLS `SSLEOFError`，因此尚未能在该环境安装 PySide6、pytest-qt、ONNX Runtime、Ultralytics、PyInstaller 与其 CPU 推理依赖。
   - 最近复测：2026-07-19 在全新 `.venv` 执行 `python -m pip install -e ".[dev]"`，仍在获取 `setuptools` 构建依赖时因 PyPI TLS `SSLEOFError` 失败。
   - 影响范围：Python 3.11 运行验证、pytest-qt 回归、ONNX/PT 真模型导入、自动标注和正式 PyInstaller 打包验证。
