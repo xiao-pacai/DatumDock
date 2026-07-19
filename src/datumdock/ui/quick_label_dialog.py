@@ -11,7 +11,7 @@ from PySide6.QtCore import (
     Qt,
     Signal,
 )
-from PySide6.QtGui import QColor, QKeyEvent, QPainter, QPen
+from PySide6.QtGui import QColor, QFontMetrics, QKeyEvent, QPainter, QPen
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -143,10 +143,15 @@ class QuickLabelDelegate(QStyledItemDelegate):
         if option.rect.height() >= 96 and label.description:
             painter.setPen(QColor(THEME.tokens.text_muted))
             description_rect = text_rect.adjusted(0, 48, 0, 0)
+            description = QFontMetrics(painter.font()).elidedText(
+                label.description,
+                Qt.TextElideMode.ElideRight,
+                max(1, description_rect.width()),
+            )
             painter.drawText(
                 description_rect,
-                Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextWordWrap,
-                label.description,
+                Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextSingleLine,
+                description,
             )
         if selected:
             painter.setPen(QPen(QColor(THEME.tokens.brand_primary), 2))

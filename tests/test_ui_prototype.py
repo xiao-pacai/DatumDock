@@ -624,6 +624,9 @@ def test_shortcut_recorder_detects_conflict_and_restores_defaults(monkeypatch) -
     window = ApplicationShell.for_mode(LocaleService(), True)
     settings = window.navigation.pages[RouteId.SETTINGS]
     assert isinstance(settings, SettingsPage)
+    assert settings.shortcut_table.verticalHeader().defaultSectionSize() >= 46
+    assert settings.shortcut_table.columnWidth(1) >= 170
+    assert settings.shortcut_table.columnWidth(3) >= 150
     monkeypatch.setattr(
         QMessageBox,
         "question",
