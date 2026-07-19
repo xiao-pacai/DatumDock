@@ -749,6 +749,42 @@ class DatasetSampleRepository:
             ).fetchall()
         return {str(row[0]): (int(row[1]), int(row[2])) for row in rows}
 
+    def sample_ids_for_label(self, label_id: str) -> tuple[str, ...]:
+        """返回标签检查和迁移需要的稳定样本 ID，不读取标注 JSON。"""
+
+        _canonical_uuid(label_id)
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT DISTINCT samples.id FROM sample_labels "
+                "JOIN samples ON samples.id = sample_labels.sample_id "
+                "WHERE samples.dataset_id = ? AND samples.is_trashed = 0 "
+                "AND sample_labels.label_id = ? ORDER BY samples.id",
+                (self.dataset_id, label_id),
+            ).fetchall()
+        return tuple(str(row[0]) for row in rows)
+
+    def update_annotation_diagnostic(
+        self,
+        sample_id: str,
+        state: AnnotationState,
+    ) -> None:
+        """加载失败时只更新派生健康状态，不覆盖摘要或原 JSON。"""
+
+        if state not in {
+            AnnotationState.CORRUPT,
+            AnnotationState.UNKNOWN_LABEL,
+            AnnotationState.RECOVERY_REQUIRED,
+        }:
+            raise SampleRepositoryError("该接口只接受标注异常状态")
+        with self._connection() as connection:
+            cursor = connection.execute(
+                "UPDATE samples SET annotation_state = ? "
+                "WHERE id = ? AND dataset_id = ? AND is_trashed = 0",
+                (state.value, sample_id, self.dataset_id),
+            )
+            if cursor.rowcount != 1:
+                raise SampleRepositoryError("待标记标注异常的样本不存在")
+
     def locate_sample(self, sample_id: str, query: SampleQuery) -> int | None:
         """按当前筛选和排序返回样本零基位置，供跨页高亮跳转。"""
 
