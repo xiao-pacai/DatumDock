@@ -24,6 +24,11 @@ from datumdock.services.library_repository import (
     DatasetRepository,
     DatasetRepositoryError,
 )
+from datumdock.services.sample_repository import (
+    DatasetSampleRepository,
+    SampleReconciliationReport,
+    SampleRepositoryError,
+)
 
 
 class DatasetLibraryServiceError(RuntimeError):
@@ -117,6 +122,9 @@ class DatasetLibraryService:
         self.dataset_repository = DatasetRepository(root)
         self._library = self.library_repository.initialize()
         self.recovery_report = self._reconcile_library()
+        self.sample_reconciliation_reports: dict[str, SampleReconciliationReport] = {}
+        self.sample_diagnostics: dict[str, str] = {}
+        self._reconcile_sample_indexes()
 
     @property
     def library(self) -> AppLibrary:
@@ -139,6 +147,7 @@ class DatasetLibraryService:
                     ManagedDatasetRecord(
                         entry=entry.model_copy(deep=True),
                         bundle=ManagedDatasetBundle(dataset, label_set),
+                        diagnostic=self.sample_diagnostics.get(entry.id, ""),
                     )
                 )
             except DatasetRepositoryError as error:
@@ -193,6 +202,9 @@ class DatasetLibraryService:
             self.dataset_repository.create_in_staging(staging, dataset, label_set)
             self.dataset_repository.publish_staging(staging, dataset.id)
             published = True
+            # 新数据集在登记到主页前完成 SQLite v1 升级，后续只读浏览不会
+            # 因首次打开而改写索引文件。
+            DatasetSampleRepository(self.dataset_repository.paths(dataset.id), dataset.id)
             new_library = self._library.model_copy(deep=True)
             new_library.datasets.append(entry)
             new_library.updated_at = timestamp
@@ -336,6 +348,29 @@ class DatasetLibraryService:
         self._entry(dataset_id)
         return self.dataset_repository.paths(dataset_id).root
 
+    def synchronize_statistics(self, dataset_id: str) -> ManagedDatasetBundle:
+        """以 SQLite 活动样本为事实刷新数据集和主页摘要。"""
+
+        bundle = self.open_dataset(dataset_id)
+        paths = self.dataset_repository.paths(dataset_id)
+        try:
+            repository = DatasetSampleRepository(paths, dataset_id)
+            image_count = repository.count_active()
+            reviewed_count = repository.count_reviewed()
+        except SampleRepositoryError as error:
+            raise DatasetLibraryServiceError(f"样本统计读取失败: {error}") from error
+        statistics = bundle.dataset.statistics.model_copy(
+            update={"image_count": image_count, "reviewed_count": reviewed_count}
+        )
+        if statistics == bundle.dataset.statistics:
+            return bundle
+        updated = bundle.dataset.model_copy(
+            deep=True,
+            update={"statistics": statistics, "modified_at": utc_now()},
+        )
+        self._save_dataset_and_entry(bundle.dataset, updated)
+        return ManagedDatasetBundle(updated, bundle.label_set)
+
     def _save_dataset_and_entry(
         self,
         original: ManagedDataset,
@@ -419,6 +454,43 @@ class DatasetLibraryService:
             refreshed_dataset_ids=tuple(refreshed),
             ignored_entries=ignored,
         )
+
+    def _reconcile_sample_indexes(self) -> None:
+        """逐数据集升级索引并对账；单项异常不会阻止其他存档启动。"""
+
+        # 延迟导入避免图片服务与资料库模型在模块初始化时相互加载。
+        from datumdock.services.image_pool import ImagePoolMaintenanceService
+
+        for record in self.list_datasets(include_archived=True):
+            if record.bundle is None:
+                continue
+            dataset_id = record.bundle.dataset.id
+            try:
+                paths = self.dataset_repository.paths(dataset_id)
+                repository = DatasetSampleRepository(paths, dataset_id)
+                report = ImagePoolMaintenanceService(paths, repository).reconcile()
+                self.sample_reconciliation_reports[dataset_id] = report
+                notes = [
+                    f"缺失图片 {len(report.missing_sample_ids)} 张"
+                    if report.missing_sample_ids
+                    else "",
+                    f"损坏图片 {len(report.corrupt_sample_ids)} 张"
+                    if report.corrupt_sample_ids
+                    else "",
+                    f"未登记 PNG {len(report.untracked_pngs)} 个" if report.untracked_pngs else "",
+                    f"待恢复操作 {len(report.pending_operation_ids)} 项"
+                    if report.pending_operation_ids
+                    else "",
+                    f"迁移诊断 {len(report.migration_issues)} 项"
+                    if report.migration_issues
+                    else "",
+                ]
+                diagnostic = "；".join(note for note in notes if note)
+                if diagnostic:
+                    self.sample_diagnostics[dataset_id] = diagnostic
+                self.synchronize_statistics(dataset_id)
+            except (DatasetLibraryServiceError, SampleRepositoryError, OSError) as error:
+                self.sample_diagnostics[dataset_id] = f"图片池对账失败: {error}"
 
     def _placeholder_entry(self, dataset_id: str) -> DatasetLibraryEntry:
         """为损坏孤儿建立只读诊断入口，名称使用中立稳定标识。"""
