@@ -1,6 +1,6 @@
 # DatumDock UI 与步骤四页面清单
 
-> 状态：步骤四及 A0.5～A0.7 已将一次性矩形、双状态复核、全量快捷键、6400% 视图、响应式快速标签窗、持续辅助线、上下文系统指针、浅色底板和边缘吸附接入正式 UI。模型、导出、完整 X-AnyLabeling 目录交换和备份仍只提供界面或待接入提示。
+> 状态：步骤四及 A0.5～A0.7 保留为历史实现基线。2026-07-20 用户实机复验新增 A0.8：工作台 Logo 放大、默认选择模式持续辅助线与 `Ctrl + 滚轮` 缩放当前均为待实施/待复验；模型、导出、完整 X-AnyLabeling 目录交换和备份仍只提供界面或待接入提示。
 
 ## 0. 本轮实现记录
 
@@ -102,14 +102,16 @@
 | --- | --- | --- | --- |
 | `review.mark_completed` | “确认已完成”按钮及可配置快捷键 | 用于检查后无需修改的待复核图片；若发生有效人工编辑，则编辑保存成功时自动完成 | 已由 `ActionRegistry` 注册并接入 schema v3 真实状态操作 |
 
-### 3.3 已复验画布视觉状态
+### 3.3 画布视觉状态与 A0.8 待复验项
 
 | 标识 | 界面 | 目标交互 | 当前状态 |
 | --- | --- | --- | --- |
-| `canvas.persistent_crosshair` | 中央图片画布 | 指针在实际图片内时，无论选择、画框、框编辑或中键平移都持续显示并移动水平/竖直辅助线 | 已实现；辅助线按当前图片位置实时裁切，纯视图反馈测试通过 |
+| `brand.workbench_wordmark_size` | 工作台左上角品牌区 | 常规窗口显示实际可见宽度 190～220 逻辑像素、高度不低于 24 逻辑像素的完整字标；窄窗口才收敛为 `DD` | A0.8 待实施；需按非透明可见内容和三种 DPI 复验 |
+| `canvas.persistent_crosshair` | 中央图片画布 | 指针在实际图片内时，即使默认选择模式、没有选中矩形或一次性画框已结束，也持续显示并移动水平/竖直辅助线 | A0.5 历史自动证据通过；用户实机反馈普通模式未满足，A0.8 重新打开并待复验 |
 | `canvas.annotation_cursor` | 中央图片画布 | 改变实际系统鼠标指针图标：框内显示四向移动；八个控制点显示水平、垂直或对应对角缩放；中键平移和矩形创建使用更高优先级指针 | 已实现；高倍率、DPI、只读与 14 张双语 Win32 光标证据通过 |
 | `canvas.light_backplate` | 中央图片画布 | 使用冷调浅色底板与细图片边界，替代步骤四早期深色画布 | 已实现；空/有图状态及双语三分辨率截图通过 |
 | `canvas.edge_clamped_rectangle` | 中央图片画布 | 矩形拖拽/两点输入落在底板时吸附到最近图片边或角，最终坐标仍在图片内 | 已实现；四边四角、零面积、工具优先级及后端越界拒绝通过 |
+| `canvas.ctrl_wheel_zoom` | 中央图片画布 | `Ctrl + 滚轮` 以指针下图片像素为锚点在 1%～6400% 内缩放；不影响普通/Alt 滚动和标注数据 | A0.8 待实施与待复验 |
 
 ## 4. 可复用组件
 
@@ -133,4 +135,4 @@
 
 ## English Summary
 
-This inventory covers the verified revised step-four UI and A0.5–A0.7. `review.mark_completed`, schema-v3 review state, all registered shortcuts, atomic restore-all defaults, one-shot rectangles, responsive quick-label selection, persistent guides, contextual system-pointer icons, a light canvas backplate, and rectangle input clamped from the backplate to the nearest image edge are implemented. Model inference, exports, complete X-AnyLabeling directory exchange, backups, and packaging remain future work.
+This inventory preserves the revised step-four and A0.5–A0.7 baseline. A0.8 reopens user-facing acceptance for a larger visible workbench wordmark, guides in default unarmed selection mode, and pointer-anchored Ctrl+wheel zoom. These rows remain pending until normal-mode tests and screenshots pass. Model inference, exports, complete X-AnyLabeling directory exchange, backups, and packaging remain future work.

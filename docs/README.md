@@ -7,7 +7,7 @@
 1. [根目录 README](../README.md)：项目定位、当前阶段、仓库入口和 GitHub 说明。
 2. [内部数据集主页与存档式管理方案](DATASET_LIBRARY.md)：最新且优先的入口、术语、内部存储和旧结构迁移决定。
 3. [受管图片池](IMAGE_POOL.md)：步骤三已实现的导入转码、SQLite、重复/近似图、缩略图、重命名、删除与恢复边界。
-4. [标注工作流](ANNOTATION_WORKFLOW.md)：步骤四已实现的标签、矩形、LabelMe、自动保存、复核和恢复边界，以及 A0.5～A0.7 已复验的持续十字辅助线、系统鼠标指针、浅色底板与图片边缘吸附。
+4. [标注工作流](ANNOTATION_WORKFLOW.md)：步骤四已实现的标签、矩形、LabelMe、自动保存、复核和恢复边界，A0.5～A0.7 的历史复验证据，以及 A0.8 待实施的 Logo 放大、默认选择模式持续辅助线与 `Ctrl + 滚轮` 缩放。
 5. [产品需求文档](PRD.md)：用户需求、MVP 范围、数据格式、非功能性要求与待确认决策。
 6. [架构说明](ARCHITECTURE.md)：领域对象、服务边界、受管存储、并发任务和数据安全规则。
 7. [交互与界面规范](UX.md)：页面结构、标注操作、控件位置和交互反馈。
@@ -52,4 +52,4 @@
 
 ## English Summary
 
-This directory is DatumDock's product and engineering source of truth. The revised step-four slice adds dataset-level labels, editable rectangles, ordered LabelMe persistence, immediate autosave, image-level review, label inspection, and recovery to the managed image pool. A0.5–A0.7 add verified persistent guides, contextual system-pointer icons, a light backplate, and image-edge clamping for rectangle input that starts or ends outside the image. Models, full external directory exchange, exports, backups, and installer capabilities remain future work. Read the documents in the listed order and never describe planned or unverified behavior as implemented or supported.
+This directory is DatumDock's product and engineering source of truth. The revised step-four slice adds dataset-level labels, editable rectangles, ordered LabelMe persistence, immediate autosave, image-level review, label inspection, and recovery to the managed image pool. A0.5–A0.7 remain historical evidence. A0.8 is specified but pending: enlarge the visible workbench wordmark, keep guides active in default selection mode, and add pointer-anchored Ctrl+wheel zoom. Models, full external directory exchange, exports, backups, and installer capabilities remain future work. Never describe planned or unverified behavior as implemented.

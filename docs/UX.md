@@ -110,11 +110,12 @@
 - 若拖拽从图片内越过边缘，超出的横纵坐标分别钳制到图片范围；若从底板开始再拖入图片，起点固定在最近边缘。两个点位于图片相对两侧时可形成贯穿到两侧边缘的矩形。
 - 底板吸附只在矩形工具且图片可编辑、活动标签可用时生效。选择模式点击底板可清除当前选择但不创建框，中键拖拽仍优先平移，点击中央画布之外的任何 UI 区域都不能触发吸附。
 - 吸附预览应提供边缘高亮或吸附点等轻量反馈。A0.5 十字辅助线仍只绘制在实际图片范围内；指针位于底板时不把辅助线延伸到底板，可在图片边缘显示钳制后的吸附反馈。
-- 鼠标进入实际图片区域后，始终显示穿过当前指针位置的水平和竖直辅助线；辅助线裁切在图片边界内。该显示不依赖当前工具或是否正在画框，在选择、框移动/缩放、中键平移和其他画布操作期间也持续跟随指针。
+- 鼠标进入实际图片区域后，始终显示穿过当前指针位置的水平和竖直辅助线；辅助线裁切在图片边界内。该显示不依赖当前工具、是否正在画框或是否选中矩形；默认选择模式、没有任何框被选中、一次性画框结束并退回选择模式、框移动/缩放、中键平移和其他画布操作期间都持续跟随指针。
 - 指针离开实际图片、没有图片或图片加载失败时隐藏辅助线。中键平移不再是隐藏条件；平移过程中图片边界发生变化时，辅助线应根据当前指针与移动后图片的交集实时重算。
 - 鼠标中键按下并拖拽：平移图片；松开中键立即结束平移，不改变当前选择工具或矩形工具状态。
 - 鼠标滚轮：竖直滚动图片；`Alt + 滚轮`：水平滚动图片。滚动到图片边界后停止，不允许图片无限漂离可视区域。
-- 本轮不为 `Ctrl + 滚轮` 绑定 DatumDock 操作。缩放通过工具栏按钮、比例入口、`100%` 和适配窗口完成。
+- `Ctrl + 滚轮`：向上放大、向下缩小；指针位于图片内时以指针对应的图片像素为缩放锚点，否则以画布可视区域中心为锚点。`Ctrl + Alt + 滚轮` 按缩放处理，不触发水平滚动。
+- `Ctrl + 滚轮` 是固定鼠标手势，不进入键盘快捷键配置，但与缩放按钮、比例入口、`100%`、适配窗口和可配置键盘缩放动作共享同一视图状态；它不得创建标注历史、自动保存或复核状态变化。
 - 图片支持面向像素级检查的 `1%–6400%` 手动缩放；适配窗口可低于 1%，放大/缩小按钮可连续到达整个范围。
 - 大倍率缩放只能改变画布视图变换，不得生成按缩放尺寸展开的巨型图片副本。即使在 `6400%` 下，矩形原图坐标、鼠标命中、十字辅助线和自动保存结果也不得漂移。
 - 高倍率下可通过中键平移、滚轮竖直滚动和 `Alt + 滚轮` 水平滚动到达图片各区域；框线、控制柄和标签文字保持可操作的屏幕尺寸，不随倍率变得粗大到遮挡目标。
@@ -122,7 +123,7 @@
 - 框线和内部填充均使用类别颜色。集中式令牌的外框 alpha 为 235、填充 alpha 为 38，外框清晰而内部不遮挡图片细节。
 - 选中、悬停、归档和异常状态需要额外边线、控制点或纹理，不得只通过改变标签颜色表达。
 
-> 状态：一次性矩形、边界滚动、高倍率映射、持续辅助线、上下文系统指针、浅色底板与底板输入边缘吸附均已实现，并通过 A0.5～A0.7 独立复验。
+> 状态：一次性矩形、边界滚动、高倍率映射、上下文系统指针、浅色底板与底板输入边缘吸附已有 A0.5～A0.7 历史证据。A0.8 的默认选择模式持续辅助线与 `Ctrl + 滚轮` 缩放已锁定但代码待重新实施和实机复验。
 
 ## 3. 数据集主页与数据集池体验
 
@@ -173,6 +174,7 @@
 ### 品牌使用
 
 - 数据集主页顶部和标注工作台标题栏左端固定设置品牌区：主页使用完整 `DD + DatumDock` 字标；工作台在空间允许时也显示完整字标，点击它返回数据集主页，不应触发数据修改。
+- 工作台常规宽度（含 1366×768 目标窗口）下，左上角完整字标的实际可见宽度目标为 190～220 逻辑像素，可见图形高度不低于 24 逻辑像素；品牌点击区域建议为 210～230 × 44～48 逻辑像素。验收按非透明可见图形测量，不能只看控件或图标画布尺寸。
 - 左侧窄标注工具栏顶部使用浅橙色与浅蓝色的 `DD` 标记作为紧凑品牌锚点；鼠标悬停显示 `DatumDock` tooltip。窗口较窄时，标题栏完整字标可收敛为 `DD`，不得把文字挤压到难以辨认，也不得占用矩形框和 AI 标注的必要空间。
 - 首次启动空主页、数据集主页、新建数据集向导首屏与“关于 DatumDock”页面使用完整字标；普通内容页不重复放置大 Logo，避免挤占数据管理与标注空间。
 - 所有应用内展示统一使用 `assets/brand/datumdock-wordmark-v3.png`；在 GUI 资源打包阶段将它纳入 Qt 资源。后续的小尺寸窗口图标、托盘图标和安装包图标从同一 `DD` 标记派生，不以文字截图替代。
@@ -324,4 +326,4 @@
 
 ## English Summary
 
-Visual design v2 and the revised step-four interaction model are implemented. The first effective manual annotation edit atomically completes pending model work after save; `review.mark_completed` defaults to `S` for no-edit review. One-shot rectangles, two-click creation, bounded scrolling, 6400% inspection, the responsive quick-label dialog, persistent guides, contextual system-pointer icons, a light backplate, and image-edge clamping are active in normal mode.
+Visual design v2 and the revised step-four interaction model form the current baseline. A0.8 remains pending after hands-on review: enlarge the visible workbench wordmark, keep guides active in the default unarmed selection state, and support pointer-anchored Ctrl+wheel zoom. Existing A0.5–A0.7 evidence is historical until those three corrections pass fresh normal-mode verification.

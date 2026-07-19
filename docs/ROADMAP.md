@@ -83,7 +83,7 @@
 
 ## 阶段 3.1：标注画布交互统一整改（已完成）
 
-> 2026-07-19：需求已锁定、实现并通过 Python 3.11 全量回归和 30 张原生截图复验。`Ctrl + 滚轮` 本轮不绑定 DatumDock 操作；快速标签窗全局记忆尺寸，快速新建标签在取消外层改派后仍保留。
+> 2026-07-19 历史结论：需求已锁定、实现并通过 Python 3.11 全量回归和 30 张原生截图复验；当时 `Ctrl + 滚轮` 未绑定 DatumDock 操作。该滚轮决定已由阶段 3.5 的 A0.8 最新目标取代；快速标签窗全局记忆尺寸，快速新建标签在取消外层改派后仍保留。
 
 - [x] 记录 `R` 启动一次性矩形工具、成功画框后自动回到选择/编辑模式的目标行为。
 - [x] 正式确认拖拽释放和“两次独立单击两个对角点”均可创建矩形，并与双击已有框改标签明确分流。
@@ -95,7 +95,7 @@
 - [x] 明确全部 DatumDock 应用快捷键均可在设置中配置，并可一键恢复所有出厂默认按键。
 - [x] 锁定图片切换出厂默认键为 `A` 上一张、`D` 下一张，并保留用户改绑与恢复默认能力。
 - [x] 将目标复核模型简化为“待复核 / 已完成”两种用户状态：人工标注默认完成，模型标注待复核，第一次有效人工编辑自动完成；无修改时可明确确认。
-- [x] 锁定 `Ctrl + 滚轮` 本轮不绑定缩放。
+- [x] 历史决定：A0.4 当时不为 `Ctrl + 滚轮` 绑定缩放；阶段 3.5 已明确取代该规则。
 - [x] 锁定标签小窗跨会话记忆尺寸，且新建标签成功后取消外层改派仍保留标签。
 - [x] 实现一次性矩形状态机、两种创建手势与 `Esc` 无副作用取消。
 - [x] 为两次单击模式实现首点锚定、动态轮廓/宽高、任意方向坐标规范化和零面积重试。
@@ -153,6 +153,20 @@
 - [x] 增加四边/四角、内外组合、反向绘制、零面积、高倍率、平移滚动和工具优先级回归。
 - [x] 更新主题令牌、空画布、图片边界、辅助线/吸附反馈及中英文三分辨率截图。
 - [x] 与 A0.5/A0.6 一起通过完整质量门后更新 A0.7、UI 复验报告和评分。
+
+## 阶段 3.5：A0.8 用户实机可用性复验（需求已锁定，代码待实施）
+
+> 2026-07-20：用户在普通模式实际操作中确认三项差距。A0.5～A0.7 证据保留为历史，但 A0.8 未完成前不得继续沿用旧 100 分代表当前目标。
+
+- [x] 锁定工作台左上角完整字标的非透明可见宽度 190～220 逻辑像素、可见高度不低于 24 逻辑像素，并明确窄窗口才收敛为 `DD`。
+- [x] 锁定辅助线不依赖矩形工具、当前选中框或草稿；默认选择模式、无选中框和一次性画框退回后均持续跟随。
+- [x] 锁定 `Ctrl + 滚轮` 指针锚定缩放、`Alt + 滚轮` 横向滚动、普通滚轮纵向滚动，以及 `Ctrl` 高于 `Alt` 的修饰键优先级。
+- [ ] 重构工作台品牌组件，按素材可见边界缩放并完成常规/窄窗口响应式布局。
+- [ ] 修复正式工作台的辅助线状态来源，使普通模式与预览模式共享工具无关的可见性逻辑。
+- [ ] 接入 `Ctrl + 滚轮` 1%～6400% 锚定缩放，并复用现有双精度视图矩阵和缩放命令。
+- [ ] 增加真实鼠标移动、`QWheelEvent`、默认选择、无选中框、画框后退回、修饰键优先级和指针锚点 pytest-qt 回归。
+- [ ] 生成中文/英文 × 三种分辨率 × 100%/125%/150% DPI 的普通模式截图与缩放证据。
+- [ ] 运行 Python 3.11 完整质量门、普通/预览隔离和真实用户资料库哈希复验；无 P0/P1 且评分不低于 90 后更新完成状态。
 
 ## 阶段 4：标注持久化与模型格式导出
 
@@ -221,4 +235,4 @@
 
 ## English Summary
 
-The revised step-four interaction slice and phases 3.2–3.4 are complete: schema v3, one-shot/two-click rectangles, 6400% inspection, full shortcut configuration, responsive quick label selection, list deletion, atomic manual completion, persistent guides, contextual system-pointer icons, a light backplate, and edge-clamped backplate rectangle input are verified. Model inference, export, complete X-AnyLabeling directory exchange, backup, and packaging remain on the roadmap.
+The revised step-four interaction slice and phases 3.2–3.4 remain the historical baseline. Phase 3.5/A0.8 is the active pending usability gate: enlarge the visible workbench wordmark, ensure guides work in default unarmed selection mode, and add pointer-anchored Ctrl+wheel zoom. Model inference, export, complete X-AnyLabeling directory exchange, backup, and packaging remain on the roadmap.

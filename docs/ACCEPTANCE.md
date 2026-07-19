@@ -113,7 +113,7 @@
 - [x] 矩形外框可见且不透明度高于内部填充；填充不遮挡关键图片细节，各标签继续使用自己的颜色。
 - [x] 鼠标中键按下拖拽可平移图片，松开后停止，且不改变当前选择或矩形工具状态。
 - [x] 普通滚轮只竖直滚动图片，`Alt + 滚轮` 只水平滚动图片，边界处正确停止。
-- [x] 工具栏按钮、缩放比例、`100%` 和适配窗口均可用；`Ctrl + 滚轮` 本轮不绑定 DatumDock 操作。
+- [x] A0.4 历史行为：工具栏按钮、缩放比例、`100%` 和适配窗口均可用，当时 `Ctrl + 滚轮` 未绑定 DatumDock 操作；该决定已由 A0.8 的最新缩放要求取代。
 - [x] 新交互不会破坏框选择、移动、八点缩放、自动保存、撤销/重做、图片切换和双数据集隔离。
 - [x] pytest-qt 覆盖一次性状态转换、两种创建手势、辅助线显隐、中键平移及两种滚轮方向；双语和目标分辨率截图通过。
 - [x] 双击画布矩形打开“更改标签”小窗并预选当前标签；打开、搜索和浏览候选不会提前修改矩形或触发保存。
@@ -172,6 +172,23 @@
 - [x] `100% / 800% / 3200% / 6400%`、适配窗口、平移和滚动后都使用同一双精度变换与钳制函数，最终 LabelMe 坐标不越界且不产生倍率相关漂移。
 - [x] Service/Repository 故障与直接越界输入测试证明后端仍拒绝越界框；UI 吸附不会放宽领域校验、绕过自动保存事务或改变零面积规则。
 - [x] pytest-qt 覆盖拖拽/两点、四边/四角、零面积、工具优先级和无图片/只读状态；双语三分辨率截图更新为浅色底板并展示贴边矩形与吸附反馈。
+
+### A0.8 用户实机反馈整改（需求已锁定，代码待实施）
+
+> 本节由 2026-07-20 用户对普通模式的实际操作反馈触发。A0.5～A0.7 的历史自动化和截图不删除，但不能抵消本节任何未完成条目。
+
+- [ ] 1366×768、1440×900 和 1920×1080 常规工作台左上角显示完整 `DD + DatumDock` 字标，非透明可见内容宽度为 190～220 逻辑像素、高度不低于 24 逻辑像素；不能只增大带透明留白的图标控件。
+- [ ] 完整字标点击仍安全返回主页并保留 tooltip/无障碍名称；品牌区不会挤压数据集切换、导入、导出等主要操作，只有真实空间不足时才收敛为 `DD`。
+- [ ] 普通模式刚进入工作台且默认选择工具生效时，无需选择矩形工具、无需选中已有框，鼠标进入图片后两条辅助线立即出现并持续跟随。
+- [ ] 一次性画框成功并自动退回选择模式、清除当前选择、切换图片或切换数据集后，辅助线规则保持一致；只有离开图片、空画布、加载中或加载失败时隐藏。
+- [ ] 普通模式和 `--ui-preview` 使用同一辅助线可见性规则；不得只通过直接调用私有方法、测试夹具或预览模式证明完成。
+- [ ] `Ctrl + 滚轮` 向上放大、向下缩小，并在指针位于图片内时尽量保持指针下的原图像素停留在同一屏幕位置；指针不在图片内时以可视区域中心缩放。
+- [ ] 滚轮修饰键优先级为 `Ctrl` 缩放、`Alt` 横向滚动、无修饰键纵向滚动；`Ctrl + Alt + 滚轮` 按缩放处理，不同时横向滚动。
+- [ ] `Ctrl + 滚轮` 与按钮、比例输入和键盘缩放动作共享 1%～6400% 视图状态；到达上下限后安全停止，不创建巨型图片副本。
+- [ ] Logo、辅助线和 `Ctrl + 滚轮` 仅改变展示或视图，不创建标注历史、不触发自动保存、不改变复核状态，也不修改真实资料库。
+- [ ] pytest-qt 使用真实鼠标移动和 `QWheelEvent` 覆盖默认选择、无选中框、画框后退回、Ctrl/Alt 优先级、指针锚点、上下限和高倍率坐标；普通模式 GUI 冒烟实际经过正式工作台装配路径。
+- [ ] 中文/英文 × 三种目标分辨率 × 100%/125%/150% DPI 截图清楚证明 Logo 实际可见尺寸与默认选择模式辅助线；缩放前后截图或结构化记录证明指针锚点稳定。
+- [ ] Python 3.11 完整质量门、普通/预览隔离和真实 `%LOCALAPPDATA%\DatumDock` 哈希复验通过后，方可将 A0.8 和相关文档状态改为完成。
 
 ## A. 启动与界面
 
@@ -332,4 +349,4 @@
 
 ## English Summary
 
-Acceptance A0.4–A0.7 is complete. Schema v3, atomic manual-completion semantics, one-shot/two-click rectangles, 6400% inspection, configurable shortcuts, list deletion, responsive quick label selection, persistent guides, contextual system pointers, a light backplate, and edge-clamped rectangle input are verified. Model inference, exports, complete X-AnyLabeling directory exchange, backups, and packaging remain outside this gate.
+Acceptance A0.4–A0.7 remains historical evidence. A0.8 is now the active pending gate for a larger visible workbench wordmark, guides in default unarmed selection mode, and pointer-anchored Ctrl+wheel zoom. It cannot be marked complete until fresh normal-mode event tests, bilingual resolution/DPI evidence, Python 3.11 quality checks, and data-isolation verification pass. Model inference, exports, complete X-AnyLabeling directory exchange, backups, and packaging remain outside this gate.

@@ -1,8 +1,10 @@
 # DatumDock UI 与步骤四交付复验报告
 
-> 最终结论（2026-07-20）：DatumDock 步骤四及 A0.5～A0.7 已完成；普通模式支持一次性矩形创建、两点/拖拽画框、高倍率图片检查、响应式快速标签选择、可配置快捷键、图片内持续辅助线、上下文系统指针、浅色底板和底板输入边缘吸附。模型推理、YOLO 导出、完整 X-AnyLabeling 目录互操作和备份仍将在后续步骤接入。
+> A0.8 前历史结论（2026-07-20）：DatumDock 步骤四及 A0.5～A0.7 当时按既定证据标记完成；普通模式支持一次性矩形创建、两点/拖拽画框、高倍率图片检查、响应式快速标签选择、可配置快捷键、上下文系统指针、浅色底板和底板输入边缘吸附。持续辅助线与新增滚轮缩放以随后的 A0.8 用户实机结论为准。模型推理、YOLO 导出、完整 X-AnyLabeling 目录互操作和备份仍将在后续步骤接入。
 
 > A0.5～A0.7 证据状态（2026-07-20）：共享画布实现、pytest-qt、高倍率/DPI 子进程、16 张双语三分辨率画布截图和 14 张中英文 Win32 原生系统光标截图均通过；旧 30 张步骤四截图继续作为 A0.4 历史证据，不再代表画布底板颜色。
+
+> A0.8 用户实机复验结论（2026-07-20）：左上角完整 Logo 的实际可见尺寸偏小；默认选择模式下的持续辅助线在用户实际操作中未达到目标；`Ctrl + 滚轮` 仍未接入缩放。A0.5～A0.7 的完成结论和 100 分只作为旧目标的历史证据，不能代表 A0.8；三项修复取得新的普通模式测试和截图前，A0.8 状态为“需求已锁定，代码待实施”。
 
 ## 1. 复验背景
 
@@ -247,6 +249,14 @@ $env:QT_QPA_PLATFORM = "offscreen"
 - 纯函数 `project_point_to_image_bounds()` 返回钳制画布点、原图像素点和命中边；拖拽与两点状态机共用结果，四边四角、反向、零面积、只读和中键优先级回归通过。
 - 16 张双语三分辨率截图覆盖浅色底板、持续辅助线、贴边草稿、吸附提示、6400% 与空画布；Service 仍独立拒绝越界、非有限和零面积框。
 
+## 22. A0.8 用户实机整改（待实施）
+
+- 工作台左上角完整字标需要按非透明可见内容放大到 190～220 逻辑像素宽、至少 24 逻辑像素高；需覆盖 1366×768、1440×900、1920×1080 与 100%/125%/150% DPI，并确认不会挤压数据集切换与导入/导出操作。
+- 持续辅助线重新打开验收：普通模式默认选择工具、没有选中矩形、没有草稿和一次性画框退回选择状态后，只要指针位于图片内就必须显示；预览模式不得成为唯一通过路径。
+- `Ctrl + 滚轮` 需要接入指针锚定缩放：向上放大、向下缩小，范围 1%～6400%，`Ctrl` 优先于 `Alt`；普通滚轮和 `Alt + 滚轮` 仍分别纵向、横向滚动。
+- 三项均不得改变 LabelMe JSON、撤销历史、自动保存、图片复核状态或真实资料库内容。
+- A0.8 尚未运行实现后的 Python 3.11 回归、真实普通模式 GUI 冒烟或截图，因此本报告不提供新评分，也不把上述条目标记为完成。
+
 ## English Summary
 
-This report preserves schema-v2 history and verifies the revised step-four delivery plus A0.5–A0.7. Schema v3, atomic manual completion, 24 registered actions, one-shot/two-click rectangles, bounded 6400% inspection, list deletion, responsive quick-label selection, persistent guides, contextual system pointers, a light backplate, and image-edge clamping are implemented. The Python 3.11 suite reports 196 passed and one privilege-related skip; 16 bilingual canvas screenshots and 14 Win32 cursor-handle captures provide current visual evidence. Model inference, exports, complete X-AnyLabeling directory exchange, backups, and packaging remain future work.
+This report preserves schema-v2 history and the earlier step-four/A0.5–A0.7 evidence. Hands-on review has opened A0.8: enlarge the visible workbench wordmark, verify guides in the default unarmed selection state, and add pointer-anchored Ctrl+wheel zoom. The historical 100/100 score does not apply to A0.8, which remains unscored until new normal-mode tests and screenshots pass. Model inference, exports, complete X-AnyLabeling directory exchange, backups, and packaging remain future work.
