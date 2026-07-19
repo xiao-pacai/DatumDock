@@ -1,4 +1,6 @@
-# DatumDock 内部数据集主页与存档式管理方案（待实现）
+# DatumDock 内部数据集主页与存档式管理方案
+
+> 步骤二状态（2026-07-19）：内部资料库、UUID 数据集目录、空数据集创建、重启恢复、主页打开与切换、重命名、归档/恢复、损坏数据集隔离和配置复制已经实现。图片导入、真实标注、模型、导出、备份和旧结构迁移仍待后续步骤接入。
 
 > 状态：2026-07-19 已确认产品方向；本文件仅整理需求与实现边界，当前不修改应用代码。
 >
@@ -178,26 +180,26 @@ flowchart LR
 
 ## 9. 后续实施顺序
 
-1. 先冻结 `AppLibrary`、`ManagedDataset` 和内部路径解析接口，并建立不依赖 Qt 的单元测试。
-2. 实现资料库服务、数据集创建事务、恢复与旧结构迁移预检。
-3. 实现主页、数据集卡片、新建数据集向导和异常卡片状态。
-4. 将现有标注工作台的上下文从工作区 / 项目 / 数据集改为单一当前数据集。
+1. [已完成] 冻结 `AppLibrary`、`ManagedDataset` 和内部路径解析接口，并建立不依赖 Qt 的单元测试。
+2. [部分完成] 实现资料库服务、数据集创建事务和重启恢复；旧结构迁移预检仍待实现。
+3. [已完成] 实现主页、数据集卡片、新建数据集向导和异常卡片状态。
+4. [已完成] 将正式标注工作台上下文收敛为单一当前数据集；旧代码只保留作迁移参考。
 5. 将标签、模型、索引、备份、导出和跨数据集操作全部接入新边界。
 6. 移除用户可见的工作区、项目树和打开目录文案，同时完成中英文翻译键清理。
 7. 完成重启恢复、数据隔离、升级保留、万张图片和 GUI 回归验收后，才可宣称重构完成。
 
 ## 10. 验收清单
 
-- [ ] 首次启动不要求选择目录，并自动建立内部资料库。
-- [ ] 每次启动先显示包含完整 Logo、数据集列表和“新建数据集”的主页。
-- [ ] 新建空数据集后直接进入空标注工作台；返回主页后立即出现对应卡片。
-- [ ] 点击已有卡片直接进入正确数据集的标注工作台。
-- [ ] 重启软件后，数据集卡片、图片、标签、标注与状态均能恢复。
-- [ ] 中文和英文界面均不出现“打开工作区”“选择项目根目录”等过时主流程。
+- [x] 首次启动不要求选择目录，并自动建立内部资料库。
+- [x] 每次启动先显示包含完整 Logo、数据集列表和“新建数据集”的主页。
+- [x] 新建空数据集后直接进入空标注工作台；返回主页后立即出现对应卡片。
+- [x] 点击已有卡片直接进入正确数据集的标注工作台。
+- [-] 重启软件后可恢复数据集卡片、元数据、配置和标签定义；图片、标注与复核状态将在相应功能接入后验收。
+- [x] 中文和英文界面均不出现“打开工作区”“选择项目根目录”等过时主流程。
 - [ ] 导入图片会复制并转为受管 PNG，删除受管样本不会修改外部来源。
-- [ ] 两个数据集之间的标签、图片、标注、模型、索引和回收站完全隔离。
-- [ ] 新建数据集可复制其他数据集的标签集等配置，但默认不复制样本。
-- [ ] 单个数据集元数据损坏不会导致其他数据集或主页整体无法使用。
+- [x] 两个数据集使用独立 UUID 目录、元数据、标签文件、索引、池、模型和回收站目录；真实样本隔离将在图片导入后继续压力验收。
+- [x] 新建数据集可复制其他数据集的标签集等配置，但不复制样本、标注、缩略图、模型或回收站。
+- [x] 单个数据集元数据损坏不会导致其他数据集或主页整体无法使用。
 - [ ] 软件升级保留内部资料库；卸载默认不删除用户数据。
 - [ ] 旧结构如需迁移，迁移过程可预览、可校验、失败可回退且不删除来源。
 
@@ -208,9 +210,9 @@ flowchart LR
 - 数据集封面默认取第一张图片、最近图片，还是允许用户指定。
 - 主页删除数据集是否先进入“数据集回收站”，以及保留多久。
 - 是否在高级设置提供整个内部资料库的位置迁移功能。
-- 是否需要“归档数据集”以隐藏暂时不用、但不应删除的存档。
+- [已确认] 提供“归档数据集”，归档不删除任何内容，并可从主页筛选后恢复。
 - 旧预发布工作区数据是否已有真实用户数据，需要提供一次性迁移向导。
 
 ## English Summary
 
-DatumDock will replace its user-facing workspace/project hierarchy with a game-save-like managed dataset library. The home page combines dataset cards, quick start, and offline tutorials in the friendly modern visual language defined by `VISUAL_DESIGN.md`; the annotation workspace is denser and canvas-focused. Each managed dataset independently owns its content under the per-user Windows application-data directory, while tutorial progress remains global. This is a confirmed plan only; neither the data migration nor the visual redesign is claimed as implemented.
+DatumDock step two implements the game-save-like managed dataset library under the per-user Windows application-data directory. Normal mode can create, persist, reopen, switch, rename, archive, restore, and clone configuration for UUID-backed datasets; a damaged dataset does not block healthy ones. Preview mode remains memory-only. Image ingestion, persistent annotations, models, exports, backups, and legacy-data migration remain planned.

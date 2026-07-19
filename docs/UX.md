@@ -1,8 +1,8 @@
 # DatumDock 交互与界面规范（MVP）
 
-## 0. 最新入口规范（待实现）
+## 0. 最新入口规范（步骤二入口已实现）
 
-用户入口以 [内部数据集主页与存档式管理方案](DATASET_LIBRARY.md) 为准：DatumDock 每次启动先显示存档式数据集主页，用户不选择工作区、项目根目录或外部保存位置。本文后续仍出现的工作区 / 项目导航描述属于旧版设计，实施新入口时必须删除或改为当前数据集语义，不能继续出现在最终 GUI 中。
+用户入口以 [内部数据集主页与存档式管理方案](DATASET_LIBRARY.md) 为准：DatumDock 每次启动先显示存档式数据集主页，用户不选择工作区、项目根目录或外部保存位置。步骤二已实现真实创建、打开、切换、重命名、归档/恢复和配置复制；图片与标注相关交互仍按本文规范等待后续接入。
 
 ## 1. 主窗口布局
 
@@ -264,4 +264,4 @@
 
 ## English Summary
 
-The target GUI uses visual design v2: a Scratch-inspired friendly, spacious, rounded home shell and an X-AnyLabeling-inspired compact, canvas-focused annotation workspace. Cool light surfaces, a clear DatumDock blue, the light-orange/light-blue DD identity, modern typography, consistent rounded icons, and a dark canvas replace the old warm-gray/gray-green Qt-like appearance. The home page contains dataset cards, quick start, and offline tutorials; the annotation workspace contains top actions, left tools, a central canvas, and a split right annotation/image panel. No third-party brand assets or pixel-level layouts may be copied, and this redesign is documented but not yet implemented.
+Visual design v2 and the step-two dataset entry are implemented. Normal mode now opens the friendly managed-dataset home and real empty dataset workspaces; create, open, switch, rename, archive, restore, and configuration-copy flows use the internal library. The compact four-zone workspace, owned brand assets, and bilingual responsive layouts remain intact. Image, annotation, model, export, backup, and final tutorial behavior still follow this specification as future work.

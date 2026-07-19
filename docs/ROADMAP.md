@@ -9,26 +9,26 @@
 - [x] 建立产品、架构、交互、验收与协作规范文档。
 - [x] 已确认首发仅支持 Windows 10/11 x64、立即自动保存，以及默认导出已标注样本的 YOLO Detection 格式。
 
-## 阶段 0.5：入口与存储模型重构（下一实施阶段）
+## 阶段 0.5：入口与存储模型重构（步骤二核心已完成）
 
-> 2026-07-19 状态：只完成方案整理，应用代码尚未执行本阶段。完整边界见 `docs/DATASET_LIBRARY.md`；本阶段优先于后续所有仍依赖旧工作区 / 项目层级的任务。
+> 2026-07-19 状态：步骤二已完成内部资料库、真实创建/打开/切换、重命名、归档/恢复、配置复制和空工作台接入。旧数据迁移、图片池和后续业务服务仍按本阶段边界继续推进。
 
 - [x] 记录“主页 + 受管数据集存档”的产品心智、内部目录、迁移原则、UX 和验收标准。
 - [x] 建立现代视觉设计规范 v2：主页借鉴 Scratch 的友好引导，标注页借鉴 X-AnyLabeling 的紧凑效率，明确自有品牌、组件和禁止项。
 - [x] 完成步骤一全量 GUI 原型：安全空主页、独立内存预览网关、16 个路由、28 个弹窗、组件样例页和集中导航；不接入真实资料库。
-- [ ] 冻结 `AppLibrary`、`ManagedDataset`、`DatasetLibraryService` 和内部路径解析接口，并补齐领域单元测试。
-- [ ] 将默认数据根目录设为 `%LOCALAPPDATA%\DatumDock`，首次启动自动创建资料库，不显示目录选择器。
-- [ ] 实现资料库登记、数据集事务创建、异常数据集隔离和资料库索引安全重建。
+- [x] 冻结 `AppLibrary`、`ManagedDataset`、`DatasetLibraryService` 和内部路径解析接口，并补齐领域单元测试。
+- [x] 将默认数据根目录设为 `%LOCALAPPDATA%\DatumDock`，首次启动自动创建资料库，不显示目录选择器。
+- [-] 实现资料库登记、数据集事务创建和异常数据集隔离；损坏索引原件保护已完成，显式安全重建工具仍待后续维护功能接入。
 - [x] 完成现代视觉 v2 组件样例页和中英文、100%/125%/150% DPI 截图基线，确认不再呈现旧式 Qt 管理软件观感；截图位于忽略提交的 `build/ui-review/`。
-- [-] 实现带完整 Logo、数据集卡片、搜索、排序、设置、“新建数据集”、快速开始和学习中心的主页：UI 与内存交互完成，真实资料库和教程进度持久化待接入。
+- [-] 实现带完整 Logo、真实数据集卡片、搜索、排序、设置、“新建数据集”、快速开始和学习中心的主页：资料库已接入，教程进度持久化仍待实现。
 - [ ] 实现 `HelpContentService`、`TutorialProgressRepository` 和应用内教程阅读器；核心中英文内容随安装包离线提供，进度不进入数据集。
 - [ ] 编写并校验 DatumDock 全流程、YOLO Detection、数据划分/泄露、导出训练准备、X-AnyLabeling、备份恢复和常见问题教程，标注第三方内容适用版本。
-- [-] 实现空数据集与从已有数据集复制配置的创建流程：向导、校验和内存命令完成，真实事务创建待接入。
-- [-] 将标注工作台上下文收敛为单一当前数据集，并移除用户可见的工作区、项目树和打开目录入口：新外壳已完成，旧代码保留但不再由正式入口启动。
+- [x] 实现空数据集与从已有数据集复制配置的真实创建流程；复制标签和配置，不复制图片、标注、模型、缩略图或回收站。
+- [x] 将正式标注工作台上下文收敛为单一当前数据集，并移除用户可见的工作区、项目树和打开目录入口；旧代码保留但不再由正式入口启动。
 - [-] 按 UX 固定标注工作台布局：顶部数据集/导入/导出操作栏、左侧标注与 AI 工具、中央画布、右侧当前标注和带状态的图片列表；内存画布交互完成，持久化待接入。
 - [ ] 将标签、模型、索引、回收站、备份、导出和跨数据集操作迁移为数据集级边界。
 - [ ] 提供旧 `Workspace -> Project -> Dataset` 结构的只读迁移预检、备份、校验、提交与失败回滚。
-- [ ] 完成中英文旧术语清理，以及首次启动、重启恢复、双数据集隔离、损坏元数据和升级保留数据的 GUI / 自动化回归。
+- [-] 完成中英文旧术语清理，以及首次启动、重启恢复、双数据集隔离和损坏元数据的 GUI / 自动化回归；安装升级保留与旧结构迁移仍待发布环境验证。
 - [ ] 阶段 0.5 全部验收并达到 90 分以上后，才恢复推进后续功能阶段。
 
 ## 阶段 1：可启动的项目与应用骨架
@@ -39,8 +39,8 @@
 - [x] 实现应用入口及可启动的 PySide6 主窗口；支持普通安全模式和 `--ui-preview`。
 - [x] 按 `docs/VISUAL_DESIGN.md` 重建 `ThemeService`、现代视觉 v2 token、可缩放 QSS、图标状态和组件样式基线；正式入口不再使用旧样式。
 - [-] 生成并登记首批自有图标资产：已完成导航、画布、状态与常用操作 SVG 及状态着色；安装包多尺寸派生仍待发布阶段完成。
-- [ ] 在阶段 0.5 的内部资料库上实现数据集重命名、归档和快速切换；不实现工作区创建或打开。
-- [ ] 实现空数据集与源数据集模板创建，复用兼容标签集和数据集配置。
+- [x] 在阶段 0.5 的内部资料库上实现数据集重命名、归档、恢复和快速切换；不实现工作区创建或打开。
+- [x] 实现空数据集与源数据集模板创建，复用兼容标签集和数据集配置。
 - [-] 实现全局设置、简体中文/英文翻译资源和即时界面语言切换：全量 UI 原型完成且翻译键一致，真实偏好持久化待接入。
 - [ ] 覆盖首页教程首次显示、折叠/恢复、功能跳转、离线阅读、双语章节保持、内容版本迁移和损坏资源降级测试。
 - [-] 实现集中式操作注册、快捷键设置页面、冲突检测、即时应用和恢复默认值：预览会话交互完成，真实快捷键注册与偏好保存待接入。
@@ -49,7 +49,7 @@
 - [ ] 实现活动标签唯一颜色的自动分配、手动颜色选择、冲突校验和跨画布/列表一致渲染。
 - [x] 实现 Scratch 式友好主页外壳、X-AnyLabeling 式紧凑标注工作台、可调整右侧分区、深色画布与基础状态栏，并保持 DatumDock 自有视觉。
 - [x] 建立中文/英文、空/有数据、100%/125%/150% DPI、选中/禁用状态的主页和标注工作台截图基线，逐项排除视觉规范禁止项。
-- [ ] 为领域模型和服务层建立测试框架。
+- [x] 为领域模型、资料库 Repository、Service、Gateway 和 GUI 接入建立测试框架。
 
 ## 阶段 2：数据集池与图片浏览
 
@@ -134,10 +134,10 @@
 - [-] Python 3.11 独立环境的依赖安装：当前网络环境在访问 PyPI 时出现 TLS `SSLEOFError`，因此尚未能在该环境安装 PySide6、pytest-qt、ONNX Runtime、Ultralytics、PyInstaller 与其 CPU 推理依赖。
   - 最近复测：2026-07-19 在全新 `.venv` 执行 `python -m pip install -e ".[dev]"`，仍在获取 `setuptools` 构建依赖时因 PyPI TLS `SSLEOFError` 失败。
   - 影响范围：Python 3.11 运行验证、pytest-qt 回归、ONNX/PT 真模型导入、自动标注和正式 PyInstaller 打包验证。
-  - 已完成的替代验证：使用已有 PySide6 的开发环境完成 Ruff、格式检查、31 项 pytest、普通/预览 CLI 启动、Windows 原生截图和 DPI 回归；Python 3.11 `compileall` 通过。这不替代 Python 3.11 依赖与发布验证。
+  - 已完成的替代验证：使用已有 PySide6 的开发环境完成 Ruff、格式检查、61 项 pytest、普通/预览 GUI 启动和 Windows 原生多分辨率截图；Python 3.11 `compileall` 通过。这不替代 Python 3.11 依赖与发布验证。
   - 恢复条件：可用的受信任 PyPI 镜像、离线 wheel 包或已配置的企业证书。
   - 下一步：恢复依赖后锁定 Python 3.11 环境，执行完整测试矩阵、安装包构建及隔离环境验收。
 
 ## English Summary
 
-The step-one UI prototype is complete and ready for visual review. It includes the modern home shell, compact annotation workspace, 16 routes, 28 dialogs, a component gallery, in-memory interactions, bilingual resources, and 100%/125%/150% DPI screenshots. Real app-managed storage, dataset transactions, model inference, import/export, and installer verification remain later phases. Python 3.11 dependency installation is blocked by a PyPI TLS error, and the latest UI commits remain local after three GitHub connection failures.
+Step two now completes the persistent managed-library core: normal mode uses UUID-backed internal datasets and supports real create, reopen, switch, rename, archive, restore, independent configuration cloning, corruption isolation, and genuine empty workspaces. Preview mode remains memory-only. Image ingestion, persistent annotations, models, exports, backups, migration, and installer verification remain later phases. Python 3.11 dependency installation is still blocked by a PyPI TLS error, while GitHub push status is tracked above.

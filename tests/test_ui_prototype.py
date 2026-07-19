@@ -12,12 +12,13 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from datumdock.app import create_application, parse_launch_options
+from datumdock.domain.models import ManagedDatasetConfiguration, NamingPolicy
 from datumdock.i18n.catalog import CATALOGS, LocaleService, tr
 from datumdock.resources import resource_root
 from datumdock.services.dataset_library import DatasetLibraryService
 from datumdock.ui.annotation_workspace import AnnotationWorkspace
 from datumdock.ui.application_shell import ApplicationShell
-from datumdock.ui.components import DatasetCard
+from datumdock.ui.components import DatasetCard, PrimaryButton
 from datumdock.ui.icons import IconRegistry
 from datumdock.ui.managed_gateway import ManagedDatasetGateway
 from datumdock.ui.prototype_dialogs import TITLE_KEYS, DialogId
@@ -194,6 +195,90 @@ def test_real_create_dialog_finishes_in_new_empty_workspace(tmp_path: Path) -> N
     assert isinstance(workspace, AnnotationWorkspace)
     assert workspace.snapshot.dataset.name == "向导创建数据集"
     assert workspace.image_stack.currentIndex() == 1
+    window.close()
+
+
+def test_existing_card_and_dataset_combo_open_real_datasets(tmp_path: Path) -> None:
+    """点击已有卡片和顶部下拉都会打开对应真实数据集，而不是演示上下文。"""
+
+    application = _application()
+    service = DatasetLibraryService(tmp_path)
+    first = service.create_dataset("卡片数据集")
+    second = service.create_dataset("切换数据集")
+    window = ApplicationShell(LocaleService(), ManagedDatasetGateway(service))
+    home = window.navigation.pages[RouteId.HOME]
+    assert isinstance(home, HomePage)
+    window.show()
+    window.navigation.navigate(RouteId.HOME, remember=False)
+    application.processEvents()
+    card = next(
+        item
+        for item in home.findChildren(DatasetCard)
+        if item.data.id == first.dataset.id and item.isVisibleTo(home)
+    )
+    card.findChild(PrimaryButton).click()
+    application.processEvents()
+    workspace = window.navigation.pages[RouteId.ANNOTATION_WORKSPACE]
+    assert isinstance(workspace, AnnotationWorkspace)
+    assert workspace.snapshot.dataset.id == first.dataset.id
+
+    workspace.dataset_combo.setCurrentIndex(workspace.dataset_combo.findData(second.dataset.id))
+    application.processEvents()
+    switched = window.navigation.pages[RouteId.ANNOTATION_WORKSPACE]
+    assert isinstance(switched, AnnotationWorkspace)
+    assert switched.snapshot.dataset.id == second.dataset.id
+    assert switched.snapshot.images == ()
+    window.close()
+
+
+def test_template_rename_archive_and_restore_through_gui(tmp_path: Path) -> None:
+    """步骤二的其余资料库操作均可从现有 GUI 到达并真实持久化。"""
+
+    application = _application()
+    service = DatasetLibraryService(tmp_path)
+    source = service.create_dataset("配置来源")
+    service.update_configuration(
+        source.dataset.id,
+        ManagedDatasetConfiguration(
+            naming_policy=NamingPolicy(prefix="source", start_index=5, padding=4),
+            default_split=(70, 20, 10),
+        ),
+    )
+    gateway = ManagedDatasetGateway(service)
+    window = ApplicationShell(LocaleService(), gateway)
+    window.show()
+
+    window.open_dialog(DialogId.CREATE_FROM_TEMPLATE.value)
+    template_dialog = window._active_dialogs[0]
+    template_dialog.name_input.setText("模板副本")
+    template_dialog.next_step()
+    template_dialog.next_step()
+    template_dialog.next_step()
+    application.processEvents()
+    target = next(item for item in gateway.home_snapshot().datasets if item.name == "模板副本")
+    assert service.open_dataset(target.id).dataset.configuration.default_split == (70, 20, 10)
+
+    window.navigate(RouteId.HOME.value)
+    window.open_dialog(f"{DialogId.RENAME_DATASET.value}:{target.id}")
+    rename_dialog = window._active_dialogs[0]
+    rename_dialog.name_input.setText("重命名副本")
+    rename_dialog.next_step()
+    rename_dialog.next_step()
+    rename_dialog.next_step()
+    application.processEvents()
+    assert service.open_dataset(target.id).dataset.name == "重命名副本"
+
+    window.navigate(RouteId.HOME.value)
+    window.open_dialog(f"{DialogId.ARCHIVE_DATASET.value}:{target.id}")
+    archive_dialog = window._active_dialogs[0]
+    archive_dialog.next_step()
+    archive_dialog.next_step()
+    archive_dialog.next_step()
+    application.processEvents()
+    assert next(item for item in gateway.home_snapshot().datasets if item.id == target.id).archived
+
+    gateway.dispatch(UiCommand("dataset.restore", {"dataset_id": target.id}))
+    assert service.open_dataset(target.id).dataset.archived is False
     window.close()
 
 

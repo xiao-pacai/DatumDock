@@ -6,7 +6,7 @@
 
 最新入口与存储验收以 [内部数据集主页与存档式管理方案](DATASET_LIBRARY.md) 为准。以下 A0 为下一轮实现的最高优先级闸门；在 A0 全部通过前，不得把旧的工作区 / 项目入口描述为最终产品体验。
 
-## A0. 内部数据集主页与存档式入口（待实现）
+## A0. 内部数据集主页与存档式入口（分步实施）
 
 - [ ] 首次启动不弹出工作区或项目目录选择器，并自动建立当前用户的 DatumDock 内部资料库。
 - [ ] 每次正常启动均先显示带完整 Logo、已有数据集卡片和“新建数据集”入口的主页。
@@ -32,6 +32,25 @@
 - [ ] 创建两个数据集后，图片、标签、标注、模型、索引、复核状态、回收站与缓存均不串用。
 - [ ] 单个数据集元数据损坏不会导致主页或其他数据集无法使用，并提供明确诊断或恢复信息。
 - [ ] 如存在旧 `Workspace -> Project -> Dataset` 数据，迁移可预览、可校验、失败可回退且不会自动删除来源。
+
+### A0.1 步骤二验收记录（2026-07-19）
+
+- [x] 普通模式首次启动在 `%LOCALAPPDATA%\DatumDock` 初始化空资料库，不显示目录选择器。
+- [x] `DATUMDOCK_DATA_DIR` 只作为测试/开发绝对路径覆盖，自动化测试不污染真实用户目录。
+- [x] 主页真实创建空数据集，创建完成后直接进入带 0 张图片、空画布和导入提示的工作台。
+- [x] 重启 Service 后仍能恢复数据集卡片和配置；点击卡片及顶部下拉可打开和切换两个真实数据集。
+- [x] 活动名称经过首尾空格清理和大小写不敏感判重；非法字符、保留名称和路径逃逸被拒绝。
+- [x] 重命名不改变 UUID 或目录；归档不删除内容，主页可筛选并恢复。
+- [x] 从其他数据集复制标签、命名、显示、导入和默认划分配置，并确保源目标对象相互独立。
+- [x] 配置复制不复制图片、标注、缩略图、模型、回收站或导出记录。
+- [x] `library.json` 与数据集 JSON 使用同目录临时文件、刷新和原子替换；创建登记失败不会留下活动半成品。
+- [x] 损坏资料库索引不会被覆盖；单个损坏数据集显示诊断卡片且不阻止健康数据集打开。
+- [x] 普通模式不显示演示数据或预览横幅；未接入入口只提示且不产生文件副作用。
+- [x] `--ui-preview` 不读取或修改真实资料库，关闭后内存修改丢失。
+- [x] 中英文切换不改变数据集名称、描述或资料库文件。
+- [x] 1366×768、1440×900、1920×1080 的中英文主页和空工作台已完成原生截图检查。
+
+步骤二不勾选图片导入、标注持久化、模型、导出、备份、万张图片和安装包相关 A0/A–I 条目；这些能力仍需后续阶段真实实现和验收。
 
 ## A. 启动与界面
 
@@ -175,4 +194,4 @@
 
 ## English Summary
 
-The acceptance gate now includes visual design v2: a Scratch-inspired friendly and spacious home shell plus an X-AnyLabeling-inspired compact, canvas-focused annotation workspace, implemented with DatumDock's own cool light surfaces, brand blue, DD colors, rounded components, consistent icons, and a dark canvas. Default Qt gray, warm-gray/gray-green legacy styling, poor DPI behavior, and third-party pixel copying fail acceptance. The managed home, offline tutorials, annotation layout, and explicit image statuses remain planned and must pass before being claimed as implemented.
+The acceptance gate now records the completed step-two managed-library slice separately from the remaining MVP. Normal mode initializes a per-user UUID-backed library and supports real create, persistence, open, switch, rename, archive, restore, configuration cloning, corruption isolation, and a genuine empty workspace. Preview mode remains isolated. Image ingestion, annotation persistence, models, exports, backups, scale testing, and installer delivery are still unchecked and must not be claimed as complete.

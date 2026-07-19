@@ -1,10 +1,12 @@
 # DatumDock 架构说明
 
-## 0. 目标架构覆盖说明（待实现）
+## 0. 目标架构覆盖说明（步骤二已接入资料库核心）
 
-2026-07-19 已确认将用户可见的 `Workspace -> Project -> Dataset` 改为 [内部数据集主页与存档式管理方案](DATASET_LIBRARY.md) 定义的 `AppLibrary -> ManagedDataset`。用户只管理数据集存档，不打开工作区或项目目录；每个受管数据集独立拥有标签、图片池、标注、索引、模型配置和回收站。
+2026-07-19 已将正式入口从用户可见的 `Workspace -> Project -> Dataset` 改为 [内部数据集主页与存档式管理方案](DATASET_LIBRARY.md) 定义的 `AppLibrary -> ManagedDataset`。步骤二已实现资料库初始化、UUID 目录、事务创建、重启恢复、打开/切换、重命名、归档/恢复、损坏项隔离和模板配置复制。
 
-这是后续重构的目标架构，不代表现有代码已完成迁移。本文件中仍出现的 `Workspace`、`Project`、`WorkspaceService` 和“项目级”描述，在迁移完成前只用于标记旧实现来源；新增代码不得继续扩大该层级。实施时必须先提供旧结构的只读迁移预检和可回滚数据转换。
+本文件中仍出现的 `Workspace`、`Project`、`WorkspaceService` 和“项目级”描述只用于标记旧实现来源；正式入口不再调用它们，新增代码不得继续扩大该层级。图片池、真实标注、模型和导出服务尚未迁移完成；旧结构迁移仍必须先提供只读预检和可回滚转换。
+
+步骤二实际模块边界为：`domain.models` 定义资料库对象，`services.library_repository` 负责原子 JSON、UUID 路径和结构验证，`services.dataset_library` 负责编排事务，`ui.managed_gateway` 只向页面暴露快照和命令结果。页面不得直接访问这些路径。
 
 ## 1. 原则
 
@@ -257,4 +259,4 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 
 ## English Summary
 
-The target architecture replaces the visible workspace/project hierarchy with `AppLibrary -> ManagedDataset` and adopts visual design v2. `ThemeService` and reusable components provide cool light surfaces, DatumDock brand colors, modern rounded controls, a dark canvas, native Windows chrome, DPI-safe SVG icons, and fixed screenshot regressions instead of legacy Qt-like styling. `HelpContentService` provides offline tutorials, while `AnnotationWorkspace` composes top actions, left tools, the canvas, and the right annotation/image panel. These targets are documented but not yet implemented.
+Step two implements the core `AppLibrary -> ManagedDataset` architecture for the official entry point. Atomic repositories, a transactional dataset-library service, and `ManagedDatasetGateway` now support UUID-backed create, reopen, switch, rename, archive, restore, corruption isolation, and independent configuration cloning. Visual design v2 and the four-zone workspace remain in place. Image ingestion, annotation persistence, models, exports, backups, and legacy migration are still future layers.

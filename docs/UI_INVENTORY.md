@@ -1,21 +1,33 @@
-# DatumDock UI 原型页面清单
+# DatumDock UI 与步骤二页面清单
 
-> 状态：步骤一已实现并通过视觉原型验收。所有条目只代表界面与内存演示交互，不代表真实数据集、模型或导出逻辑已经接入。
+> 状态：步骤一全量 UI 原型和步骤二内部数据集资料库均已实现。下表中的资料库创建/打开/切换/重命名/归档/恢复/配置复制为真实功能；图片、标注、模型、导出和备份仍只提供界面或待接入提示。
 
 ## 0. 本轮实现记录
 
 - 16 / 16 个 `RouteId` 已注册并完成遍历测试；预览专用组件页只在 `--ui-preview` 出现。
 - 28 / 28 个 `DialogId` 已集中注册，可打开、切换语言、校验、取消和关闭。
-- 普通模式使用 `UnavailableGateway`，预览模式使用 `PreviewGateway`；两者均不调用真实文件、SQLite、模型或导出服务。
+- 普通模式使用 `ManagedDatasetGateway` 和真实内部资料库；仅在初始化失败时降级为 `UnavailableGateway`。预览模式始终使用独立 `PreviewGateway`。
 - 已生成 15 张核心审核截图，覆盖安全空主页、中英文、1366×768 / 1440×900 / 1920×1080 和 100% / 125% / 150% DPI。
-- Ruff、格式检查、Python 3.11 `compileall`、31 项 pytest 和普通/预览 CLI 启动冒烟均通过。
+- Ruff、格式检查、Python 3.11 `compileall`、61 项 pytest 和普通/预览 GUI 启动冒烟均通过。
 
 ## 1. 运行边界
 
-- 普通启动显示安全空主页，任何数据操作只发出“功能待接入”提示。
+- 普通启动读取 `%LOCALAPPDATA%\DatumDock`，真实资料库操作通过 Gateway 和 Service 执行。
 - `--ui-preview` 使用独立内存演示数据，关闭程序后全部丢弃。
-- 新界面不调用旧 `WorkspaceService`、文件系统、SQLite、模型推理或导出服务。
+- 新界面不调用旧 `WorkspaceService`；页面不直接访问文件系统或 SQLite。
 - 所有页面通过稳定路由访问，所有弹窗通过统一注册表创建。
+
+### 步骤二真实 UI 操作
+
+| 入口 | 普通模式结果 | 预览模式结果 |
+| --- | --- | --- |
+| 新建空数据集 | 事务创建 UUID 目录并登记，随后进入空工作台 | 只加入内存卡片 |
+| 从其他数据集复制配置 | 复制独立标签与配置，不复制样本/模型/回收站 | 只更新内存 |
+| 点击数据集卡片 | 打开真实空数据集上下文 | 打开演示上下文 |
+| 顶部数据集下拉 | 切换真实数据集并清空旧上下文 | 切换演示卡片 |
+| 重命名 | 更新元数据和主页摘要，不改变 UUID 目录 | 只更新内存名称 |
+| 归档/恢复 | 只切换状态，不删除任何内容 | 只更新内存状态 |
+| 图片/标注/模型/导出入口 | 明确提示后续接入，不写文件 | 展示可交互视觉流程 |
 
 ## 2. 页面路由
 
@@ -86,10 +98,10 @@
 - 路由注册测试遍历全部页面并验证可创建、进入和返回。
 - 对话框注册测试遍历全部弹窗并验证可打开和关闭。
 - 中英文键集合一致，切换语言不改写演示数据内容。
-- 普通模式与预览模式均不创建数据集、SQLite、图片、模型或导出文件。
+- 普通模式只为真实数据集创建元数据、固定子目录和空 `index.sqlite`；未接入入口不创建图片、模型或导出文件。预览模式不接触资料库。
 - 1366×768、1440×900、1920×1080 与 100%、125%、150% DPI 完成布局和截图检查。
 - 核心截图包含主页、工作台、标签、模型、设置、YOLO 向导和危险确认。
 
 ## English Summary
 
-This inventory defines every page, dialog, state, and reusable component in DatumDock's completed UI-only prototype phase. All 16 routes and 28 dialogs are registered and tested. Normal mode remains side-effect free, while `--ui-preview` uses disposable in-memory demo data. This does not mean that real dataset, model, or export services are connected.
+This inventory covers the completed UI prototype and the step-two managed-library integration. Normal mode now performs real UUID-backed dataset create, persistence, open, switch, rename, archive, restore, and configuration cloning through a gateway/service boundary. Preview mode remains disposable and isolated. Image, annotation, model, export, and backup actions are still unconnected in normal mode.

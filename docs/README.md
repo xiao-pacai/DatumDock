@@ -10,7 +10,7 @@
 4. [架构说明](ARCHITECTURE.md)：领域对象、服务边界、受管存储、并发任务和数据安全规则。
 5. [交互与界面规范](UX.md)：页面结构、标注操作、控件位置和交互反馈。
 6. [现代视觉设计规范 v2](VISUAL_DESIGN.md)：Scratch/X-AnyLabeling 参考边界、颜色、组件、图标、动效和视觉验收。
-7. [UI 原型页面清单](UI_INVENTORY.md) 与 [UI 交付报告](UI_REVIEW.md)：步骤一的路由、弹窗、组件、安全边界、截图和评分。
+7. [UI 与页面清单](UI_INVENTORY.md) 与 [UI/步骤二交付报告](UI_REVIEW.md)：路由、弹窗、真实资料库入口、预览边界、截图和评分。
 8. [代码规范](CODE_STYLE.md)：Ruff、测试、中文注释和 Python 编码约定。
 9. [路线图](ROADMAP.md)：当前应执行的最小可验证任务。
 10. [验收标准](ACCEPTANCE.md)：功能完成前必须满足的可操作或可自动验证条件。
@@ -20,13 +20,13 @@
 
 | 文档 | 唯一职责 | 不应替代 |
 | --- | --- | --- |
-| `DATASET_LIBRARY.md` | 定义存档式主页、用户可见层级、软件内部资料库与旧结构迁移方向。 | 已实现状态与底层模块细节。 |
+| `DATASET_LIBRARY.md` | 定义存档式主页、用户可见层级、软件内部资料库、步骤二完成边界与旧结构迁移方向。 | 底层模块逐行实现细节。 |
 | `PRD.md` | 定义用户真正需要什么、MVP 边界和待确认产品选择。 | 架构实现细节与任务状态。 |
 | `ARCHITECTURE.md` | 定义数据模型、存储、服务边界和一致性规则。 | 页面视觉和逐项验收。 |
 | `UX.md` | 定义用户操作、布局、控件位置与反馈。 | 数据格式、持久化细节和完整视觉系统。 |
 | `VISUAL_DESIGN.md` | 定义现代视觉方向、主题 token、组件语言、参考边界和截图验收。 | 业务交互与已实现状态。 |
-| `UI_INVENTORY.md` | 登记 UI 原型路由、弹窗、组件和本轮验证结果。 | 真实业务功能完成状态。 |
-| `UI_REVIEW.md` | 记录步骤一截图矩阵、验证、评分和已知边界。 | 后续真实功能验收。 |
+| `UI_INVENTORY.md` | 登记 UI 路由、弹窗、组件，以及步骤二真实/预览操作矩阵。 | 底层存储契约。 |
+| `UI_REVIEW.md` | 记录步骤一和步骤二截图、验证、评分和已知边界。 | 后续图片/标注/模型/导出验收。 |
 | `CODE_STYLE.md` | 定义代码格式、中文注释和测试执行方式。 | 业务需求和产品优先级。 |
 | `ROADMAP.md` | 定义开发顺序与进行状态。 | 完成质量的唯一证明。 |
 | `ACCEPTANCE.md` | 定义完成的可验证条件。 | 功能设计或实现计划。 |
@@ -48,4 +48,4 @@
 
 ## English Summary
 
-This directory is DatumDock's product and engineering source of truth. Read the root README, managed dataset library plan, PRD, architecture, UX, visual design v2, UI inventory, code style, roadmap, acceptance criteria, and X-AnyLabeling documents in the listed order. `UI_INVENTORY.md` records the completed UI-only prototype without claiming that real business services are connected. Never describe planned or unverified behavior as implemented or supported.
+This directory is DatumDock's product and engineering source of truth. Step two now connects the official GUI to the persistent managed-dataset library, while image, annotation, model, export, backup, migration, and installer capabilities remain future work. Read the documents in the listed order and never describe planned or unverified behavior as implemented or supported.
