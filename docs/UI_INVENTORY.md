@@ -101,6 +101,15 @@
 | --- | --- | --- | --- |
 | `review.mark_completed` | “确认已完成”按钮及可配置快捷键 | 用于检查后无需修改的待复核图片；若发生有效人工编辑，则编辑保存成功时自动完成 | 已由 `ActionRegistry` 注册并接入 schema v3 真实状态操作 |
 
+### 3.3 待整改画布视觉状态
+
+| 标识 | 界面 | 目标交互 | 当前状态 |
+| --- | --- | --- | --- |
+| `canvas.persistent_crosshair` | 中央图片画布 | 指针在实际图片内时，无论选择、画框、框编辑或中键平移都持续显示并移动水平/竖直辅助线 | 最新需求已写入文档；当前代码仍只覆盖部分画布状态，待统一实现与截图复验 |
+| `canvas.annotation_cursor` | 中央图片画布 | 改变实际系统鼠标指针图标：框内显示四向移动；八个控制点显示水平、垂直或对应对角缩放；中键平移和矩形创建使用更高优先级指针 | 最新需求已写入文档；当前代码尚未按完整映射与优先级验收 |
+| `canvas.light_backplate` | 中央图片画布 | 使用冷调浅色底板与细图片边界，替代步骤四早期深色画布 | 最新需求已写入文档；主题和截图尚未更新 |
+| `canvas.edge_clamped_rectangle` | 中央图片画布 | 矩形拖拽/两点输入落在底板时吸附到最近图片边或角，最终坐标仍在图片内 | 最新需求已写入文档；当前代码仍会拒绝部分底板输入，待统一实现 |
+
 ## 4. 可复用组件
 
 - 品牌区、页面标题、面包屑、预览横幅、响应式操作栏和 Toast。
@@ -123,4 +132,4 @@
 
 ## English Summary
 
-This inventory covers the verified revised step-four UI. `review.mark_completed`, schema-v3 review state, all registered shortcuts, atomic restore-all defaults, one-shot rectangles, and the responsive quick-label selector are implemented. Model inference, exports, complete X-AnyLabeling directory exchange, backups, and packaging remain future work.
+This inventory covers the verified main step-four UI. `review.mark_completed`, schema-v3 review state, all registered shortcuts, atomic restore-all defaults, one-shot rectangles, and the responsive quick-label selector are implemented. Newly documented pending states cover persistent guides, contextual system-pointer icons, a light canvas backplate, and rectangle input clamped from the backplate to the nearest image edge. Model inference, exports, complete X-AnyLabeling directory exchange, backups, and packaging remain future work.

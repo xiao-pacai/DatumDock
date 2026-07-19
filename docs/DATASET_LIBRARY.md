@@ -93,7 +93,7 @@ flowchart LR
 
 工作台保留 DatumDock 的数据集管理核心和 X-AnyLabeling 风格的高效标注体验，但不显示工作区树或项目树。
 
-工作台视觉比主页更紧凑，使用深色画布、清晰白色信息面板和现代圆角工具按钮；不得退回默认 Qt 灰色工具栏，也不得像儿童化编辑器。
+工作台视觉比主页更紧凑，最新目标使用冷调浅色画布底板、清晰白色信息面板和现代圆角工具按钮；浅色图片通过细边界与底板区分。步骤四早期深色画布只作历史证据，不得继续扩展，也不得退回默认 Qt 灰色工具栏或儿童化编辑器观感。
 
 - 顶部为标题与主操作栏：DatumDock 品牌/返回主页、当前数据集下拉、导入图片、导出、标签管理、模型管理、设置与更多操作。当前数据集下拉支持搜索和快速切换，但不会打开外部目录。
 - “导出”必须区分训练数据集、X-AnyLabeling 交换目录和数据集备份，不能把不同数据边界隐藏在含糊的单一“导出图片”行为里。
@@ -228,4 +228,4 @@ flowchart LR
 
 ## English Summary
 
-DatumDock's revised step-four library uses schema v3. The first effective manual edit completes a model-pending image in the same recoverable save operation; no-edit review uses an explicit button or configurable shortcut. Unannotated samples and health errors remain separate from the two user-visible review states.
+DatumDock's revised step-four library uses schema v3. The first effective manual edit completes a model-pending image in the same recoverable save operation; no-edit review uses an explicit button or configurable shortcut. Unannotated samples and health errors remain separate from the two user-visible review states. Pending canvas requirements replace the historical dark canvas with a light backplate and clamp rectangle input from that backplate to valid image-edge coordinates.

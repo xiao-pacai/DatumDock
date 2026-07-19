@@ -15,6 +15,8 @@
 
 > ✅ **步骤四整改已完成**：普通模式已接入 schema v3 双状态复核、一次性矩形、两点/拖拽画框、6400% 检查、全量可配置快捷键、响应式快速标签窗和 LabelMe 立即自动保存。`--ui-preview` 仍使用关闭即丢弃的内存演示数据。模型推理、YOLO 导出、完整 X-AnyLabeling 目录互操作和备份尚未接入。
 
+> 📝 **最新交互需求仅完成文档整理**：十字辅助线应在图片内始终跟随；移动/缩放标注时实际系统鼠标指针应切换样式；图片后方改用浅色底板，矩形工具点击或拖到底板时将坐标吸附到最近图片边缘，而不是直接失败。当前代码、测试和既有截图尚未按这些规则更新，统一修改前不得宣称完成。详见 [A0.5～A0.7 验收条目](docs/ACCEPTANCE.md#a05-十字辅助线持续跟随整改需求已锁定代码待实施)。
+
 DatumDock 用于把分散在本地文件夹中的视觉数据，集中到安全、可追踪的数据集池中进行管理、标注、复核与导出。它的重点不只是“画框”，而是让多个独立数据集、标签体系、模型和训练导出在一个清晰的桌面工作流内协作。
 
 > **入口与资料库已完成重构（2026-07-19）**：新 GUI 不再显示工作区、项目树或打开目录。首页以类似游戏存档的方式展示内部受管数据集，点击卡片直接进入标注工作台。完整边界见 [内部数据集主页与存档式管理方案](docs/DATASET_LIBRARY.md)。
@@ -184,7 +186,7 @@ DatumDock/
 
 DatumDock is a local-first desktop application for managing and annotating computer-vision datasets. Its confirmed target experience uses a game-save-like home page backed by an app-managed dataset library: users create or open a dataset directly, without selecting a workspace or project directory, and each dataset independently owns its images, annotations, labels, models, review states, and indexes.
 
-The revised step-four slice is complete. Normal mode combines the managed library and image pool with schema-v3 review state, one-shot/two-click rectangles, 6400% inspection, 24 configurable actions, responsive quick label selection, ordered LabelMe persistence, immediate autosave, and label inspection. External source files remain unchanged, and `--ui-preview` remains isolated and disposable.
+The main revised step-four slice is complete. Normal mode combines the managed library and image pool with schema-v3 review state, one-shot/two-click rectangles, 6400% inspection, 24 configurable actions, responsive quick label selection, ordered LabelMe persistence, immediate autosave, and label inspection. Newer documentation-only requirements add persistent crosshairs, contextual system-pointer icons, a light canvas backplate, and rectangle creation that clamps backplate input to the nearest image edge. Code and screenshots have not yet been updated for them. External source files remain unchanged, and `--ui-preview` remains isolated and disposable.
 
 Planned MVP capabilities include an offline bilingual quick-start and tutorial center for DatumDock and YOLO; managed PNG ingestion; duplicate and similarity-group handling; rectangle annotation; image-level review states; dataset-level bilingual label management; local ONNX and supported Ultralytics YOLO model assistance; deterministic YOLO Detection export; validated dataset backups; and configurable shortcuts. Planned X-AnyLabeling/LabelMe interoperation will import directories and export directly reopenable directories while preserving unsupported shapes as compatibility payloads.
 

@@ -2,6 +2,12 @@
 
 > 最终结论（2026-07-19）：DatumDock 步骤四标注交互整改、完整快捷键系统和双状态复核模型已经完成；普通模式支持一次性矩形创建、两点/拖拽画框、高倍率图片检查、响应式快速标签选择、可配置快捷键，以及人工编辑后自动完成复核。模型推理、YOLO 导出、完整 X-AnyLabeling 目录互操作和备份仍将在后续步骤接入。
 
+> 后续需求状态（2026-07-19）：用户新增“十字辅助线在所有画布操作期间持续跟随鼠标”的规则。本轮只更新 Markdown，当前代码和既有 30 张截图尚未验证该扩展行为，因此步骤四主体结论保留，但 A0.5 辅助线整改不得宣称完成。
+
+> 另一项后续需求：移动矩形标注及拖动八个缩放控制点时，实际系统鼠标指针图标必须变为匹配移动或缩放方向的样式；不是改变标签框外观。本轮同样只记录为 A0.6，尚未修改代码或生成验收证据。
+
+> 第三项后续需求：图片后方改用浅色底板；矩形工具的输入落在中央底板时，应吸附到最近图片边或角而不是直接失败。该 A0.7 同样只整理文档，旧深色画布截图不代表最新目标。
+
 ## 1. 复验背景
 
 步骤二首次交付后的独立审计把状态暂时降为“部分完成”，评分 78 / 100，并确认两个 P1：底层写盘异常可能越过 Service/Gateway；`library.json` 缺失或进程在“发布目录—登记索引”窗口中中断后，有效数据集目录可能从主页隐藏。普通损坏诊断还会混入步骤一演示统计，稳定标签映射与统计关系验证不足，Python 3.11 和 pytest-qt 也尚未实际运行。
@@ -220,6 +226,27 @@ $env:QT_QPA_PLATFORM = "offscreen"
 | 文档与工程质量 | 5 / 5 | 规范、架构、验收、路线图、清单和截图脚本同步。 |
 | **总分** | **99 / 100** | 高于 90 分门槛，无已知 P0/P1，不用评分掩盖后续范围。 |
 
+## 19. A0.5 持续辅助线待复验项
+
+- 最新目标不再把十字辅助线绑定到矩形创建状态；只要指针位于实际图片内，两条线就在选择、创建、框移动/缩放和中键平移期间持续跟随。
+- 中键平移时图片边界会移动，辅助线必须基于指针与新图片区域实时裁切；只有离开实际图片、空画布或加载失败时隐藏。
+- 该变化只影响视图反馈，不应产生标注历史、自动保存或复核状态变化，也不能抢占任何现有画布输入。
+- 当前代码、自动测试和 30 张既有截图均早于本需求，不能作为 A0.5 完成证据；完成实现后必须重新运行 pytest-qt、全量质量门和双语截图复验。
+
+## 20. A0.6 标注操作鼠标指针样式待复验项
+
+- 最新目标改变实际系统鼠标指针图标：可编辑框内部显示四向移动指针，左右/上下控制点显示水平/垂直缩放指针，四角显示对应的两类对角缩放指针；不改变标注框外观。
+- 中键平移和矩形创建的指针样式优先于框命中；只读兼容 shape 与锁定标注文档不显示移动/缩放反馈。
+- 鼠标指针样式应在拖动期间保持，在释放、取消、切图、工具切换或失焦后按当前上下文恢复，不得残留错误样式。
+- 当前代码、测试和截图尚未按完整映射、优先级、高倍率与 DPI 条件验收；实现后需由 pytest-qt 断言鼠标指针类型，并使用能捕获系统指针的原生录屏或屏幕截图与 A0.5 一并复验，不能沿用不含指针的 `QWidget.grab()` 证据。
+
+## 21. A0.7 浅色底板与边缘吸附待复验项
+
+- 最新目标以冷调浅色底板取代早期深色画布，并用细边界保证浅色图片轮廓可辨。
+- 矩形工具在中央底板收到的拖拽或两点输入必须逐轴钳制到最近图片边/角；动态预览和提交使用同一坐标，最终标注仍完全位于图片内。
+- 选择模式、平移、中央画布之外、无图片、无活动标签和不可编辑文档不触发吸附；钳制后零面积不创建虚假最小框。
+- 旧 30 张截图、当前代码和测试均早于该规则；实现后必须重做主题/三分辨率截图，并覆盖四边四角、高倍率、反向绘制、零面积与后端越界拒绝。
+
 ## English Summary
 
-This report preserves schema-v2 history and separately verifies the revised step-four delivery. Schema v3, atomic manual completion, 24 registered actions, one-shot/two-click rectangles, bounded 6400% inspection, list deletion, and the responsive quick-label selector are implemented. The Python 3.11 suite has 166 passing tests, with 30 native Windows screenshots. Model inference, exports, complete X-AnyLabeling directory exchange, backups, and packaging remain future work.
+This report preserves schema-v2 history and separately verifies the main revised step-four delivery. Schema v3, atomic manual completion, 24 registered actions, one-shot/two-click rectangles, bounded 6400% inspection, list deletion, and the responsive quick-label selector are implemented. A0.5–A0.7 are documentation-only follow-ups for persistent guides, contextual system-pointer icons, a light backplate, and image-edge clamping of backplate rectangle input; existing code, tests, and 30 screenshots do not validate them. Model inference, exports, complete X-AnyLabeling directory exchange, backups, and packaging remain future work.
