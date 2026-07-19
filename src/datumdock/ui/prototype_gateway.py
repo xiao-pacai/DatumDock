@@ -266,7 +266,7 @@ def _demo_workspace(
         ImageItemViewData(
             "img-4",
             "factory_part_000234.png",
-            ImageStatus.ISSUE,
+            ImageStatus.PENDING,
             1280,
             853,
             4,
@@ -274,7 +274,7 @@ def _demo_workspace(
             ("label-part", "label-burr"),
         ),
         ImageItemViewData(
-            "img-5", "factory_part_000235.png", ImageStatus.NEGATIVE, 1280, 853, 5, 0
+            "img-5", "factory_part_000235.png", ImageStatus.COMPLETED, 1280, 853, 5, 0
         ),
         ImageItemViewData("img-6", "factory_part_000236.png", ImageStatus.ERROR, 1280, 853, 6, 0),
     )

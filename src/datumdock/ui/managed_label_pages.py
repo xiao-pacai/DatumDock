@@ -49,6 +49,7 @@ class ManagedLabelEditDialog(QDialog):
         self.gateway = gateway
         self.dataset_id = dataset_id
         self.label = label
+        self.saved_label_id: str | None = label.id if label else None
         self.setMinimumWidth(520)
         root = QVBoxLayout(self)
         form = QFormLayout()
@@ -106,7 +107,7 @@ class ManagedLabelEditDialog(QDialog):
                 if item.strip()
             )
             if self.label is None:
-                self.gateway.add_label(
+                created = self.gateway.add_label(
                     self.dataset_id,
                     class_id=self.class_id.value(),
                     name=self.name_edit.text(),
@@ -115,6 +116,7 @@ class ManagedLabelEditDialog(QDialog):
                     synonyms=synonyms,
                     color=self.color_edit.text().strip() or None,
                 )
+                self.saved_label_id = created.labels[-1].id
                 self.accept()
                 return
             label_set = self.gateway.get_label_set(self.dataset_id)
@@ -401,7 +403,12 @@ class ManagedLabelInspectionPage(QWidget):
             values = (
                 sample.filename,
                 str(sample.annotation_count),
-                tr(self.locale, f"review.{sample.review_status.value}"),
+                tr(
+                    self.locale,
+                    f"review.{sample.review_status.value}"
+                    if sample.review_status is not None
+                    else "review.none",
+                ),
                 _display_timestamp(sample.annotation_updated_at),
             )
             for column, value in enumerate(values):

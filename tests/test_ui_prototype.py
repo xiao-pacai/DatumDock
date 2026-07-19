@@ -9,7 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QLabel
+from PySide6.QtWidgets import QApplication, QLabel, QMessageBox
 
 from datumdock.app import create_application, parse_launch_options
 from datumdock.domain.models import ManagedDatasetConfiguration, NamingPolicy
@@ -370,7 +370,8 @@ def test_real_diagnostics_dialog_contains_no_preview_statistics(tmp_path: Path) 
     assert dialog.pages.count() == 1
     assert "1,864" not in visible_text
     assert "3,208" not in visible_text
-    assert "34" not in visible_text
+    assert "34 个标签" not in visible_text
+    assert "34 labels" not in visible_text
     assert dialog.context["diagnostic"] in dialog.description_input.toPlainText()
     before = {
         path.relative_to(tmp_path): path.read_bytes()
@@ -616,21 +617,27 @@ def test_language_switch_preserves_demo_dataset_content() -> None:
     window.close()
 
 
-def test_shortcut_recorder_detects_conflict_and_restores_defaults() -> None:
-    """快捷键录入器应显示冲突，并能恢复内存默认值。"""
+def test_shortcut_recorder_detects_conflict_and_restores_defaults(monkeypatch) -> None:
+    """快捷键录入器经确认替换冲突，并能恢复全部默认值。"""
 
     application = _application()
     window = ApplicationShell.for_mode(LocaleService(), True)
     settings = window.navigation.pages[RouteId.SETTINGS]
     assert isinstance(settings, SettingsPage)
-    recorder = settings.shortcut_recorders[1]
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *_args, **_kwargs: QMessageBox.StandardButton.Yes,
+    )
+    recorder = settings.shortcut_recorders["dataset.export"]
     QTest.mouseClick(recorder, Qt.MouseButton.LeftButton)
     QTest.keyClick(recorder, Qt.Key.Key_O, Qt.KeyboardModifier.ControlModifier)
     application.processEvents()
     assert recorder.sequence == "Ctrl+O"
-    assert not settings.shortcut_conflict.isHidden()
+    assert settings.action_registry.sequence("dataset.import_images") == ""
     settings._restore_shortcut_defaults()
     assert recorder.sequence == "Ctrl+E"
+    assert settings.action_registry.sequence("dataset.import_images") == "Ctrl+O"
     assert not settings.shortcut_conflict.isVisible()
     window.close()
 

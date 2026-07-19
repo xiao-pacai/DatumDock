@@ -110,6 +110,7 @@ class ManagedSampleListModel(QAbstractListModel):
         self.search = ""
         self.review_status: ReviewStatus | None = None
         self.label_id: str | None = None
+        self.has_annotations: bool | None = None
         self.sort = SampleSort.FILENAME_ASC
         self._generation = 0
         self._thumbnail_cache: OrderedDict[str, QPixmap] = OrderedDict()
@@ -140,7 +141,7 @@ class ManagedSampleListModel(QAbstractListModel):
         if role == self.FilenameRole:
             return sample.filename
         if role == self.StatusRole:
-            return sample.review_status.value
+            return sample.review_status.value if sample.review_status is not None else ""
         if role == self.HealthRole:
             return sample.health.value
         if role == self.SizeRole:
@@ -160,6 +161,7 @@ class ManagedSampleListModel(QAbstractListModel):
         search: str | None = None,
         review_status: ReviewStatus | None | object = ...,
         label_id: str | None | object = ...,
+        has_annotations: bool | None | object = ...,
         sort: SampleSort | None = None,
     ) -> None:
         """筛选变化回到第一页；普通刷新保留当前分页位置。"""
@@ -170,6 +172,8 @@ class ManagedSampleListModel(QAbstractListModel):
             self.review_status = review_status
         if label_id is not ...:
             self.label_id = label_id
+        if has_annotations is not ...:
+            self.has_annotations = has_annotations
         if sort is not None:
             self.sort = sort
         if reset_page:
@@ -181,6 +185,7 @@ class ManagedSampleListModel(QAbstractListModel):
             search=self.search,
             review_status=self.review_status,
             label_id=self.label_id,
+            has_annotations=self.has_annotations,
             sort=self.sort,
         )
         if page.total and self.offset >= page.total:
@@ -192,6 +197,7 @@ class ManagedSampleListModel(QAbstractListModel):
                 search=self.search,
                 review_status=self.review_status,
                 label_id=self.label_id,
+                has_annotations=self.has_annotations,
                 sort=self.sort,
             )
         self.beginResetModel()
@@ -409,15 +415,16 @@ class ManagedSampleDelegate(QStyledItemDelegate):
         icon = index.data(Qt.ItemDataRole.DecorationRole)
         pixmap = icon.pixmap(128, 84) if isinstance(icon, QIcon) else QPixmap()
         filename = str(index.data(ManagedSampleListModel.FilenameRole) or "")
-        status = str(index.data(ManagedSampleListModel.StatusRole) or "unreviewed")
+        status = str(index.data(ManagedSampleListModel.StatusRole) or "")
         health = str(index.data(ManagedSampleListModel.HealthRole) or "ready")
         annotation_state = str(index.data(ManagedSampleListModel.AnnotationStateRole) or "missing")
         annotation_count = int(index.data(ManagedSampleListModel.AnnotationCountRole) or 0)
         healthy_annotation = annotation_state in {"missing", "ready"}
-        status_key = (
-            f"review.{status}" if health == "ready" and healthy_annotation else "status.error"
-        )
-        status_text = tr(self.locale, status_key)
+        status_text = ""
+        if health != "ready" or not healthy_annotation:
+            status_text = tr(self.locale, "status.error")
+        elif status:
+            status_text = tr(self.locale, f"review.{status}")
         if self.grid:
             image_rect = option.rect.adjusted(10, 8, -10, -34)
             painter.drawPixmap(image_rect, pixmap)
@@ -434,6 +441,7 @@ class ManagedSampleDelegate(QStyledItemDelegate):
             painter.setPen(QColor(THEME.tokens.text_primary))
             painter.drawText(copy_rect, Qt.AlignmentFlag.AlignTop, filename)
             painter.setPen(QColor(THEME.tokens.text_muted))
-            detail = f"{status_text}  ·  {annotation_count} {tr(self.locale, 'value.boxes')}"
+            count_text = f"{annotation_count} {tr(self.locale, 'value.boxes')}"
+            detail = f"{status_text}  ·  {count_text}" if status_text else count_text
             painter.drawText(copy_rect, Qt.AlignmentFlag.AlignBottom, detail)
         painter.restore()

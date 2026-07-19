@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from enum import StrEnum
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
@@ -17,7 +17,7 @@ from PySide6.QtGui import (
     QPixmap,
     QWheelEvent,
 )
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QApplication, QWidget
 
 from datumdock.domain.models import new_id
 from datumdock.ui.prototype_models import AnnotationItemViewData, ImageItemViewData, LabelViewData
@@ -32,15 +32,26 @@ class CanvasTool(StrEnum):
     PAN = "pan"
 
 
+@dataclass(slots=True)
+class RectangleDraft:
+    """一次性矩形的屏幕坐标草稿，不进入撤销或持久化。"""
+
+    anchor: QPointF | None = None
+    press_point: QPointF | None = None
+    current_point: QPointF | None = None
+
+
 class PreviewAnnotationCanvas(QWidget):
     """在内存中绘制图片与矩形，验证标注工作台布局和交互。"""
 
     shape_selected = Signal(str)
     shape_double_clicked = Signal(str)
     document_changed = Signal()
+    edit_committed = Signal(str)
+    tool_changed = Signal(str)
     zoom_changed = Signal(int)
 
-    HANDLE_SIZE = 8.0
+    HANDLE_SIZE = float(THEME.tokens.annotation_handle_size)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -66,6 +77,10 @@ class PreviewAnnotationCanvas(QWidget):
         self.current_label_id: str | None = None
         self.pan_offset = QPointF()
         self._pan_start = QPointF()
+        self._middle_panning = False
+        self._left_panning = False
+        self._draft = RectangleDraft()
+        self._hover_point: QPointF | None = None
 
     def set_empty_message(self, title: str, subtitle: str = "") -> None:
         """由工作台提供本地化空状态，画布不自行读取翻译资源。"""
@@ -92,7 +107,8 @@ class PreviewAnnotationCanvas(QWidget):
         self.selected_id = self.annotations[0].id if self.annotations else None
         self._undo.clear()
         self._redo.clear()
-        self.zoom = 1.0
+        self._draft = RectangleDraft()
+        self.zoom = self._fit_zoom()
         self.update()
         if self.selected_id:
             self.shape_selected.emit(self.selected_id)
@@ -106,6 +122,8 @@ class PreviewAnnotationCanvas(QWidget):
         self.managed_pixmap = QPixmap()
         self.managed_read_only = False
         self.pan_offset = QPointF()
+        self._draft = RectangleDraft()
+        self._hover_point = None
         self.update()
 
     def load_managed_image(
@@ -135,7 +153,8 @@ class PreviewAnnotationCanvas(QWidget):
         self.selected_id = self.annotations[0].id if self.annotations else None
         self._undo.clear()
         self._redo.clear()
-        self.zoom = 1.0
+        self._draft = RectangleDraft()
+        self.zoom = self._fit_zoom()
         self.pan_offset = QPointF()
         self.update()
         return True
@@ -156,7 +175,7 @@ class PreviewAnnotationCanvas(QWidget):
         self._push_undo()
         self.annotations = remaining
         self.selected_id = None
-        self.document_changed.emit()
+        self._emit_change("delete")
         self.update()
 
     def change_selected_label(self, label_id: str) -> None:
@@ -172,17 +191,32 @@ class PreviewAnnotationCanvas(QWidget):
             return
         self._push_undo()
         self._replace_annotation(replace(current, label_id=label_id))
-        self.document_changed.emit()
+        self._emit_change("reassign")
         self.update()
 
     def set_tool(self, tool: CanvasTool) -> None:
         """切换画布工具并更新鼠标形态。"""
 
+        if tool != self.tool:
+            self._draft = RectangleDraft()
+            self._temporary = None
         self.tool = tool
         cursor = (
             Qt.CursorShape.OpenHandCursor if tool == CanvasTool.PAN else Qt.CursorShape.ArrowCursor
         )
         self.setCursor(cursor)
+        self.tool_changed.emit(tool.value)
+        self.update()
+
+    def cancel_current_operation(self) -> None:
+        """Esc 取消未完成草稿并回到选择模式，不产生历史节点。"""
+
+        self._draft = RectangleDraft()
+        self._temporary = None
+        self._drag_origin = None
+        self._drag_snapshot = None
+        self._active_handle = None
+        self.set_tool(CanvasTool.SELECT)
 
     def select_shape(self, shape_id: str) -> None:
         """右侧标注列表选择后同步高亮画布矩形。"""
@@ -199,7 +233,7 @@ class PreviewAnnotationCanvas(QWidget):
             return
         self._redo.append(list(self.annotations))
         self.annotations = self._undo.pop()
-        self.document_changed.emit()
+        self._emit_change("undo")
         self.update()
 
     def redo(self) -> None:
@@ -209,30 +243,64 @@ class PreviewAnnotationCanvas(QWidget):
             return
         self._undo.append(list(self.annotations))
         self.annotations = self._redo.pop()
-        self.document_changed.emit()
+        self._emit_change("redo")
         self.update()
 
     def zoom_in(self) -> None:
         """以画布中心放大演示图片。"""
 
-        self.zoom = min(2.4, self.zoom * 1.15)
-        self.zoom_changed.emit(round(self.zoom * 100))
-        self.update()
+        self._set_zoom(min(64.0, self.zoom * 1.25))
 
     def zoom_out(self) -> None:
         """缩小演示图片并保持最小可辨识尺寸。"""
 
-        self.zoom = max(0.55, self.zoom / 1.15)
-        self.zoom_changed.emit(round(self.zoom * 100))
-        self.update()
+        self._set_zoom(max(0.01, self.zoom / 1.25))
+
+    def zoom_100(self) -> None:
+        """恢复原图一个像素对应一个逻辑像素。"""
+
+        self._set_zoom(1.0)
+
+    def set_zoom_percent(self, percent: int) -> None:
+        """由状态栏比例输入设置手动倍率。"""
+
+        self._set_zoom(percent / 100.0)
 
     def fit_image(self) -> None:
         """恢复适配窗口比例。"""
 
-        self.zoom = 1.0
+        self.zoom = self._fit_zoom()
         self.pan_offset = QPointF()
-        self.zoom_changed.emit(100)
+        self.zoom_changed.emit(round(self.zoom * 100))
         self.update()
+
+    def _set_zoom(self, value: float) -> None:
+        if self.image is None:
+            return
+        target = max(0.01, min(64.0, float(value)))
+        viewport_center = QRectF(self.rect()).center()
+        old_rect = self._image_rect()
+        image_center = self._canvas_to_image(viewport_center, old_rect)
+        self.zoom = target
+        new_rect = self._image_rect()
+        projected = QPointF(
+            new_rect.left() + image_center.x() * new_rect.width() / self.image.width,
+            new_rect.top() + image_center.y() * new_rect.height() / self.image.height,
+        )
+        self.pan_offset += viewport_center - projected
+        self.zoom_changed.emit(round(self.zoom * 100))
+        self.update()
+
+    def _fit_zoom(self) -> float:
+        if self.image is None:
+            return 1.0
+        available = QRectF(self.rect()).adjusted(32, 28, -32, -28)
+        if available.width() <= 0 or available.height() <= 0:
+            return 1.0
+        return min(
+            available.width() / self.image.width,
+            available.height() / self.image.height,
+        )
 
     def paintEvent(self, event: object) -> None:
         """绘制深色画布、内存图片、标签框、置信度和控制柄。"""
@@ -245,37 +313,71 @@ class PreviewAnnotationCanvas(QWidget):
             return
         image_rect = self._image_rect()
         if not self.managed_pixmap.isNull():
-            painter.drawPixmap(
-                image_rect,
-                self.managed_pixmap,
-                QRectF(self.managed_pixmap.rect()),
-            )
+            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, self.zoom < 8.0)
+            visible = image_rect.intersected(QRectF(self.rect()))
+            if not visible.isEmpty():
+                source = QRectF(
+                    (visible.left() - image_rect.left())
+                    * self.managed_pixmap.width()
+                    / image_rect.width(),
+                    (visible.top() - image_rect.top())
+                    * self.managed_pixmap.height()
+                    / image_rect.height(),
+                    visible.width() * self.managed_pixmap.width() / image_rect.width(),
+                    visible.height() * self.managed_pixmap.height() / image_rect.height(),
+                )
+                painter.drawPixmap(visible, self.managed_pixmap, source)
         else:
             self._paint_demo_image(painter, image_rect, self.image.scene_seed)
         for annotation in self.annotations:
             self._paint_annotation(painter, annotation, annotation.id == self.selected_id)
         if self._temporary is not None:
-            painter.setBrush(QColor(91, 131, 230, 30))
+            painter.setBrush(QColor(91, 131, 230, THEME.tokens.annotation_fill_alpha))
             painter.setPen(QPen(QColor(THEME.tokens.brand_primary), 2, Qt.PenStyle.DashLine))
             painter.drawRect(self._temporary.normalized())
+            self._paint_draft_size(painter, self._temporary.normalized())
+        if self._draft.anchor is not None:
+            painter.setBrush(QColor(THEME.tokens.brand_primary))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawEllipse(self._draft.anchor, 4, 4)
+        self._paint_crosshair(painter)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         """矩形工具开始绘制，选择工具命中框或八点控制柄。"""
 
-        if event.button() != Qt.MouseButton.LeftButton or self.image is None:
+        if self.image is None:
             return super().mousePressEvent(event)
         point = event.position()
-        if not self._image_rect().contains(point):
-            return
-        if self.managed_read_only:
-            if self.tool == CanvasTool.PAN:
+        if event.button() == Qt.MouseButton.MiddleButton:
+            if self._image_rect().contains(point):
+                self._middle_panning = True
                 self._drag_origin = point
                 self._pan_start = QPointF(self.pan_offset)
+                self._hover_point = None
                 self.setCursor(Qt.CursorShape.ClosedHandCursor)
+                event.accept()
+                self.update()
+            return
+        if event.button() != Qt.MouseButton.LeftButton:
+            return super().mousePressEvent(event)
+        if not self._image_rect().contains(point):
+            return
+        if self.tool == CanvasTool.PAN:
+            self._left_panning = True
+            self._drag_origin = point
+            self._pan_start = QPointF(self.pan_offset)
+            self._hover_point = None
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            return
+        if self.managed_read_only:
             return
         if self.tool == CanvasTool.RECTANGLE:
-            self._drag_origin = point
-            self._temporary = QRectF(point, point)
+            if self.current_label_id is None:
+                return
+            self._draft.press_point = point
+            self._draft.current_point = point
+            start = self._draft.anchor or point
+            self._temporary = QRectF(start, point)
             self.update()
             return
         hit = self._shape_at(point)
@@ -294,13 +396,24 @@ class PreviewAnnotationCanvas(QWidget):
         """实时预览新框、移动或缩放，但只在释放时形成一次撤销记录。"""
 
         point = event.position()
-        if self.managed_read_only:
-            if self._drag_origin is not None and self.tool == CanvasTool.PAN:
+        image_rect = self._image_rect()
+        self._hover_point = point if image_rect.contains(point) else None
+        if self._middle_panning or self._left_panning:
+            if self._drag_origin is not None:
                 self.pan_offset = self._pan_start + point - self._drag_origin
-                self.update()
+            self._hover_point = None
+            self.update()
             return
-        if self._temporary is not None and self._drag_origin is not None:
-            self._temporary = QRectF(self._drag_origin, point).intersected(self._image_rect())
+        if self.managed_read_only:
+            self.update()
+            return
+        if self.tool == CanvasTool.RECTANGLE and (
+            self._draft.anchor is not None or self._draft.press_point is not None
+        ):
+            bounded = _bounded_point(point, image_rect)
+            self._draft.current_point = bounded
+            start = self._draft.anchor or self._draft.press_point
+            self._temporary = QRectF(start, bounded)
             self.update()
             return
         if self._drag_snapshot is None or self._drag_origin is None:
@@ -323,33 +436,41 @@ class PreviewAnnotationCanvas(QWidget):
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         """有效手势完成后只更新内存文档并通知外层刷新列表。"""
 
+        if event.button() == Qt.MouseButton.MiddleButton:
+            self._middle_panning = False
+            self._drag_origin = None
+            self.setCursor(
+                Qt.CursorShape.OpenHandCursor
+                if self.tool == CanvasTool.PAN
+                else Qt.CursorShape.ArrowCursor
+            )
+            self.update()
+            return
         if event.button() != Qt.MouseButton.LeftButton:
             return
-        if self.managed_read_only:
+        if self._left_panning:
+            self._left_panning = False
             self._drag_origin = None
-            if self.tool == CanvasTool.PAN:
-                self.setCursor(Qt.CursorShape.OpenHandCursor)
+            self.setCursor(Qt.CursorShape.OpenHandCursor)
             return
-        if self._temporary is not None and self.image is not None:
-            rect = self._temporary.normalized()
-            self._temporary = None
-            if rect.width() >= 8 and rect.height() >= 8 and self.current_label_id is not None:
-                self._push_undo()
-                image_rect = self._image_rect()
-                top_left = self._canvas_to_image(rect.topLeft(), image_rect)
-                bottom_right = self._canvas_to_image(rect.bottomRight(), image_rect)
-                new_item = AnnotationItemViewData(
-                    new_id(),
-                    self.current_label_id,
-                    top_left.x(),
-                    top_left.y(),
-                    bottom_right.x(),
-                    bottom_right.y(),
-                )
-                self.annotations.append(new_item)
-                self.selected_id = new_item.id
-                self.shape_selected.emit(new_item.id)
-                self.document_changed.emit()
+        if self.managed_read_only:
+            return
+        if self.tool == CanvasTool.RECTANGLE and self._draft.press_point is not None:
+            point = _bounded_point(event.position(), self._image_rect())
+            anchor = self._draft.anchor
+            press = self._draft.press_point
+            distance = abs(point.x() - press.x()) + abs(point.y() - press.y())
+            if anchor is not None:
+                self._commit_rectangle(anchor, point)
+            elif distance >= QApplication.startDragDistance():
+                self._commit_rectangle(press, point)
+            else:
+                self._draft.anchor = press
+                self._draft.current_point = point
+                self._draft.press_point = None
+                self._temporary = QRectF(press, point)
+                self.update()
+            return
         elif self._drag_snapshot is not None:
             current = next(
                 (item for item in self.annotations if item.id == self._drag_snapshot.id), None
@@ -359,7 +480,7 @@ class PreviewAnnotationCanvas(QWidget):
                 snapshot[snapshot.index(current)] = self._drag_snapshot
                 self._undo.append(snapshot)
                 self._redo.clear()
-                self.document_changed.emit()
+                self._emit_change("resize" if self._active_handle else "move")
         self._drag_origin = None
         self._drag_snapshot = None
         self._active_handle = None
@@ -371,34 +492,37 @@ class PreviewAnnotationCanvas(QWidget):
         if event.button() == Qt.MouseButton.LeftButton and not self.managed_read_only:
             hit = self._shape_at(event.position())
             if hit is not None:
+                self._draft = RectangleDraft()
+                self._temporary = None
+                self.set_tool(CanvasTool.SELECT)
                 self.select_shape(hit.id)
                 self.shape_double_clicked.emit(hit.id)
                 return
         super().mouseDoubleClickEvent(event)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
-        """Delete 删除选中框，Esc 取消当前绘制或选择。"""
+        """应用快捷键由 ActionRegistry 管理，画布只保留原生事件链。"""
 
-        if event.key() == Qt.Key.Key_Delete:
-            self.delete_selected()
-            event.accept()
-            return
-        if event.key() == Qt.Key.Key_Escape:
-            self._temporary = None
-            self._drag_origin = None
-            self._drag_snapshot = None
-            self._active_handle = None
-            self.selected_id = None
-            self.update()
-            event.accept()
-            return
         super().keyPressEvent(event)
 
     def wheelEvent(self, event: QWheelEvent) -> None:
-        """滚轮提供立即缩放反馈，不等待动画。"""
+        """滚轮纵向滚动，Alt+滚轮横向滚动；Ctrl 本轮不绑定。"""
 
-        self.zoom_in() if event.angleDelta().y() > 0 else self.zoom_out()
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            event.ignore()
+            return
+        delta = event.angleDelta().y() or event.pixelDelta().y()
+        if event.modifiers() & Qt.KeyboardModifier.AltModifier:
+            self.pan_offset.setX(self.pan_offset.x() + delta)
+        else:
+            self.pan_offset.setY(self.pan_offset.y() + delta)
         event.accept()
+        self.update()
+
+    def leaveEvent(self, event: object) -> None:
+        self._hover_point = None
+        self.update()
+        super().leaveEvent(event)
 
     def _image_rect(self) -> QRectF:
         """计算保持原始比例的居中显示区域。"""
@@ -406,12 +530,8 @@ class PreviewAnnotationCanvas(QWidget):
         if self.image is None:
             return QRectF()
         available = QRectF(self.rect()).adjusted(32, 28, -32, -28)
-        ratio = self.image.width / self.image.height
-        width = min(available.width(), available.height() * ratio) * self.zoom
-        height = width / ratio
-        if height > available.height() * self.zoom:
-            height = available.height() * self.zoom
-            width = height * ratio
+        width = self.image.width * self.zoom
+        height = self.image.height * self.zoom
         center = available.center()
         return QRectF(
             center.x() - width / 2 + self.pan_offset.x(),
@@ -465,8 +585,19 @@ class PreviewAnnotationCanvas(QWidget):
             return
         rect = self._annotation_rect(annotation)
         color = QColor(label.color)
-        painter.setBrush(QColor(color.red(), color.green(), color.blue(), 28))
-        painter.setPen(QPen(QColor("#FFFFFF") if selected else color, 3 if selected else 2))
+        fill = QColor(color)
+        fill.setAlpha(THEME.tokens.annotation_fill_alpha)
+        border = QColor(color)
+        border.setAlpha(THEME.tokens.annotation_border_alpha)
+        painter.setBrush(fill)
+        painter.setPen(
+            QPen(
+                border,
+                THEME.tokens.annotation_selected_line_width
+                if selected
+                else THEME.tokens.annotation_line_width,
+            )
+        )
         painter.drawRect(rect)
         caption = f"{label.alias} · {label.name}"
         if annotation.confidence is not None:
@@ -514,6 +645,72 @@ class PreviewAnnotationCanvas(QWidget):
                 Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
                 self.empty_subtitle,
             )
+
+    def _paint_crosshair(self, painter: QPainter) -> None:
+        point = self._hover_point
+        if point is None or self.image is None or self._middle_panning or self._left_panning:
+            return
+        visible = self._image_rect().intersected(QRectF(self.rect()))
+        if not visible.contains(point):
+            return
+        color = QColor("#FFFFFF")
+        color.setAlpha(THEME.tokens.canvas_crosshair_alpha)
+        painter.save()
+        painter.setClipRect(visible)
+        painter.setPen(QPen(color, 1, Qt.PenStyle.DashLine))
+        painter.drawLine(QPointF(visible.left(), point.y()), QPointF(visible.right(), point.y()))
+        painter.drawLine(QPointF(point.x(), visible.top()), QPointF(point.x(), visible.bottom()))
+        painter.restore()
+
+    def _paint_draft_size(self, painter: QPainter, rect: QRectF) -> None:
+        if self.image is None or rect.isEmpty():
+            return
+        top_left = self._canvas_to_image(rect.topLeft(), self._image_rect())
+        bottom_right = self._canvas_to_image(rect.bottomRight(), self._image_rect())
+        width = abs(bottom_right.x() - top_left.x())
+        height = abs(bottom_right.y() - top_left.y())
+        caption = f"{width:.1f} × {height:.1f}"
+        metrics = painter.fontMetrics()
+        box = QRectF(
+            rect.left(),
+            min(self.height() - 25, rect.bottom() + 5),
+            metrics.horizontalAdvance(caption) + 12,
+            22,
+        )
+        painter.fillRect(box, QColor(37, 43, 54, 220))
+        painter.setPen(QColor("#FFFFFF"))
+        painter.drawText(box.adjusted(6, 0, -4, 0), Qt.AlignmentFlag.AlignVCenter, caption)
+
+    def _commit_rectangle(self, first: QPointF, second: QPointF) -> bool:
+        """提交拖拽或两次单击的共同结果；零面积保留第一角锚点。"""
+
+        if self.image is None or self.current_label_id is None:
+            return False
+        rect = QRectF(first, second).normalized()
+        top_left = self._canvas_to_image(rect.topLeft(), self._image_rect())
+        bottom_right = self._canvas_to_image(rect.bottomRight(), self._image_rect())
+        if top_left.x() == bottom_right.x() or top_left.y() == bottom_right.y():
+            self._draft = RectangleDraft(anchor=first, current_point=second)
+            self._temporary = QRectF(first, second)
+            self.update()
+            return False
+        self._push_undo()
+        item = AnnotationItemViewData(
+            new_id(),
+            self.current_label_id,
+            top_left.x(),
+            top_left.y(),
+            bottom_right.x(),
+            bottom_right.y(),
+        )
+        self.annotations.append(item)
+        self.selected_id = item.id
+        self._draft = RectangleDraft()
+        self._temporary = None
+        self.shape_selected.emit(item.id)
+        self._emit_change("create")
+        self.set_tool(CanvasTool.SELECT)
+        return True
 
     def _annotation_rect(self, item: AnnotationItemViewData) -> QRectF:
         image_rect = self._image_rect()
@@ -618,3 +815,14 @@ class PreviewAnnotationCanvas(QWidget):
         self._undo.append(list(self.annotations))
         del self._undo[:-100]
         self._redo.clear()
+
+    def _emit_change(self, kind: str) -> None:
+        self.document_changed.emit()
+        self.edit_committed.emit(kind)
+
+
+def _bounded_point(point: QPointF, bounds: QRectF) -> QPointF:
+    return QPointF(
+        max(bounds.left(), min(point.x(), bounds.right())),
+        max(bounds.top(), min(point.y(), bounds.bottom())),
+    )

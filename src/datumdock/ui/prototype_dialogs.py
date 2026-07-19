@@ -48,6 +48,7 @@ class DialogId(StrEnum):
     ARCHIVE_DATASET = "archive_dataset"
     LABEL_EDITOR = "label_editor"
     LABEL_COLOR = "label_color"
+    QUICK_LABEL_SELECTOR = "quick_label_selector"
     MODEL_IMPORT = "model_import"
     MODEL_INSPECTION = "model_inspection"
     MODEL_MAPPING = "model_mapping"
@@ -79,6 +80,7 @@ TITLE_KEYS = {
     DialogId.ARCHIVE_DATASET: "action.archive",
     DialogId.LABEL_EDITOR: "action.add_label",
     DialogId.LABEL_COLOR: "table.color",
+    DialogId.QUICK_LABEL_SELECTOR: "quick_label.title",
     DialogId.MODEL_IMPORT: "dialog.model.title",
     DialogId.MODEL_INSPECTION: "dialog.model.title",
     DialogId.MODEL_MAPPING: "action.configure_mapping",

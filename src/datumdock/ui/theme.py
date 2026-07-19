@@ -31,6 +31,12 @@ class ThemeTokens:
     warning: str = "#E0A447"
     danger: str = "#D96565"
     info: str = "#4E9CCB"
+    annotation_border_alpha: int = 235
+    annotation_fill_alpha: int = 38
+    canvas_crosshair_alpha: int = 150
+    annotation_line_width: int = 2
+    annotation_selected_line_width: int = 3
+    annotation_handle_size: int = 8
 
 
 class ThemeService:
