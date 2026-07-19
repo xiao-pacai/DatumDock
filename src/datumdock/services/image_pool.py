@@ -717,7 +717,16 @@ class ImagePoolMaintenanceService:
                             str(item.get("old_annotation_path", "")),
                         )
                         for item in items
-                    )
+                    ),
+                    annotation_metadata=tuple(
+                        (
+                            str(item["sample_id"]),
+                            str(item.get("old_annotation_sha256", "")),
+                            str(item.get("old_annotation_updated_at", "")),
+                        )
+                        for item in items
+                        if item.get("old_annotation_path")
+                    ),
                 )
                 shutil.rmtree(staging, ignore_errors=True)
                 self.repository.finish_operation(operation.id)

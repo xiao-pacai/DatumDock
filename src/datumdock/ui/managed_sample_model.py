@@ -21,21 +21,59 @@ class _ThumbnailSignals(QObject):
     failed = Signal(int, str)
 
 
+@dataclass(frozen=True, slots=True)
+class _PreviewRectangle:
+    """后台读取出的轻量矩形预览，不把完整标注文档留在列表模型。"""
+
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    image_width: int
+    image_height: int
+    color: str
+
+
 class _ThumbnailJob(QRunnable):
     """后台只调用网关读取图片，永远不把受管路径交给页面。"""
 
-    def __init__(self, gateway, dataset_id: str, sample_id: str, generation: int) -> None:
+    def __init__(
+        self,
+        gateway,
+        dataset_id: str,
+        sample_id: str,
+        generation: int,
+        show_annotations: bool,
+    ) -> None:
         super().__init__()
         self.gateway = gateway
         self.dataset_id = dataset_id
         self.sample_id = sample_id
         self.generation = generation
+        self.show_annotations = show_annotations
         self.signals = _ThumbnailSignals()
 
     def run(self) -> None:
         try:
             asset = self.gateway.load_thumbnail(self.dataset_id, self.sample_id)
-            self.signals.completed.emit(self.generation, self.sample_id, asset)
+            previews: tuple[_PreviewRectangle, ...] = ()
+            if self.show_annotations:
+                loaded = self.gateway.load_annotation(self.dataset_id, self.sample_id)
+                if loaded.document is not None:
+                    colors = {label.id: label.color for label in loaded.label_set.labels}
+                    previews = tuple(
+                        _PreviewRectangle(
+                            rectangle.x1,
+                            rectangle.y1,
+                            rectangle.x2,
+                            rectangle.y2,
+                            loaded.document.image_width,
+                            loaded.document.image_height,
+                            colors.get(rectangle.label_id, THEME.tokens.brand_primary),
+                        )
+                        for rectangle in loaded.document.rectangles
+                    )
+            self.signals.completed.emit(self.generation, self.sample_id, (asset, previews))
         except Exception:
             self.signals.failed.emit(self.generation, self.sample_id)
 
@@ -78,6 +116,7 @@ class ManagedSampleListModel(QAbstractListModel):
         self._loading: set[str] = set()
         self._failed: set[str] = set()
         self._jobs: set[_ThumbnailJob] = set()
+        self._show_annotation_preview = True
 
     def rowCount(self, parent: QModelIndex | None = None) -> int:
         return 0 if parent is not None and parent.isValid() else len(self.items)
@@ -197,11 +236,29 @@ class ManagedSampleListModel(QAbstractListModel):
         row = self.row_for_id(sample.id)
         if row < 0:
             return
+        previous = self.items[row]
         items = list(self.items)
         items[row] = sample
         self.items = tuple(items)
+        if previous.annotation_sha256 != sample.annotation_sha256:
+            self._thumbnail_cache.pop(sample.id, None)
+            self._failed.discard(sample.id)
         index = self.index(row)
         self.dataChanged.emit(index, index)
+
+    def set_annotation_preview(self, enabled: bool) -> None:
+        """开关变化时丢弃当前页缓存，随后只为可见项目按需重建。"""
+
+        if self._show_annotation_preview == enabled:
+            return
+        self._show_annotation_preview = enabled
+        self.clear_caches()
+        if self.items:
+            self.dataChanged.emit(
+                self.index(0),
+                self.index(len(self.items) - 1),
+                [Qt.ItemDataRole.DecorationRole],
+            )
 
     def load_page_for_sample(self, sample_id: str) -> int:
         """定位跨页样本并只加载其所在的 200 条页面。"""
@@ -230,7 +287,13 @@ class ManagedSampleListModel(QAbstractListModel):
 
     def _request_thumbnail(self, sample_id: str) -> None:
         self._loading.add(sample_id)
-        job = _ThumbnailJob(self.gateway, self.dataset_id, sample_id, self._generation)
+        job = _ThumbnailJob(
+            self.gateway,
+            self.dataset_id,
+            sample_id,
+            self._generation,
+            self._show_annotation_preview,
+        )
         self._jobs.add(job)
         job.signals.completed.connect(self._thumbnail_ready)
         job.signals.failed.connect(self._thumbnail_failed)
@@ -244,14 +307,39 @@ class ManagedSampleListModel(QAbstractListModel):
         self,
         generation: int,
         sample_id: str,
-        asset: ThumbnailAsset,
+        payload: tuple[ThumbnailAsset, tuple[_PreviewRectangle, ...]],
     ) -> None:
+        asset, previews = payload
         if generation != self._generation or asset.sample_id != sample_id:
             return
         pixmap = QPixmap()
         if not pixmap.loadFromData(asset.data, "PNG"):
             self._thumbnail_failed(generation, sample_id)
             return
+        if previews:
+            painter = QPainter(pixmap)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            for rectangle in previews:
+                if rectangle.image_width <= 0 or rectangle.image_height <= 0:
+                    continue
+                painter.setPen(QColor(rectangle.color))
+                painter.drawRect(
+                    round(rectangle.x1 * pixmap.width() / rectangle.image_width),
+                    round(rectangle.y1 * pixmap.height() / rectangle.image_height),
+                    max(
+                        1,
+                        round(
+                            (rectangle.x2 - rectangle.x1) * pixmap.width() / rectangle.image_width
+                        ),
+                    ),
+                    max(
+                        1,
+                        round(
+                            (rectangle.y2 - rectangle.y1) * pixmap.height() / rectangle.image_height
+                        ),
+                    ),
+                )
+            painter.end()
         self._loading.discard(sample_id)
         self._thumbnail_cache[sample_id] = pixmap
         self._thumbnail_cache.move_to_end(sample_id)

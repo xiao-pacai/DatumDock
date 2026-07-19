@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import os
 import shutil
@@ -21,6 +22,7 @@ from datumdock.domain.models import (
     new_id,
     utc_now,
 )
+from datumdock.services.annotations import AnnotationMigrationReport
 from datumdock.services.dataset_library import DatasetLibraryService, DatasetLibraryServiceError
 from datumdock.services.labelme import LabelMeRepository
 from datumdock.services.library_repository import DatasetRepositoryError
@@ -475,6 +477,86 @@ class ManagedLabelMigrationService:
             if rollback_errors:
                 detail += f"；恢复失败: {'；'.join(rollback_errors)}"
             raise ManagedLabelError(detail) from error
+
+    def recover_pending(self, dataset_id: str) -> AnnotationMigrationReport:
+        """启动时只检查该数据集的有限迁移目录，并回滚未提交的 JSON。"""
+
+        root = self.library_service.root / "recovery" / "label-migrations" / dataset_id
+        if not root.exists():
+            return AnnotationMigrationReport()
+        if root.is_symlink():
+            return AnnotationMigrationReport(
+                examined=1,
+                failed_sample_ids=(dataset_id,),
+                diagnostics=("拒绝跟随标签迁移恢复目录符号链接",),
+            )
+        try:
+            current = self.labels.repository.load(dataset_id)
+        except ManagedLabelError as error:
+            raise ManagedLabelError(f"标签迁移恢复无法读取标签集: {error}") from error
+        samples = DatasetSampleRepository(
+            self.library_service.dataset_repository.paths(dataset_id),
+            dataset_id,
+        )
+        examined = 0
+        recovered = 0
+        failed: list[str] = []
+        diagnostics: list[str] = []
+        for operation in sorted(root.iterdir()):
+            examined += 1
+            if not operation.is_dir() or operation.is_symlink():
+                diagnostics.append(f"拒绝处理非目录迁移记录: {operation.name}")
+                failed.append(operation.name)
+                continue
+            try:
+                manifest = operation / "manifest.json"
+                payload = json.loads(manifest.read_text(encoding="utf-8"))
+                if payload.get("dataset_id") != dataset_id:
+                    raise ManagedLabelError("迁移记录的数据集 ID 不匹配")
+                expected_revision = int(payload["expected_revision"])
+                label_id = str(payload["label_id"])
+                target_name = str(payload["new_training_name"])
+                current_label = next(
+                    (label for label in current.labels if label.id == label_id),
+                    None,
+                )
+                if (
+                    current.revision > expected_revision
+                    and current_label is not None
+                    and current_label.name == target_name
+                ):
+                    self._remove_operation_directory(operation)
+                    diagnostics.append(f"已完成迁移记录清理: {operation.name}")
+                    continue
+                if current.revision != expected_revision:
+                    raise ManagedLabelError("标签集修订号无法证明迁移可安全回滚")
+                changed: list[tuple[str, Path, Path]] = []
+                backups = operation / "backups"
+                if backups.is_symlink():
+                    raise ManagedLabelError("迁移备份目录不能是符号链接")
+                for backup in sorted(backups.glob("*.json")):
+                    if backup.is_symlink():
+                        raise ManagedLabelError("迁移备份文件不能是符号链接")
+                    sample_id = backup.stem
+                    sample = samples.get_sample(sample_id)
+                    if sample is None or not sample.annotation_path:
+                        raise ManagedLabelError(f"迁移备份引用未知样本: {sample_id}")
+                    path = samples.resolve_path(sample.annotation_path, "pool/annotations")
+                    changed.append((sample_id, path, backup))
+                rollback_errors = self._rollback(changed, current, samples)
+                if rollback_errors:
+                    raise ManagedLabelError("；".join(rollback_errors))
+                recovered += len(changed)
+                self._remove_operation_directory(operation)
+            except Exception as error:
+                failed.append(operation.name)
+                diagnostics.append(f"标签迁移记录 {operation.name} 恢复失败: {error}")
+        return AnnotationMigrationReport(
+            examined=examined,
+            recovered=recovered,
+            failed_sample_ids=tuple(dict.fromkeys(failed)),
+            diagnostics=tuple(diagnostics),
+        )
 
     @staticmethod
     def _target_label_set(current: LabelSet, preview: LabelChangePreview) -> LabelSet:

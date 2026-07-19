@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import shutil
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,6 +18,7 @@ from datumdock.domain.models import (
     LabelStatus,
     RectangleShape,
     ReviewStatus,
+    new_id,
 )
 from datumdock.services.annotations import AnnotationSaveRequest, AnnotationService
 from datumdock.services.dataset_library import DatasetLibraryService
@@ -299,6 +302,58 @@ def test_training_name_migration_updates_json_but_class_id_change_does_not(
     assert class_result.changed_json_count == 0
     assert _hash(path) == before_class_change
     assert library.open_dataset(dataset.id).label_set.labels[0].class_id == 7
+
+
+def test_interrupted_training_name_migration_recovers_from_backups(tmp_path: Path) -> None:
+    """进程在标签集提交前中断时，启动恢复应还原旧 JSON 与 SQLite 摘要。"""
+
+    library = DatasetLibraryService(tmp_path / "library")
+    dataset = library.create_dataset("迁移中断恢复").dataset
+    labels = LabelSetService(library)
+    current = labels.add_label(
+        dataset.id,
+        class_id=0,
+        name="old_part",
+        alias="零件",
+    )
+    label = current.labels[0]
+    sample, path = _save_labeled_sample(library, dataset.id, label.id, 1)
+    original_bytes = path.read_bytes()
+    operation = library.root / "recovery" / "label-migrations" / dataset.id / new_id()
+    backups = operation / "backups"
+    backups.mkdir(parents=True)
+    shutil.copy2(path, backups / f"{sample.id}.json")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["shapes"][0]["label"] = "new_part"
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    (operation / "manifest.json").write_text(
+        json.dumps(
+            {
+                "dataset_id": dataset.id,
+                "label_id": label.id,
+                "expected_revision": current.revision,
+                "new_training_name": "new_part",
+                "sample_ids": [sample.id],
+                "phase": "prepared",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    report = ManagedLabelMigrationService(library).recover_pending(dataset.id)
+
+    indexed = DatasetSampleRepository(
+        library.dataset_repository.paths(dataset.id),
+        dataset.id,
+    ).get_sample(sample.id)
+    assert report.examined == 1
+    assert report.recovered == 1
+    assert report.failed_sample_ids == ()
+    assert path.read_bytes() == original_bytes
+    assert indexed is not None
+    assert indexed.annotation_sha256 == _hash(path)
+    assert not operation.exists()
 
 
 def test_training_name_migration_failure_rolls_back_all_json(

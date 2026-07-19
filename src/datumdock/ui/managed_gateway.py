@@ -245,6 +245,9 @@ class ManagedDatasetGateway:
     def load_annotation(self, dataset_id: str, sample_id: str) -> AnnotationLoadResult:
         """按需加载当前图片标注，损坏 JSON 由结果显式标记为只读。"""
 
+        recovery = ManagedLabelMigrationService(self.service).recover_pending(dataset_id)
+        if recovery.failed_sample_ids:
+            raise ManagedLabelError("标签训练名迁移尚未安全恢复，请先查看数据集诊断")
         service = AnnotationService(self.service, dataset_id)
         service.recover_pending()
         return service.load(sample_id)

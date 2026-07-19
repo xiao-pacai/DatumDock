@@ -898,6 +898,8 @@ class DatasetSampleRepository:
     def rename_sample_paths(
         self,
         changes: Sequence[tuple[str, str, str, str]],
+        *,
+        annotation_metadata: Sequence[tuple[str, str, str]] = (),
     ) -> None:
         """在一个 SQLite 事务内用临时名完成批量交换，避免唯一键冲突。"""
 
@@ -910,6 +912,10 @@ class DatasetSampleRepository:
             if annotation_path:
                 self.validate_relative_path(annotation_path, "pool/annotations")
             validated.append((sample_id, filename, image_path, annotation_path))
+        valid_ids = {item[0] for item in validated}
+        for sample_id, digest, _updated_at in annotation_metadata:
+            if sample_id not in valid_ids or (digest and len(digest) != 64):
+                raise SampleRepositoryError("重命名标注摘要不属于当前操作或格式无效")
         try:
             with self._connection() as connection:
                 for sample_id, _filename, _image_path, _annotation_path in validated:
@@ -926,6 +932,14 @@ class DatasetSampleRepository:
                         "WHERE id = ? AND dataset_id = ?",
                         (filename, image_path, annotation_path, sample_id, self.dataset_id),
                     )
+                for sample_id, digest, updated_at in annotation_metadata:
+                    cursor = connection.execute(
+                        "UPDATE samples SET annotation_sha256 = ?, annotation_updated_at = ? "
+                        "WHERE id = ? AND dataset_id = ?",
+                        (digest, updated_at, sample_id, self.dataset_id),
+                    )
+                    if cursor.rowcount != 1:
+                        raise SampleRepositoryError("待更新标注摘要的重命名样本不存在")
         except SampleRepositoryError:
             raise
         except sqlite3.Error as error:
@@ -1096,16 +1110,34 @@ class DatasetSampleRepository:
             )
 
     def restore_from_trash(
-        self, sample_id: str, *, filename: str, image_path: str, annotation_path: str
+        self,
+        sample_id: str,
+        *,
+        filename: str,
+        image_path: str,
+        annotation_path: str,
+        annotation_sha256: str = "",
+        annotation_updated_at: str = "",
     ) -> None:
         self.validate_relative_path(image_path, "pool/images")
         if annotation_path:
             self.validate_relative_path(annotation_path, "pool/annotations")
+        if annotation_sha256 and len(annotation_sha256) != 64:
+            raise SampleRepositoryError("回收站标注摘要格式无效")
         with self._connection() as connection:
             cursor = connection.execute(
                 "UPDATE samples SET is_trashed = 0, filename = ?, image_path = ?, "
-                "annotation_path = ? WHERE id = ? AND dataset_id = ? AND is_trashed = 1",
-                (filename, image_path, annotation_path, sample_id, self.dataset_id),
+                "annotation_path = ?, annotation_sha256 = ?, annotation_updated_at = ? "
+                "WHERE id = ? AND dataset_id = ? AND is_trashed = 1",
+                (
+                    filename,
+                    image_path,
+                    annotation_path,
+                    annotation_sha256,
+                    annotation_updated_at,
+                    sample_id,
+                    self.dataset_id,
+                ),
             )
             if cursor.rowcount != 1:
                 raise SampleRepositoryError("回收站样本不存在")

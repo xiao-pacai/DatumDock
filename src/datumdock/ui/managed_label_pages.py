@@ -317,6 +317,9 @@ class ManagedLabelInspectionPage(QWidget):
         self.gateway = gateway
         self.dataset_id = dataset_id
         self.sample_ids: list[str] = []
+        self.offset = 0
+        self.total = 0
+        self.page_size = 200
         root = QVBoxLayout(self)
         root.setContentsMargins(24, 20, 24, 24)
         self.header = PageHeader(locale, "page.inspection.title", "page.inspection.subtitle")
@@ -325,7 +328,7 @@ class ManagedLabelInspectionPage(QWidget):
         self.header.add_action(back)
         root.addWidget(self.header)
         self.label_combo = QComboBox()
-        self.label_combo.currentIndexChanged.connect(lambda _index: self._refresh_samples())
+        self.label_combo.currentIndexChanged.connect(self._label_changed)
         root.addWidget(self.label_combo)
         self.table = QTableWidget()
         self.table.setColumnCount(4)
@@ -335,6 +338,17 @@ class ManagedLabelInspectionPage(QWidget):
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.cellDoubleClicked.connect(self._open_sample)
         root.addWidget(self.table, 1)
+        pagination = QHBoxLayout()
+        self.previous_button = GhostButton("‹")
+        self.next_button = GhostButton("›")
+        self.page_label = QLabel()
+        self.page_label.setObjectName("mutedText")
+        self.previous_button.clicked.connect(self._previous_page)
+        self.next_button.clicked.connect(self._next_page)
+        pagination.addWidget(self.previous_button)
+        pagination.addWidget(self.page_label, 1)
+        pagination.addWidget(self.next_button)
+        root.addLayout(pagination)
         self.retranslate_ui()
         self.refresh()
 
@@ -355,11 +369,21 @@ class ManagedLabelInspectionPage(QWidget):
     def _refresh_samples(self) -> None:
         label_id = self.label_combo.currentData()
         page = (
-            self.gateway.query_samples(self.dataset_id, label_id=label_id)
+            self.gateway.query_samples(
+                self.dataset_id,
+                offset=self.offset,
+                limit=self.page_size,
+                label_id=label_id,
+            )
             if label_id is not None
             else None
         )
         items = page.items if page is not None else ()
+        self.total = page.total if page is not None else 0
+        if self.total and self.offset >= self.total:
+            self.offset = max(0, ((self.total - 1) // self.page_size) * self.page_size)
+            self._refresh_samples()
+            return
         self.sample_ids = [sample.id for sample in items]
         self.table.setRowCount(len(items))
         for row, sample in enumerate(items):
@@ -371,6 +395,17 @@ class ManagedLabelInspectionPage(QWidget):
             )
             for column, value in enumerate(values):
                 self.table.setItem(row, column, QTableWidgetItem(value))
+        page_count = max(1, (self.total + self.page_size - 1) // self.page_size)
+        current_page = self.offset // self.page_size + 1
+        self.page_label.setText(
+            tr(self.locale, "browser.page").format(
+                page=current_page,
+                total=page_count,
+                count=self.total,
+            )
+        )
+        self.previous_button.setEnabled(self.offset > 0)
+        self.next_button.setEnabled(self.offset + self.page_size < self.total)
 
     def retranslate_ui(self) -> None:
         self.header.retranslate_ui()
@@ -382,6 +417,21 @@ class ManagedLabelInspectionPage(QWidget):
                 tr(self.locale, "label.updated_at"),
             ]
         )
+        self.previous_button.setToolTip(tr(self.locale, "browser.previous_page"))
+        self.next_button.setToolTip(tr(self.locale, "browser.next_page"))
+
+    def _label_changed(self, _index: int) -> None:
+        self.offset = 0
+        self._refresh_samples()
+
+    def _previous_page(self) -> None:
+        self.offset = max(0, self.offset - self.page_size)
+        self._refresh_samples()
+
+    def _next_page(self) -> None:
+        if self.offset + self.page_size < self.total:
+            self.offset += self.page_size
+            self._refresh_samples()
 
     def _open_sample(self, row: int, _column: int) -> None:
         if 0 <= row < len(self.sample_ids):
@@ -391,7 +441,7 @@ class ManagedLabelInspectionPage(QWidget):
                 WorkspaceNavigationTarget(
                     dataset_id=self.dataset_id,
                     sample_id=self.sample_ids[row],
-                    focus_label_id=None,
+                    focus_label_id=self.label_combo.currentData(),
                     shape_id=None,
                 )
             )

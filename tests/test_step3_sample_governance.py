@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
+import pytest
 from PIL import Image
 
-from datumdock.domain.models import NamingPolicy
+from datumdock.domain.models import AnnotationState, NamingPolicy, ReviewStatus
 from datumdock.services.dataset_library import DatasetLibraryService
 from datumdock.services.image_pool import ImageImportPreflightRequest, ImageImportService
 from datumdock.services.sample_governance import (
     RenamePlan,
     RenamePlanItem,
+    SampleGovernanceError,
     SampleRenameService,
     TrashService,
 )
@@ -62,6 +65,8 @@ def test_batch_rename_keeps_uuid_thumbnail_and_updates_future_labelme(tmp_path: 
     assert renamed.thumbnail_path == thumbnail_before
     new_annotation = paths.annotations / "part_0010.json"
     assert json.loads(new_annotation.read_text(encoding="utf-8"))["imagePath"] == renamed.filename
+    assert renamed.annotation_sha256 == hashlib.sha256(new_annotation.read_bytes()).hexdigest()
+    assert renamed.annotation_updated_at
     assert not annotation.exists()
     # 成功后才能由资料库服务保存命名策略。
     configuration = bundle.dataset.configuration.model_copy(update={"naming_policy": policy})
@@ -133,6 +138,17 @@ def test_trash_restore_and_permanent_delete_keep_index_and_files_consistent(
     restored = service.restore(first.id)
     assert restored.id == first.id
     assert repository.resolve_path(restored.image_path, "pool/images").is_file()
+    restored_annotation = repository.resolve_path(
+        restored.annotation_path,
+        "pool/annotations",
+    )
+    assert (
+        restored.annotation_sha256 == hashlib.sha256(restored_annotation.read_bytes()).hexdigest()
+    )
+    assert (
+        json.loads(restored_annotation.read_text(encoding="utf-8"))["imagePath"]
+        == restored.filename
+    )
     assert len(service.list_items()) == 0
 
     service.permanently_delete(restored.id)
@@ -181,3 +197,54 @@ def test_large_delete_defaults_to_direct_permanent_removal(tmp_path: Path) -> No
     assert repository.count_active() == 0
     assert service.list_items() == ()
     assert list(paths.images.glob("*.png")) == []
+
+
+def test_rename_sqlite_failure_restores_annotation_bytes_and_digest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SQLite 提交失败时，文件名、JSON 字节和摘要必须一起回到旧版本。"""
+
+    _library, bundle, paths, repository, sample_ids = _pool(tmp_path, count=1)
+    sample = repository.get_sample(sample_ids[0])
+    assert sample is not None
+    annotation = paths.annotations / f"{Path(sample.filename).stem}.json"
+    annotation.write_text(
+        json.dumps({"imagePath": sample.filename, "shapes": []}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    original_bytes = annotation.read_bytes()
+    repository.update_annotation_index(
+        sample.id,
+        annotation_path=annotation.relative_to(paths.root).as_posix(),
+        annotation_count=0,
+        annotation_state=AnnotationState.READY,
+        annotation_version=1,
+        annotation_sha256=hashlib.sha256(original_bytes).hexdigest(),
+        annotation_updated_at="2026-07-19T00:00:00+00:00",
+        review_status=ReviewStatus.UNREVIEWED,
+        shape_labels=(),
+    )
+    original_rename = repository.rename_sample_paths
+    calls = 0
+
+    def fail_once(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise OSError("模拟 SQLite 写入失败")
+        return original_rename(*args, **kwargs)
+
+    monkeypatch.setattr(repository, "rename_sample_paths", fail_once)
+    service = SampleRenameService(paths, bundle.dataset, repository)
+    plan = service.preview(NamingPolicy(prefix="renamed", start_index=1, padding=4))
+
+    with pytest.raises(SampleGovernanceError, match="批量重命名失败"):
+        service.apply(plan)
+
+    restored = repository.get_sample(sample.id)
+    assert restored is not None
+    assert restored.filename == sample.filename
+    assert restored.annotation_sha256 == hashlib.sha256(original_bytes).hexdigest()
+    assert annotation.read_bytes() == original_bytes
+    assert repository.list_operations() == ()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -143,13 +144,26 @@ class SampleRenameService:
 
         if not plan.valid:
             raise SampleGovernanceError("重命名预览包含冲突或没有样本")
+        original_samples = {
+            item.sample_id: self.repository.get_sample(item.sample_id) for item in plan.items
+        }
+        if any(sample is None for sample in original_samples.values()):
+            raise SampleGovernanceError("重命名样本在预检后已不存在")
         operation_id = new_id()
         staging = self.paths.root / "cache" / "rename-staging" / operation_id
         if staging.exists() or staging.is_symlink():
             raise SampleGovernanceError("重命名暂存目录不安全")
         staging.mkdir(parents=True)
+        payload_items = []
+        for item in plan.items:
+            sample = original_samples[item.sample_id]
+            assert sample is not None
+            payload_item = asdict(item)
+            payload_item["old_annotation_sha256"] = sample.annotation_sha256
+            payload_item["old_annotation_updated_at"] = sample.annotation_updated_at
+            payload_items.append(payload_item)
         payload = {
-            "items": [asdict(item) for item in plan.items],
+            "items": payload_items,
             "naming_policy": plan.naming_policy.model_dump(mode="json"),
         }
         timestamp = utc_now().isoformat()
@@ -192,12 +206,26 @@ class SampleRenameService:
                 published.append((new_image, staged_image))
                 staged_annotation = staging / f"{item.sample_id}.json"
                 if item.new_annotation_path and staged_annotation.is_file():
+                    shutil.copy2(
+                        staged_annotation,
+                        staging / f"{item.sample_id}.annotation-backup",
+                    )
                     self._update_annotation_image_path(staged_annotation, item.new_filename)
                     new_annotation = self.repository.resolve_path(
                         item.new_annotation_path, "pool/annotations"
                     )
                     os.replace(staged_annotation, new_annotation)
                     published.append((new_annotation, staged_annotation))
+            metadata: list[tuple[str, str, str]] = []
+            updated_at = utc_now().isoformat()
+            for item in plan.items:
+                if item.new_annotation_path:
+                    annotation = self.repository.resolve_path(
+                        item.new_annotation_path,
+                        "pool/annotations",
+                    )
+                    if annotation.is_file():
+                        metadata.append((item.sample_id, _sha256(annotation), updated_at))
             self.repository.rename_sample_paths(
                 tuple(
                     (
@@ -207,13 +235,20 @@ class SampleRenameService:
                         item.new_annotation_path,
                     )
                     for item in plan.items
-                )
+                ),
+                annotation_metadata=tuple(metadata),
             )
             self.repository.finish_operation(operation_id)
             shutil.rmtree(staging, ignore_errors=True)
             return tuple(item.sample_id for item in plan.items)
         except Exception as error:
-            rollback_errors = self._rollback_rename(plan, staging, published, moved_to_staging)
+            rollback_errors = self._rollback_rename(
+                plan,
+                staging,
+                published,
+                moved_to_staging,
+                original_samples,
+            )
             if not rollback_errors:
                 try:
                     self.repository.finish_operation(operation_id)
@@ -246,6 +281,7 @@ class SampleRenameService:
                     limit=500,
                     search=base.search,
                     review_status=base.review_status,
+                    annotation_state=base.annotation_state,
                     label_id=base.label_id,
                     sort=base.sort,
                 )
@@ -279,12 +315,21 @@ class SampleRenameService:
         staging: Path,
         published: list[tuple[Path, Path]],
         moved_to_staging: list[tuple[Path, Path]],
+        original_samples: dict[str, DatasetSample | None],
     ) -> list[str]:
         errors: list[str] = []
         for target, staged in reversed(published):
             if target.exists() and not staged.exists():
                 try:
                     os.replace(target, staged)
+                except OSError as error:
+                    errors.append(str(error))
+        for item in plan.items:
+            backup = staging / f"{item.sample_id}.annotation-backup"
+            staged_annotation = staging / f"{item.sample_id}.json"
+            if backup.is_file():
+                try:
+                    os.replace(backup, staged_annotation)
                 except OSError as error:
                     errors.append(str(error))
         for staged, original in reversed(moved_to_staging):
@@ -294,6 +339,16 @@ class SampleRenameService:
                 except OSError as error:
                     errors.append(str(error))
         try:
+            old_metadata = tuple(
+                (
+                    item.sample_id,
+                    original_samples[item.sample_id].annotation_sha256,
+                    original_samples[item.sample_id].annotation_updated_at,
+                )
+                for item in plan.items
+                if original_samples[item.sample_id] is not None
+                and original_samples[item.sample_id].annotation_path
+            )
             self.repository.rename_sample_paths(
                 tuple(
                     (
@@ -303,7 +358,8 @@ class SampleRenameService:
                         item.old_annotation_path,
                     )
                     for item in plan.items
-                )
+                ),
+                annotation_metadata=old_metadata,
             )
         except SampleRepositoryError as error:
             errors.append(str(error))
@@ -456,6 +512,8 @@ class TrashService:
                 filename=filename,
                 image_path=image_target.relative_to(self.paths.root).as_posix(),
                 annotation_path=annotation_relative,
+                annotation_sha256=(_sha256(annotation_target) if annotation_relative else ""),
+                annotation_updated_at=(utc_now().isoformat() if annotation_relative else ""),
             )
             restored = self.repository.get_sample(sample_id)
             if restored is None:
@@ -685,3 +743,7 @@ class TrashService:
             return None
         path = self.repository.resolve_path(sample.thumbnail_path, "cache/thumbnails")
         return path if path.is_file() and not path.is_symlink() else None
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()

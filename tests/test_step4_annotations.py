@@ -151,6 +151,49 @@ def test_atomic_save_updates_labelme_and_sqlite_then_reloads(tmp_path: Path) -> 
     assert reopened.document.rectangles[0].id == document.rectangles[0].id
 
 
+def test_autosave_digest_rebase_is_isolated_per_sample(tmp_path: Path) -> None:
+    """同一数据集连续编辑两张图时，绝不能跨图片复用磁盘摘要。"""
+
+    library, dataset_id, first, label, service = _managed_annotation(tmp_path)
+    paths = library.dataset_repository.paths(dataset_id)
+    second = _sample(dataset_id, 2)
+    DatasetSampleRepository(paths, dataset_id).add_sample(second)
+    second_loaded = service.load(second.id)
+    assert second_loaded.document is not None
+    second_v1 = second_loaded.document.model_copy(deep=True)
+    second_v1.rectangles.append(RectangleShape(label_id=label.id, x1=2, y1=2, x2=20, y2=20))
+    second_v1.review_status = ReviewStatus.PENDING_REVIEW
+    second_saved = service.save(AnnotationSaveRequest(dataset_id, second.id, 1, "", second_v1))
+
+    autosave = AnnotationAutosaveService(service)
+    first_loaded = service.load(first.id)
+    assert first_loaded.document is not None
+    first_document = first_loaded.document.model_copy(deep=True)
+    first_document.rectangles.append(RectangleShape(label_id=label.id, x1=4, y1=4, x2=24, y2=24))
+    first_document.review_status = ReviewStatus.PENDING_REVIEW
+    autosave.submit(AnnotationSaveRequest(dataset_id, first.id, 1, "", first_document)).result(
+        timeout=5
+    )
+
+    second_v2 = second_v1.model_copy(deep=True)
+    second_v2.rectangles[0].x2 = 30
+    result = autosave.submit(
+        AnnotationSaveRequest(
+            dataset_id,
+            second.id,
+            2,
+            second_saved.json_sha256,
+            second_v2,
+        )
+    ).result(timeout=5)
+    autosave.close()
+
+    assert result.saved_version == 2
+    reloaded = service.load(second.id)
+    assert reloaded.document is not None
+    assert reloaded.document.rectangles[0].x2 == 30
+
+
 def test_empty_document_is_lazy_but_confirmed_negative_creates_json(tmp_path: Path) -> None:
     """普通空标注不建文件，确认无目标后才建立可交换的空 JSON。"""
 

@@ -485,8 +485,7 @@ class AnnotationAutosaveService:
         self._lock = threading.Lock()
         self._latest_request: AnnotationSaveRequest | None = None
         self._latest_future: Future[AnnotationSaveResult] | None = None
-        self._latest_completed_version = -1
-        self._last_saved_sha256 = ""
+        self._saved_by_sample: dict[str, tuple[int, str]] = {}
         self._state = AutosaveState.IDLE
         self._error: str = ""
 
@@ -553,24 +552,20 @@ class AnnotationAutosaveService:
         future: Future[AnnotationSaveResult],
     ) -> None:
         with self._lock:
-            if request.document_version < self._latest_completed_version:
-                return
             try:
                 result = future.result()
             except Exception as error:
-                if self._latest_request is request or (
-                    self._latest_request
-                    and self._latest_request.document_version == request.document_version
-                ):
+                if self._is_latest_request(request):
                     self._state = AutosaveState.FAILED
                     self._error = str(error)
                 return
-            self._latest_completed_version = request.document_version
-            self._last_saved_sha256 = result.json_sha256
-            if (
-                self._latest_request
-                and self._latest_request.document_version == request.document_version
-            ):
+            previous = self._saved_by_sample.get(request.sample_id, (-1, ""))
+            if request.document_version >= previous[0]:
+                self._saved_by_sample[request.sample_id] = (
+                    request.document_version,
+                    result.json_sha256,
+                )
+            if self._is_latest_request(request):
                 self._state = AutosaveState.SAVED
                 self._error = ""
 
@@ -578,8 +573,10 @@ class AnnotationAutosaveService:
         """同一队列的后续版本以上一个成功摘要为并发前提。"""
 
         with self._lock:
-            previous_version = self._latest_completed_version
-            previous_digest = self._last_saved_sha256
+            previous_version, previous_digest = self._saved_by_sample.get(
+                request.sample_id,
+                (-1, ""),
+            )
         if previous_version >= 0 and request.document_version > previous_version:
             request = AnnotationSaveRequest(
                 request.dataset_id,
@@ -589,6 +586,15 @@ class AnnotationAutosaveService:
                 request.document,
             )
         return self.service.save(request)
+
+    def _is_latest_request(self, request: AnnotationSaveRequest) -> bool:
+        """样本 ID 与版本都一致时，完成结果才可更新当前状态栏。"""
+
+        return bool(
+            self._latest_request
+            and self._latest_request.sample_id == request.sample_id
+            and self._latest_request.document_version == request.document_version
+        )
 
 
 def review_status_after_edit(current: ReviewStatus) -> ReviewStatus:

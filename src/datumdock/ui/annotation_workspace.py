@@ -619,6 +619,8 @@ class AnnotationWorkspace(QWidget):
         self.sample_model.page_changed.connect(self._on_page_changed)
         self.previous_page_button.clicked.connect(self._previous_page)
         self.next_page_button.clicked.connect(self._next_page)
+        self.preview_toggle.toggled.connect(self.sample_model.set_annotation_preview)
+        self.sample_model.set_annotation_preview(self.preview_toggle.isChecked())
         has_active_labels = any(not label.archived for label in self.snapshot.labels)
         for name in ("select", "undo", "redo"):
             self.tool_buttons[name].setEnabled(True)
