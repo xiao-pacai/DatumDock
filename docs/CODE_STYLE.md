@@ -9,13 +9,17 @@
 - 提交前依次运行：
 
 ```powershell
-python -m ruff check src tests
-python -m ruff format --check src tests
-python -m pytest
+python -m ruff check src tests scripts
+python -m ruff format --check src tests scripts
+python -m compileall -q src
+python -m pytest --cov=datumdock --cov-branch
 ```
 
 - 安装开发依赖后运行 `pre-commit install`；之后每次提交自动执行 Ruff 检查与格式化。
 - 禁止无说明地使用 `# noqa`、`# type: ignore` 或跳过测试。确有必要时，在同一行或紧邻上方用中文说明原因、影响范围和预期移除条件。
+- DatumDock 自身产生的弃用警告必须修复，不能长期依靠过滤器隐藏；外部依赖警告需记录来源、影响和恢复条件。
+- 受管文件事务、标注保存和 X-AnyLabeling 互操作核心模块以至少 90% 分支覆盖为目标；其他当前生产模块以至少 85% 为目标。覆盖率工具不可用时必须记录外部阻塞，不得伪造百分比。
+- 可复现实机缺陷必须先建立失败回归。涉及鼠标/键盘顺序时使用真实 Qt 事件序列，不能只测试直接调用私有方法。
 
 ## 2. 注释、Docstring 与日志
 
@@ -48,6 +52,7 @@ def delete_managed_sample(sample_id: str) -> None:
 ## 4. 审核清单
 
 - [ ] Ruff 检查和格式检查通过。
+- [ ] 完整测试无 DatumDock 自身警告；覆盖率达到当前阶段门槛，或已记录可信依赖阻塞和恢复命令。
 - [ ] 新增复杂逻辑具有中文注释或 docstring，且没有无意义注释。
 - [ ] 用户可见文案已进入中英文翻译资源。
 - [ ] 修改受管数据、LabelMe/X-AnyLabeling、划分或导出时已添加对应测试。
@@ -55,4 +60,4 @@ def delete_managed_sample(sample_id: str) -> None:
 
 ## English Summary
 
-DatumDock uses Ruff as the single formatter, linter, and import-sorting baseline: 100-character lines, four spaces, double quotes, and LF line endings. Run Ruff checks, Ruff format verification, and pytest before committing; pre-commit runs Ruff automatically after installation. All code comments, docstrings, TODO/FIXME notes, and development logs are written in Chinese, while identifiers and established technical terms remain English. Comments must explain reasoning, constraints, risks, side effects, and data-safety boundaries rather than restating obvious code.
+DatumDock uses Ruff as the formatting and lint baseline. Full verification also includes compileall, warning-free tests for project-owned code, branch coverage, and real Qt event-order regressions for reproduced GUI defects. Core managed-file, annotation-save, and interoperability modules target 90% branch coverage; other current production modules target 85%. External tool blockers must be recorded rather than bypassed or fabricated.

@@ -23,7 +23,9 @@
 
 | X-AnyLabeling / LabelMe 内容 | DatumDock 当前行为 |
 | --- | --- |
-| `rectangle` | 导入为可编辑矩形框，并映射到项目标签。 |
+| 两点 `rectangle` | 导入为可编辑矩形框，并映射到数据集标签。 |
+| X-AnyLabeling 4.x 轴对齐四点 `rectangle` | 四个角必须能归并为两条 X 边、两条 Y 边并完整覆盖四角；通过后规范化为可编辑矩形。 |
+| 旋转、退化或无法证明轴对齐的四点 `rectangle` | 作为只读兼容 shape 保留并给出警告，不冒充可编辑轴对齐框。 |
 | `label` | 映射到英文训练名；可在导入向导中建立中文别名、描述和颜色。 |
 | `score` | 作为兼容字段保留；不影响人工矩形编辑。 |
 | `group_id`、`description`、`difficult`、`flags`、`attributes` | 保留为 shape 或图片的兼容负载，不在 MVP 主界面编辑。 |
@@ -40,6 +42,7 @@
 - [x] 映射表使用足够行高、可伸缩下拉框和清晰的“别名 · 英文训练名”展示，当前选择不再裁切或重叠。
 - [x] 确认导入后，新标签由 `LabelSetService` 一次修订原子写入；映射 rectangle 使用稳定标签 ID，重启后仍可编辑。
 - [x] 导入报告区分新建、映射和只读保留；若 `labels.txt`、JSON 或图片在预检后变化，会在创建标签前阻止提交并要求重新预检。
+- [x] 导入预检、正式提交、SQLite 框数和 `sample_labels` 使用同一个矩形分类函数，避免界面称为矩形但提交后消失。
 - 标签名称冲突按 DatumDock 标签集比较规则处理，不自动猜测两个不同名称是否同义。
 
 ## 3. 导出为 X-AnyLabeling 可打开目录
@@ -81,9 +84,10 @@ xanylabeling-export/
 - 预检递归配对同相对目录、同 stem 的图片与 JSON，拒绝符号链接、绝对/UNC/盘符/`..` 路径、尺寸冲突、无效 `imageData` 和提交前来源变化。
 - 导入复用 PNG 规范化、重复判断和缩略图，并以单样本恢复日志、文件发布和 SQLite 事务作为提交边界；故障注入证明不会留下半登记样本。
 - 导出在目标父目录同卷暂存，回读全部图片和实际生成的 JSON、核对 shape/尺寸/标签并递归剔除 `datumdock_*` 后才原子发布；失败时最终目录不存在。
-- 自动化当前已覆盖混合 shape 顺序、未知矩形只读保留、扩展字段、无标注图片不生成 JSON、100 图导入/重开/导出、双数据集任务隔离和来源树不变；`labels.txt`、未知标签默认新建、映射 UI 和新标签可编辑矩形闭环仍待按本节补充。
+- 自动化当前已覆盖混合 shape 顺序、未知矩形只读保留、扩展字段、两点矩形、v4.0.0-beta.7 轴对齐四点矩形、旋转四点只读保留、无标注图片不生成 JSON、`labels.txt`、未知标签默认新建、100 图导入/重开/导出、双数据集任务隔离和来源树不变。
+- 工作台导入菜单提供“检查并修复 X-AnyLabeling 标注”：预检不改写 JSON，用户确认后每张图片通过标注恢复协议规范化已有四点矩形并同步 SQLite；失败时保留恢复现场而不伪造成功。
 - 尚未完成：在独立环境中用固定 X-AnyLabeling v3.3.10 实际打开导出目录、编辑矩形、保存并回导。官方源码已取得，但可信 PyPI 安装第三方 GUI 依赖时发生 TLS EOF；官方 Windows CPU 资产下载也因网络过慢超时，未通过完整摘要校验且未执行。未关闭 TLS 校验。
 
 ## English Summary
 
-The next interoperability correction is documented but not yet implemented: import must read JSON shape labels and root `labels.txt`, default unknown labels to dataset-label creation, repair the mapping UI, preserve unsafe names as aliases, and reopen mapped rectangles as editable annotations. Existing recoverable import/export and compatibility-payload tests remain in place, while the external X-AnyLabeling GUI hard gate is still pending.
+Managed import now reads JSON labels and root `labels.txt`, creates unknown dataset labels by default, and converts both classic two-point rectangles and provably axis-aligned four-corner X-AnyLabeling 4.x rectangles into editable annotations. Rotated or ambiguous four-point shapes remain read-only compatibility payloads. Existing datasets can run an explicit recoverable repair flow. The external X-AnyLabeling v3.3.10 GUI hard gate is still pending because trusted dependency downloads remain blocked.

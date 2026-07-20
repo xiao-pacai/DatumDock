@@ -16,6 +16,8 @@
 - 不提交真实数据集、项目工作区、导出训练集、模型权重、个人路径、密钥或大体积缓存。
 - 受管数据、标签迁移、删除、导入、备份和导出必须有明确错误处理，不能静默丢数据。
 - 涉及标注、LabelMe/X-AnyLabeling 互操作、数据划分或 YOLO 导出的变更必须增加或更新自动化测试。
+- 可复现实机缺陷先添加能在旧实现失败的回归；鼠标双击、释放、快捷键焦点等时序必须使用真实 Qt 事件序列覆盖。
+- 完整回归不得带有 DatumDock 自身弃用警告。提交前生成分支覆盖率；核心文件事务、标注和互操作模块目标 90%，其他当前生产模块目标 85%。可信依赖阻塞必须写入路线图，禁止关闭 TLS 校验规避。
 - UI 必须复用现代视觉 v2 的设计令牌、组件层和自有图标语义名；主页可借鉴 Scratch 的友好引导，标注页可借鉴 X-AnyLabeling 的高效工作流，但不得复制第三方品牌、图标、代码或像素布局。
 
 ## 拉取请求
@@ -26,4 +28,4 @@
 
 ## English Summary
 
-Thanks for contributing to DatumDock. Read the product, architecture, UX, visual design v2, and acceptance documents before coding. Keep commits focused; use Chinese code comments and bilingual Markdown summaries; never commit datasets, internal libraries, model weights, secrets, or caches. Managed-data changes require clear failure handling and tests. UI work must use shared modern components and DatumDock-owned assets; Scratch and X-AnyLabeling are principle references, not sources for copied branding or pixel layouts.
+Thanks for contributing to DatumDock. Keep commits focused, preserve managed-data safety, and turn reproduced field defects into real regression tests before fixing them. Full verification includes warning-free project code, branch coverage, and real Qt input-order tests where applicable. Never bypass trusted TLS or fabricate unavailable quality evidence.

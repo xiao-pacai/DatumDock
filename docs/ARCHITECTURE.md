@@ -145,6 +145,7 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 - 纯人工创建首个矩形时写入 `completed`；模型新增或改变任何预测框时写入 `pending_review`。待复核图片的第一次有效人工编辑在保存请求中同时携带目标状态 `completed`。
 - 有效人工编辑来源必须由命令边界明确标记，至少包含创建、移动、缩放、删除、换标签和实际改变文档的撤销/重做；选择、视图变换、搜索、筛选和取消对话框不得伪造编辑来源。
 - `AnnotationAutosaveService` 在同一次 JSON/SQLite 协调保存中提交人工编辑和 `completed`，不能先改状态后写框。任一阶段失败时内存待处理状态与持久化状态仍为 `pending_review`，重试使用最新完整快照。
+- 一个完整用户操作只能生成一个历史节点、一个文档版本和一个保存请求。双击标签改派必须清理点击过程中建立的移动/缩放快照并吞掉对应释放事件；无几何变化的释放不得制造第二次保存。
 - `review.mark_completed` 用于检查后无需编辑的图片，通过 Gateway/Service 在一个事务中更新状态和摘要；按钮与可配置快捷键共用该 `action_id`。写盘失败不得让 UI 先显示完成。
 - 零框且明确确认的图片也使用 `completed`，通过框数为零识别负样本，不保留 `completed_negative` 枚举。
 - v2→v3 迁移规则：`unreviewed` 转为空值，`pending_review` 保持，`completed` 与 `completed_negative` 合并为 `completed`，`issue` 为避免误判完成而转为 `pending_review` 并记录迁移诊断。
@@ -152,8 +153,8 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 - SQLite 迁移必须在事务中完成并保留回滚；主页摘要、筛选、标签检查和导出候选只从新枚举与独立健康字段读取。
 - `trash/` 只保存被选择“移入回收站”的完整样本包及恢复元数据；永久删除和大批量删除不进入该目录。
 - 图片导入时只复制/转码图片，不创建空 LabelMe JSON；首次画框或确认负样本时才创建。索引只保留原始文件名，不持久化外部绝对来源路径。
-- 外部 X-AnyLabeling/LabelMe 文件的兼容载荷与 DatumDock 的可编辑矩形框分层存储：矩形框解析为内部 `label_id` 与像素坐标；其他 shape 及 `flags`、`attributes`、`description`、`difficult`、`score` 等未知或未支持字段保留为只读兼容载荷。`LabelMeRepository` 在写回或导出时按原顺序合并该载荷，不将私有稳定 ID、复核状态或模型元数据泄漏到交换 JSON。交换导出始终复制范围内图片，但仅在文档至少包含一个可编辑或兼容 shape 时写出同名 JSON。
-- `XAnyLabelingInteropService` 的目录导入导出仍是后续边界。步骤四只实现受管池内 LabelMe 的有序兼容读写和私有字段剔除；完整流程仍应遵循“扫描配对 → 校验 → 临时目录 → 交换验证 → 原子发布”。
+- 外部 X-AnyLabeling/LabelMe 文件的兼容载荷与 DatumDock 的可编辑矩形框分层存储：传统两点 rectangle 与可证明轴对齐、包含完整四角的 X-AnyLabeling 4.x rectangle 解析为内部 `label_id` 与像素坐标；旋转、退化、未知标签和其他 shape 及其扩展字段保留为只读兼容载荷。预检、提交、SQLite 框数和反向标签索引必须调用同一个分类函数。`LabelMeRepository` 在写回或导出时按原顺序合并该载荷，不将私有稳定 ID、复核状态或模型元数据泄漏到交换 JSON。
+- `XAnyLabelingInteropService` 已实现“扫描配对 → 校验 → 恢复型单样本提交/临时导出目录 → 回读验证 → 原子发布”。已有受管四点 rectangle 的规范化必须先只读预检，再由用户明确确认；不得因版本升级自动改写真实 JSON。
 - `dataset.json` 包含可选 `naming_policy`。它只定义受管池中图片的整理名称，绝不回写外部来源文件；`DatasetSample.id` 是不随文件名变化的内部身份。
 - 样本 ID 必须独立于文件排序；建议由导入时生成 UUID，并记录原始规范化路径、最终 PNG 内容哈希和文件指纹用于完全重复检测。
 - 标注数据优先存储稳定标签 ID，并在读写 LabelMe/YOLO 时解析到英文训练名或类别 ID；这能避免中文别名或描述修改影响既有标注。

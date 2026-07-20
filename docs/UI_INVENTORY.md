@@ -1,6 +1,6 @@
 # DatumDock UI 与步骤四页面清单
 
-> 状态：步骤四及 A0.5～A0.10 已实现并复验。主页整数据集删除与 X-AnyLabeling 标签整改已接入正式服务；第三方 X-AnyLabeling 应用实机验证仍受外部依赖安装阻塞。模型、YOLO 导出和备份仍只提供界面或待接入提示。
+> 状态：步骤四及 A0.5～A0.11 已接入。主页整数据集删除、X-AnyLabeling 标签/四点矩形整改、保存诊断和源码界面语义图标已接入正式服务；第三方 X-AnyLabeling 应用实机验证仍受外部依赖安装阻塞。模型、YOLO 导出和备份仍只提供界面或待接入提示。
 
 ## 0. 本轮实现记录
 
@@ -85,6 +85,7 @@
 | `yolo_export` | YOLO Detection 导出 | 范围、比例、种子、统计和目录结构预览 |
 | `xany_import` | X-AnyLabeling 导入 | 正式目录预检、问题表、标签映射、重复决策、后台提交与报告 |
 | `xany_export` | X-AnyLabeling 导出 | 正式范围选择、阻断项预检、仅为含 shape 图片生成 JSON、原子目录生成、验证与报告 |
+| `xany_repair` | 检查并修复 X-AnyLabeling 标注 | 只读扫描已有受管 JSON，显示可转换四点矩形和只读保留项；确认后按单图片恢复边界规范化并同步索引 |
 | `xany_exchange` | X-AnyLabeling 原型兼容别名 | 仅保留预览和旧覆盖兼容，不再作为普通模式正式入口 |
 | `backup_export` | 数据集备份导出 | 包含项、模型二进制排除说明 |
 | `backup_import` | 备份导入与完整性检查 | 版本、清单、校验和迁入名称 |
@@ -121,7 +122,7 @@
 
 - 品牌区、页面标题、面包屑、预览横幅、响应式操作栏和 Toast。
 - 主按钮、次按钮、幽灵按钮、危险按钮、图标工具按钮和分段按钮。
-- 图标绑定清单：应用/任务栏 `DD`、完整字标、返回、画布工具、设置、更多和列表/网格已接入；首页导航、工作台顶部导入/导出/标签/模型、数据集卡片、向导、危险操作与状态报告标记为待补齐，不因 SVG 文件存在而视为完成。
+- 图标绑定清单：应用/任务栏 `DD`、完整字标、首页导航、工作台顶部导入/导出/标签/模型、数据集卡片、画布工具、标签/图片治理、状态/诊断和危险操作已接入。删除矩形、图片和整数据集使用独立语义 SVG；安装快捷方式图标仍归发布阶段。
 - 输入框、搜索框、下拉框、筛选 chip、开关、步进输入和帮助问号。
 - 数据集卡片、教程卡片、统计卡片、快速开始步骤和状态徽标。
 - 表格、分页/虚拟列表、缩略图项、标注项和数据差异行。
@@ -140,4 +141,4 @@
 
 ## English Summary
 
-This inventory records whole-dataset deletion as implemented and tracks icon integration separately. DD branding and several canvas/navigation icons are connected, while home navigation, top workbench actions, dataset cards, wizards, danger actions, and status reports remain pending binding and visual verification.
+This inventory records whole-dataset deletion, X-AnyLabeling import/export and repair, actionable save diagnostics, and source-GUI semantic icons as connected. Third-party X-AnyLabeling GUI verification remains externally blocked; model inference, YOLO export, backups, cross-dataset governance, and packaging remain future work.

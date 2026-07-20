@@ -40,7 +40,7 @@
 
 - `python -m datumdock` 使用 `ManagedDatasetGateway` 与 `%LOCALAPPDATA%\DatumDock` 真实资料库；只有初始化无法安全完成时才降级为 `UnavailableGateway`。
 - `python -m datumdock --ui-preview` 始终使用独立 `PreviewGateway`，创建、改名、切换和关闭都不读取或修改真实资料库。
-- 普通模式不使用演示图片、标签、模型或统计。步骤四已将真实标签、矩形编辑、自动保存和复核接入；AI、模型、YOLO、完整 X-AnyLabeling 目录交换与备份仍明确提示后续接入。
+- 普通模式不使用演示图片、标签、模型或统计。步骤四已将真实标签、矩形编辑、自动保存和复核接入；当时尚未接入的 X-AnyLabeling 目录交换后来由步骤五实现。AI、模型、YOLO 与备份当前仍明确提示后续接入。
 - 新建和已有空数据集进入同一个真实工作台；顶部切换会重建当前数据集上下文，不会串入另一个数据集的数据。
 
 ## 4. Python 3.11 与自动化证据
@@ -272,9 +272,9 @@ $env:QT_QPA_PLATFORM = "offscreen"
 - 普通模式顶部导入/导出菜单已打开真实 `ManagedXAnyImportDialog` 和 `ManagedXAnyExportDialog`；预览模式继续使用内存原型，零写盘。
 - 自动化验证覆盖安全目录扫描、同 stem 配对、路径逃逸、来源变化、显式标签映射、重复决策、未知 shape 只读保留、私有字段递归清理、失败不发布和两个数据集任务隔离。
 - 100 图用例完成“导入 → 重启 Repository/Service → 分页浏览 → 导出 100 个 PNG/JSON → 核对 `labels.txt`”闭环。
-- Python 3.11 最新全量质量门结果为 `236 passed、1 skipped、14 warnings`；普通/预览模式均进入 Qt 事件循环。普通临时模式生成 2 个初始化文件，预览模式生成 0 个文件。根目录 `labels.txt`、未知标签默认新建、映射 UI 修复和新建标签可编辑矩形闭环已经完成自动化复验。
+- 该阶段当时的 Python 3.11 全量结果为 `236 passed、1 skipped、14 warnings`；这是历史证据，不再代表 2026-07-21 稳定化后的当前清单。普通/预览模式均进入 Qt 事件循环，普通临时模式生成 2 个初始化文件，预览模式生成 0 个文件。
 - 近期集中整改另在隔离资料库生成 30 张中英文原生截图，覆盖标签映射、导入/导出报告、最大化工作台、整数据集删除确认和精确保存错误；输出位于忽略提交的 `build/ui-review/recent-corrections/`。
-- 图标专项复核结论：资源没有丢失，仓库仍有双色 `DD` PNG/ICO 和 33 个 SVG；但当前只有窗口/任务栏、品牌区、返回、画布工具、设置、更多和列表/网格等部分入口真实绑定。首页导航、工作台顶部四个主操作、数据集卡片与部分弹窗仍是纯文字或字符占位，因此 A0.11 保持待实施，不能计入视觉完成分。
+- 图标专项历史结论：当时资源存在但绑定不完整；该结论已由下方 2026-07-21 A0.11 稳定化证据取代。
 - 真实 `%LOCALAPPDATA%\DatumDock` 复验前后均为 707 个文件，树哈希保持 `A42D4762FF14EDD1AE633B619B3AD83D72F1167D426EEA5FE5A63E591023DF5B`。
 - 离屏 Qt 首轮截图因无法枚举系统字体而显示方框，未计作证据；随后在原生 Windows Qt 平台重新生成中文/英文 × 三分辨率的导入预检、标签映射、导出预检和导出结果截图，共 24 张，文字和布局均可读。
 - 官方 X-AnyLabeling `v3.3.10` 源码已检出；可信 PyPI 安装第三方 GUI 依赖时遇到 TLS EOF。官方 Windows CPU 资产的发布元数据和 SHA-256 已取得，但一次 7 分钟下载仅完成 372,736 / 237,982,456 字节，未校验、未执行；实际打开、编辑、保存和回导仍未验证。
@@ -291,6 +291,16 @@ $env:QT_QPA_PLATFORM = "offscreen"
 
 由于实际 X-AnyLabeling 验证属于不可被评分抵消的硬闸门，步骤五保持“正式实现完成、外部验收受阻”，不使用计划中的完成交付表述，也不宣称完整 L2。
 
+## 24. 已实现功能稳定化复验（2026-07-21）
+
+- X-AnyLabeling 4.x 轴对齐完整四角 rectangle 与传统两点 rectangle 共用分类边界，导入后成为可编辑矩形；旋转、退化或不能证明轴对齐的四点内容只读保留。
+- 工作台新增显式四点矩形检查/修复向导。预检不改写文件；确认后使用标注恢复协议规范化 JSON 并同步 SQLite。
+- 双击标签改派清理鼠标拖动事务并吞掉配对释放，无几何变化的释放不再产生第二个版本；实机问题已固化为“一次改派、一次保存”回归。
+- 保存失败状态栏可打开可复制详情，区分版本冲突、外部修改、权限、磁盘空间、SQLite、验证和恢复失败，不再把所有原因误报为权限。
+- A0.11 源码界面使用 42 个自有 SVG；首页、工作台、数据集卡片、标签/图片治理和三种删除语义均有实际绑定。安装快捷方式图标仍待发布阶段。
+- 当前自动化清单为 248 项；Pillow 弃用警告已清零。完整连续回归、覆盖率 TLS 阻塞和外部 X-AnyLabeling v3.3.10 硬门槛详见 `STABILIZATION_AUDIT.md`。
+- Windows 原生截图复验额外发现并关闭英文复核动作和排序控件裁切；空复核值现只显示 `—`，`Complete / Delete Box` 与 `A–Z / Z–A` 在工作台右栏完整显示。
+
 ## English Summary
 
-Managed X-AnyLabeling import/export, recovery, automated round trips, and readable bilingual native-platform screenshots are implemented. Step 5 remains below its external GUI hard gate. The icon audit confirms that assets were not removed, but binding is incomplete across several home, workbench, dataset-card, and dialog controls; A0.11 therefore remains pending. Model inference, YOLO export, backups, and packaging remain future work.
+Managed X-AnyLabeling import/export and recoverable four-point rectangle repair are implemented, including editable axis-aligned four-corner rectangles and read-only preservation for rotated cases. Duplicate label-change autosaves and generic save errors are fixed. A0.11 source-GUI semantic icon bindings are complete, while installer shortcut icons remain future work. Step 5 remains below its external X-AnyLabeling GUI hard gate; model inference, YOLO export, backups, cross-dataset governance, and packaging remain future work.

@@ -13,10 +13,11 @@
 7. [交互与界面规范](UX.md)：页面结构、标注操作、控件位置和交互反馈。
 8. [现代视觉设计规范 v2](VISUAL_DESIGN.md)：Scratch/X-AnyLabeling 参考边界、颜色、组件、图标、动效和视觉验收。
 9. [UI 与页面清单](UI_INVENTORY.md) 与 [UI/步骤四交付报告](UI_REVIEW.md)：路由、弹窗、真实资料库/图片池/标注入口、预览边界、截图和评分。
-10. [代码规范](CODE_STYLE.md)：Ruff、测试、中文注释和 Python 编码约定。
-11. [路线图](ROADMAP.md)：当前应执行的最小可验证任务。
-12. [验收标准](ACCEPTANCE.md)：功能完成前必须满足的可操作或可自动验证条件。
-13. [X-AnyLabeling 对标基线](X_ANYLABELING_BASELINE.md) 与 [互操作规范](X_ANYLABELING_INTEROP.md)：对外宣称兼容/对标前必须满足的质量与格式边界。
+10. [稳定化审计](STABILIZATION_AUDIT.md)：截至步骤五的缺陷账本、真实证据、外部阻塞和不得越界的完成声明。
+11. [代码规范](CODE_STYLE.md)：Ruff、测试、中文注释和 Python 编码约定。
+12. [路线图](ROADMAP.md)：当前应执行的最小可验证任务。
+13. [验收标准](ACCEPTANCE.md)：功能完成前必须满足的可操作或可自动验证条件。
+14. [X-AnyLabeling 对标基线](X_ANYLABELING_BASELINE.md) 与 [互操作规范](X_ANYLABELING_INTEROP.md)：对外宣称兼容/对标前必须满足的质量与格式边界。
 
 ## 文档职责
 
@@ -31,6 +32,7 @@
 | `VISUAL_DESIGN.md` | 定义现代视觉方向、主题 token、组件语言、参考边界和截图验收。 | 业务交互与已实现状态。 |
 | `UI_INVENTORY.md` | 登记 UI 路由、弹窗、组件，以及步骤四真实/预览操作矩阵。 | 底层存储契约。 |
 | `UI_REVIEW.md` | 记录步骤四截图、验证、评分和已知边界。 | 后续模型/导出验收。 |
+| `STABILIZATION_AUDIT.md` | 登记当前已实现功能的缺陷、修复证据、质量门和外部阻塞。 | 未来功能完成声明。 |
 | `CODE_STYLE.md` | 定义代码格式、中文注释和测试执行方式。 | 业务需求和产品优先级。 |
 | `ROADMAP.md` | 定义开发顺序与进行状态。 | 完成质量的唯一证明。 |
 | `ACCEPTANCE.md` | 定义完成的可验证条件。 | 功能设计或实现计划。 |

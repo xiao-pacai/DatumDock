@@ -8,7 +8,7 @@
 | --- | --- |
 | `datumdock-wordmark-v3.png` | 1821 × 864、透明背景的当前主字标；左侧 `D` 分别为浅橙色和浅蓝色，用于 README、项目网站、文档和应用关于页。 |
 | `datumdock-app-icon.png` | 从主字标左侧双色 `DD` 标记派生的 1024 × 1024 透明应用图标，用于应用内紧凑品牌展示和发布资产生成。 |
-| `datumdock-app-icon.ico` | 包含 16～256 像素多尺寸的 Windows 应用图标；源码窗口、任务栏、可执行文件、开始菜单与安装包统一使用。 |
+| `datumdock-app-icon.ico` | 包含 16～256 像素多尺寸的 Windows 应用图标；源码窗口与任务栏已使用，未来可执行文件、开始菜单与安装包仍需发布阶段验证。 |
 | `datumdock-wordmark-v2.png` | 1823 × 863、透明背景的上一版绿色主字标，保留以便回顾与比较。 |
 | `datumdock-logo.png` | 1254 × 1254、透明背景的首版抽象草稿；暂不再作为主品牌引用，保留以便回顾与比较。 |
 
@@ -21,4 +21,4 @@
 
 ## English Summary
 
-The current DatumDock brand uses a light-orange and light-blue interlocking `DD` monogram followed by the dark-charcoal name. The standalone DD mark is the unified Windows window, taskbar, executable, Start menu, and installer icon, while `datumdock-wordmark-v3.png` remains the primary full lockup.
+The current DatumDock brand uses a light-orange and light-blue interlocking `DD` monogram followed by the dark-charcoal name. The standalone DD mark is verified for source-mode Windows windows and taskbars; executable, Start-menu, and installer integration remains a future packaging gate. `datumdock-wordmark-v3.png` remains the primary full lockup.

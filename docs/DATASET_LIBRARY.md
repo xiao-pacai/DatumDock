@@ -179,11 +179,16 @@ flowchart LR
 
 ## 7. 与现有需求的关系
 
-以下既有能力继续保留，但归属由“项目或工作区”调整为“当前数据集”：
+以下能力按“当前已实现”和“后续规划”明确区分；两者都归属于当前数据集，不再使用项目或工作区作为用户可见父级。
+
+当前已实现：
 
 - 数据集级标签管理、颜色、别名、描述、同义词与标签检查。
 - 受管图片池、完全重复检查、近似组、统一 PNG、重命名与删除。
 - 矩形框标注、待复核/已完成双状态与 X-AnyLabeling 双向互操作。
+
+后续规划，当前不得表述为可用：
+
 - ONNX / Ultralytics YOLO 模型管理、待复核自动标注和人工确认已完成。
 - 按比例生成 YOLO 训练集，以及后续可注册的其他格式导出器。
 - 数据集备份导入导出；模型二进制仍单独分享。
@@ -241,4 +246,4 @@ flowchart LR
 
 ## English Summary
 
-DatumDock's managed library uses isolated UUID dataset directories. Whole-dataset deletion is now a locked requirement: archive remains reversible, while permanent deletion requires impact preflight, exact-name and final confirmation, a recoverable operation manifest, and strict exclusion of external sources, exports, and backups. This requirement is documented but not yet implemented.
+DatumDock's managed library uses isolated UUID dataset directories. Whole-dataset permanent deletion is implemented with impact preflight, exact-name and final confirmation, a recoverable operation manifest, and strict exclusion of external sources, exports, and backups. Archive remains the reversible alternative. Model inference, YOLO export, backups, and cross-dataset governance are still future work.
