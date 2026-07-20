@@ -14,6 +14,7 @@ from datumdock.resources import application_icon_path
 from datumdock.services.shortcuts import ActionRegistry, ShortcutProfileService
 from datumdock.ui.annotation_workspace import AnnotationWorkspace
 from datumdock.ui.components import ToastOverlay
+from datumdock.ui.dataset_deletion_dialog import ManagedDatasetDeletionDialog
 from datumdock.ui.managed_gateway import ManagedDatasetGateway
 from datumdock.ui.managed_governance_pages import ManagedGovernancePage
 from datumdock.ui.managed_interop_dialogs import (
@@ -344,6 +345,7 @@ class ApplicationShell(QMainWindow):
             DialogId.DATASET_DIAGNOSTICS,
             DialogId.RENAME_DATASET,
             DialogId.ARCHIVE_DATASET,
+            DialogId.DELETE_DATASET,
             DialogId.IMAGE_IMPORT,
             DialogId.XANY_IMPORT,
             DialogId.XANY_EXPORT,
@@ -359,6 +361,9 @@ class ApplicationShell(QMainWindow):
             return
         if not self.gateway.preview_mode and identifier == DialogId.IMAGE_IMPORT:
             self._open_managed_import(dataset_id)
+            return
+        if not self.gateway.preview_mode and identifier == DialogId.DELETE_DATASET:
+            self._open_dataset_deletion(dataset_id)
             return
         if not self.gateway.preview_mode and identifier == DialogId.XANY_IMPORT:
             self._open_managed_xany_import(dataset_id)
@@ -450,6 +455,30 @@ class ApplicationShell(QMainWindow):
         dialog.finished.connect(lambda: self._forget_dialog(dialog))
         self._active_dialogs.append(dialog)
         dialog.open()
+
+    def _open_dataset_deletion(self, dataset_id: str) -> None:
+        """打开整数据集危险确认；成功后清除旧工作台并回到主页。"""
+
+        if not dataset_id or not isinstance(self.gateway, ManagedDatasetGateway):
+            self.show_message("toast.dataset_unavailable")
+            return
+        dialog = ManagedDatasetDeletionDialog(
+            self.locale_service,
+            self.gateway,
+            dataset_id,
+            self,
+        )
+        dialog.deletion_finished.connect(self._dataset_deletion_finished)
+        dialog.finished.connect(lambda: self._forget_dialog(dialog))
+        self._active_dialogs.append(dialog)
+        dialog.open()
+
+    def _dataset_deletion_finished(self, _dataset_id: str) -> None:
+        home = self.navigation.pages.get(RouteId.HOME)
+        if isinstance(home, HomePage):
+            home.update_snapshot(self.gateway.home_snapshot())
+        self.navigation.navigate(RouteId.HOME, remember=False)
+        self.show_message("toast.dataset_deleted")
 
     def _managed_import_finished(self, sample_id: str) -> None:
         workspace = self.navigation.pages.get(RouteId.ANNOTATION_WORKSPACE)

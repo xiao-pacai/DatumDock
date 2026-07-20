@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sqlite3
@@ -129,6 +130,14 @@ class DatasetLibraryRepository:
             write_json_atomic(self.path, validated)
         except (OSError, ValidationError, DatasetRepositoryError) as error:
             raise LibraryRepositoryError(f"资料库索引写入失败: {error}") from error
+
+    def digest(self) -> str:
+        """返回当前资料库字节摘要，供危险事务绑定预检快照。"""
+
+        try:
+            return hashlib.sha256(self.path.read_bytes()).hexdigest()
+        except OSError as error:
+            raise LibraryRepositoryError(f"资料库索引摘要读取失败: {error}") from error
 
     def _ensure_roots(self) -> None:
         """创建固定内部目录，并拒绝资料库关键目录上的符号链接。"""

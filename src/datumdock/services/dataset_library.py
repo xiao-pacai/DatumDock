@@ -121,6 +121,10 @@ class DatasetLibraryService:
         self.library_repository = DatasetLibraryRepository(root)
         self.dataset_repository = DatasetRepository(root)
         self._library = self.library_repository.initialize()
+        # 整数据集删除在目录对账前恢复，避免暂存中的已登记数据被误判为损坏。
+        from datumdock.services.dataset_deletion import recover_dataset_deletions
+
+        self.dataset_deletion_recovery_report = recover_dataset_deletions(self)
         self.recovery_report = self._reconcile_library()
         self.sample_reconciliation_reports: dict[str, SampleReconciliationReport] = {}
         self.sample_diagnostics: dict[str, str] = {}
@@ -131,6 +135,36 @@ class DatasetLibraryService:
         """返回资料库索引的深副本，调用方不能绕过服务修改登记。"""
 
         return self._library.model_copy(deep=True)
+
+    def registered_entry(self, dataset_id: str) -> DatasetLibraryEntry:
+        """返回登记项副本，危险操作不得直接修改内存资料库。"""
+
+        return self._entry(dataset_id).model_copy(deep=True)
+
+    def is_registered(self, dataset_id: str) -> bool:
+        """启动恢复用登记事实判断恢复目录还是继续清理。"""
+
+        return any(entry.id == dataset_id for entry in self._library.datasets)
+
+    def remove_registration_for_deletion(
+        self,
+        dataset_id: str,
+        *,
+        expected_library_sha256: str,
+    ) -> None:
+        """仅删除主页登记；调用方必须先把完整 UUID 目录移入同卷暂存区。"""
+
+        if self.library_repository.digest() != expected_library_sha256:
+            raise DatasetLibraryServiceError("资料库索引在删除确认后发生变化")
+        index = self._entry_index(dataset_id)
+        updated = self._library.model_copy(deep=True)
+        updated.datasets.pop(index)
+        updated.updated_at = utc_now()
+        try:
+            self.library_repository.save(updated)
+        except Exception as error:
+            raise DatasetLibraryServiceError(f"移除数据集登记失败: {error}") from error
+        self._library = updated
 
     def list_datasets(self, *, include_archived: bool = True) -> list[ManagedDatasetRecord]:
         """逐项验证并返回主页记录，损坏项转换为诊断记录。"""

@@ -159,6 +159,7 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "action.add_label": "新增标签",
         "action.edit": "编辑",
         "action.archive": "归档",
+        "action.delete_dataset": "永久删除数据集",
         "action.inspect": "查看图片",
         "action.compare": "比较标签集",
         "action.import_model": "导入模型",
@@ -348,6 +349,28 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "dialog.rename.title": "批量重命名预览",
         "dialog.dataset_rename.title": "重命名数据集",
         "dialog.delete.title": "删除受管图片",
+        "dialog.dataset_delete.title": "永久删除数据集",
+        "dialog.dataset_delete.warning": (
+            "此操作会永久移除该数据集的受管图片、标注、标签、模型、索引、缓存和回收站，"
+            "无法撤销。外部来源文件不会被修改。"
+        ),
+        "dialog.dataset_delete.loading": "正在只读统计删除影响……",
+        "dialog.dataset_delete.summary": "即将永久删除“{name}”",
+        "dialog.dataset_delete.images": "图片",
+        "dialog.dataset_delete.annotations": "标注文件",
+        "dialog.dataset_delete.rectangles": "矩形框",
+        "dialog.dataset_delete.labels": "标签",
+        "dialog.dataset_delete.models": "模型文件",
+        "dialog.dataset_delete.files": "总文件数",
+        "dialog.dataset_delete.space": "占用空间",
+        "dialog.dataset_delete.type_name": "请输入完整数据集名称（区分大小写）以继续：",
+        "dialog.dataset_delete.action": "永久删除数据集",
+        "dialog.dataset_delete.final_title": "最终不可撤销确认",
+        "dialog.dataset_delete.final_body": (
+            "确定永久删除“{name}”吗？此操作完成后无法从 DatumDock 恢复。"
+        ),
+        "dialog.dataset_delete.failed": "删除未完成。请查看下方诊断，数据不会被伪报为已删除。",
+        "toast.dataset_deleted": "数据集已从内部资料库永久删除。",
         "dialog.delete.body": "图片、标注、索引和缩略图会一并处理；外部来源文件不受影响。",
         "dialog.delete.scope": "受管图片 · LabelMe JSON · 索引 · 缩略图",
         "dialog.delete.trash": "图片、关联标注和缩略图将移入数据集回收站，可以恢复。继续吗？",
@@ -654,6 +677,7 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "action.add_label": "Add Label",
         "action.edit": "Edit",
         "action.archive": "Archive",
+        "action.delete_dataset": "Delete Dataset Permanently",
         "action.inspect": "View Images",
         "action.compare": "Compare Label Sets",
         "action.import_model": "Import Model",
@@ -876,6 +900,33 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "dialog.rename.title": "Batch Rename Preview",
         "dialog.dataset_rename.title": "Rename Dataset",
         "dialog.delete.title": "Delete Managed Images",
+        "dialog.dataset_delete.title": "Permanently Delete Dataset",
+        "dialog.dataset_delete.warning": (
+            "This permanently removes the managed images, annotations, labels, models, "
+            "index, caches, and Trash for this dataset. External source files are never modified."
+        ),
+        "dialog.dataset_delete.loading": "Calculating the deletion impact in read-only mode…",
+        "dialog.dataset_delete.summary": "Permanently delete “{name}”",
+        "dialog.dataset_delete.images": "Images",
+        "dialog.dataset_delete.annotations": "Annotation files",
+        "dialog.dataset_delete.rectangles": "Rectangles",
+        "dialog.dataset_delete.labels": "Labels",
+        "dialog.dataset_delete.models": "Model files",
+        "dialog.dataset_delete.files": "Total files",
+        "dialog.dataset_delete.space": "Disk space",
+        "dialog.dataset_delete.type_name": (
+            "Type the full dataset name (case-sensitive) to continue:"
+        ),
+        "dialog.dataset_delete.action": "Delete Dataset Permanently",
+        "dialog.dataset_delete.final_title": "Final Irreversible Confirmation",
+        "dialog.dataset_delete.final_body": (
+            "Permanently delete “{name}”? DatumDock cannot restore it after completion."
+        ),
+        "dialog.dataset_delete.failed": (
+            "Deletion did not complete. Review the diagnostic details below; DatumDock will "
+            "not report a false success."
+        ),
+        "toast.dataset_deleted": "The dataset was permanently removed from the internal library.",
         "dialog.delete.body": (
             "Images, annotations, indexes, and thumbnails are handled together; external "
             "sources are untouched."

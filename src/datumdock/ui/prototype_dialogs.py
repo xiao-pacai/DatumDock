@@ -46,6 +46,7 @@ class DialogId(StrEnum):
     DATASET_DIAGNOSTICS = "dataset_diagnostics"
     RENAME_DATASET = "rename_dataset"
     ARCHIVE_DATASET = "archive_dataset"
+    DELETE_DATASET = "delete_dataset"
     LABEL_EDITOR = "label_editor"
     LABEL_COLOR = "label_color"
     QUICK_LABEL_SELECTOR = "quick_label_selector"
@@ -80,6 +81,7 @@ TITLE_KEYS = {
     DialogId.DATASET_DIAGNOSTICS: "home.diagnostics",
     DialogId.RENAME_DATASET: "dialog.dataset_rename.title",
     DialogId.ARCHIVE_DATASET: "action.archive",
+    DialogId.DELETE_DATASET: "dialog.dataset_delete.title",
     DialogId.LABEL_EDITOR: "action.add_label",
     DialogId.LABEL_COLOR: "table.color",
     DialogId.QUICK_LABEL_SELECTOR: "quick_label.title",

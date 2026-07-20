@@ -23,6 +23,11 @@ from datumdock.services.annotations import (
     AnnotationService,
     AutosaveState,
 )
+from datumdock.services.dataset_deletion import (
+    DatasetDeletionPreflight,
+    DatasetDeletionRequest,
+    DatasetDeletionService,
+)
 from datumdock.services.dataset_library import (
     DatasetLibraryService,
     DatasetLibraryServiceError,
@@ -75,7 +80,7 @@ from datumdock.services.sample_repository import (
     TrashItem,
 )
 from datumdock.services.settings import AppSettingsError, AppSettingsRepository
-from datumdock.services.tasks import BackgroundTaskService, TaskSnapshot
+from datumdock.services.tasks import BackgroundTaskService, TaskSnapshot, TaskState
 from datumdock.ui.prototype_models import (
     CommandStatus,
     DatasetCardViewData,
@@ -102,6 +107,7 @@ class ManagedDatasetGateway:
         self.tasks = BackgroundTaskService()
         self._preflights: dict[str, ImageImportPreflight] = {}
         self._xany_import_preflights: dict[str, XAnyImportPreflight] = {}
+        self._dataset_deletion_preflights: dict[str, DatasetDeletionPreflight] = {}
         self._annotation_autosaves: dict[str, AnnotationAutosaveService] = {}
 
     @classmethod
@@ -536,6 +542,58 @@ class ManagedDatasetGateway:
 
     def cancel_task(self, task_id: str) -> bool:
         return self.tasks.cancel(task_id)
+
+    def start_dataset_deletion_preflight(self, dataset_id: str) -> str:
+        """后台统计删除影响；预检只读且绑定当前运行时阻塞状态。"""
+
+        blockers = self._dataset_deletion_runtime_blockers(dataset_id)
+        deletion = DatasetDeletionService(self.service)
+
+        def work(context):
+            context.phase("dataset_deletion_preflight")
+            result = deletion.preflight(dataset_id, runtime_blockers=blockers)
+            self._dataset_deletion_preflights[result.id] = result
+            context.progress(result.impact.total_file_count, result.impact.total_file_count)
+            return result
+
+        return self.tasks.start(dataset_id, "dataset_deletion_preflight", work)
+
+    def start_dataset_deletion(self, request: DatasetDeletionRequest) -> str:
+        """重新检查运行时写入者后提交不可取消的同卷暂存删除。"""
+
+        current = self._dataset_deletion_preflights.pop(request.preflight.id, None)
+        if current is None or current != request.preflight:
+            raise DatasetLibraryServiceError("整数据集删除预检不存在或已变化")
+        blockers = self._dataset_deletion_runtime_blockers(request.preflight.dataset_id)
+        if blockers:
+            raise DatasetLibraryServiceError("；".join(blockers))
+        deletion = DatasetDeletionService(self.service)
+
+        def work(context):
+            context.phase("dataset_deletion_commit")
+            # 删除提交从移动 UUID 目录开始就是不可取消原子步骤，关闭应用也必须等待。
+            return deletion.delete(request)
+
+        return self.tasks.start(request.preflight.dataset_id, "dataset_deletion_commit", work)
+
+    def discard_dataset_deletion_preflight(self, preflight_id: str) -> None:
+        """关闭确认页时仅丢弃只读预检快照。"""
+
+        self._dataset_deletion_preflights.pop(preflight_id, None)
+
+    def _dataset_deletion_runtime_blockers(self, dataset_id: str) -> tuple[str, ...]:
+        blockers: list[str] = []
+        autosave = self._annotation_autosaves.get(dataset_id)
+        if autosave is not None and autosave.state in {AutosaveState.SAVING, AutosaveState.FAILED}:
+            blockers.append("当前数据集仍有正在保存或保存失败的标注")
+        for snapshot in self.tasks.active_snapshots():
+            if snapshot.dataset_id != dataset_id:
+                continue
+            if snapshot.kind == "dataset_deletion_preflight":
+                continue
+            if snapshot.state in {TaskState.QUEUED, TaskState.RUNNING}:
+                blockers.append(f"当前数据集仍有写入型后台任务：{snapshot.kind}")
+        return tuple(dict.fromkeys(blockers))
 
     def preview_rename(
         self,

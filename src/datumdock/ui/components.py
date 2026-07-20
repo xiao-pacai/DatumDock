@@ -367,6 +367,7 @@ class DatasetCard(SectionCard):
     rename_requested = Signal(str)
     archive_requested = Signal(str)
     restore_requested = Signal(str)
+    delete_requested = Signal(str)
 
     def __init__(
         self,
@@ -400,6 +401,11 @@ class DatasetCard(SectionCard):
         if data.health == DatasetHealth.DAMAGED:
             diagnostics = menu.addAction(tr(locale, "home.diagnostics"))
             diagnostics.triggered.connect(lambda: self.diagnostics_requested.emit(data.id))
+        if data.health in {DatasetHealth.READY, DatasetHealth.DAMAGED} or data.archived:
+            if not menu.isEmpty():
+                menu.addSeparator()
+            delete_dataset = menu.addAction(tr(locale, "action.delete_dataset"))
+            delete_dataset.triggered.connect(lambda: self.delete_requested.emit(data.id))
         more.setMenu(menu)
         more.setEnabled(not menu.isEmpty())
         title_row.addWidget(more)

@@ -465,6 +465,9 @@ class HomePage(BasePage):
                     "dataset.restore", {"dataset_id": dataset_id}
                 )
             )
+            card.delete_requested.connect(
+                lambda dataset_id: self.dialog_requested.emit(f"delete_dataset:{dataset_id}")
+            )
             self.dataset_grid.addWidget(
                 card,
                 position // self._column_count,
