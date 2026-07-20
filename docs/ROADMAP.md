@@ -57,7 +57,7 @@
 
 - [x] 实现导入文件/递归文件夹到当前数据集受管池、样本索引与去重提示；不跟随符号链接。
 - [x] 实现 JPG/JPEG、PNG、BMP、WebP、TIFF 导入与统一 PNG 转码、EXIF 校正、重复图对比确认、进度、取消和失败报告。
-- [ ] 实现 X-AnyLabeling/LabelMe 目录导入：递归配对图片和同名 JSON、将矩形框转换为当前数据集可编辑标注、保留暂不支持的 shape 与扩展字段。
+- [-] 实现 X-AnyLabeling/LabelMe 目录导入：正式受管预检、显式标签映射、重复决策、恢复型提交、未知 shape/字段保留与 100 图自动闭环已完成；等待 X-AnyLabeling v3.3.10 实机打开、编辑和回导后再勾选。
 - [-] 实现近似图片候选扫描、相似组人工确认/忽略，并提供已确认组稳定查询；组内编辑/拆分和导出 `SplitPlanner` 约束待后续实现。
 - [x] 实现 SQLite v1 数据集索引、虚拟样本列表、按需缩略图和可取消后台任务，10,000 条压力测试不全量实例化。
 - [x] 实现数据集池列表/网格、搜索、基础状态筛选、排序、分页与当前图片后台加载。
@@ -171,8 +171,8 @@
 ## 阶段 4：标注持久化与模型格式导出
 
 - [x] 实现受管池内 LabelMe JSON 有序读取、矩形框原子写入和私有稳定 ID。
-- [ ] 实现 X-AnyLabeling 交换目录导出（PNG、同名 LabelMe JSON、`labels.txt`），并以 X-AnyLabeling 实际打开作为回归验证。
-- [-] 实现兼容载荷回写：受管保存、重命名和标签迁移已覆盖，完整目录导出后的不丢失仍待 X-AnyLabeling 阶段验证。
+- [-] 实现 X-AnyLabeling 交换目录导出（PNG、同名 LabelMe JSON、`labels.txt`）：临时目录生成、回读验证、私有字段递归清理和原子发布已完成；等待独立 X-AnyLabeling 实机回归后勾选。
+- [-] 实现兼容载荷回写：自动化双向回归已证明混合 shape 顺序、未知 shape 和扩展字段保留；第三方应用实际打开证据仍被外部依赖安装阻塞。
 - [x] 覆盖正常、损坏、缺失和未知标签 JSON 的测试；损坏文件原字节保持不变。
 - [ ] 实现数据集级模型目录、模型管理页面和模型条目增删改查。
 - [ ] 实现 ONNX 模型导入、元数据/输入输出探测、本地校验与可编辑运行配置。
@@ -193,7 +193,7 @@
 
 - [x] 实现撤销/重做、Delete、Esc、Ctrl+S 等当前矩形工作流核心操作；复制/粘贴不属于步骤四门槛。
 - [-] 实现标注质量检查：旧代码已覆盖空/未知标签、越界框、无效面积和受管文件缺失；待处理状态与数据集级批量质量报告仍待完成。
-- [ ] 完成 100 张以上图片的浏览、编辑、保存、重开与导出回归验证。
+- [-] 完成 100 张以上图片的浏览、编辑、保存、重开与导出回归验证：DatumDock 自动化闭环已通过；X-AnyLabeling 中的人工编辑回导仍待外部环境恢复。
 - [ ] 对照 `docs/X_ANYLABELING_BASELINE.md` 完成 L2 必需项并发布差异清单。
 
 ## 阶段 5：MVP 后增强
@@ -215,6 +215,18 @@
 - [ ] 在无 Python 开发环境的 Windows 测试机上验证安装、启动、导入和 YOLO 导出流程。
 
 ## 当前外部阻塞记录
+
+- [-] 步骤五 X-AnyLabeling v3.3.10 实际打开、编辑、保存与回导尚未完成。
+  - 原因：已从官方仓库检出稳定标签 `v3.3.10`（提交 `7abf2a7`），但隔离 Python 3.11 环境从可信 PyPI 安装其 PyQt5、PyQtWebEngine、OpenCV 等依赖时发生 TLS `SSLEOFError`。随后查询官方发布 API，确认 Windows CPU 资产大小为 237,982,456 字节、SHA-256 为 `33f41281e18916d47e4aec002560f4eef08049cda7472bcdf4b171acc60401b9`；一次 7 分钟可信下载仅取得 372,736 字节并超时，无法校验或执行。未关闭 TLS 校验，也未把第三方 GUI 依赖加入 DatumDock 运行依赖。
+  - 影响范围：DatumDock 正式受管导入/导出、自动化双向保真、100 图闭环、故障回滚和 GUI 接入已经实现，但无法取得第三方应用实际可见、编辑和回导的硬性证据；步骤五保持“实现完成、外部验收受阻”，不得宣称完整 L2。
+  - 恢复条件：可信 PyPI 连接恢复，或获得 X-AnyLabeling 官方发布资产/可信离线 wheel，能够在独立环境安装固定版本及其依赖。
+  - 下一步：在隔离环境运行 X-AnyLabeling v3.3.10 打开 DatumDock 导出目录，修改一个矩形并保存，再回导 DatumDock 核对矩形、空标注和兼容字段；beta 版本仅做非阻断前向冒烟。
+- [x] 步骤五双语截图已在原生 Windows Qt 平台重新捕获。
+  - 原问题：离屏 Qt 平台枚举到的系统字体数量为 0，首轮截图文字显示为方框；该结果未被计作视觉通过。
+  - 恢复结果：移除离屏平台覆盖后使用同一临时资料库脚本重新生成中文/英文 × 三种分辨率的导入预检、标签映射、导出预检和导出结果截图，文字恢复可读；共 24 张，保存于 Git 忽略的 `build/ui-review/step5-xany/`。
+- [x] 步骤五 Python 3.11 与资料库隔离复验完成。
+  - 验证结果：Ruff、格式、`compileall` 和完整 pytest 通过，结果为 `214 passed、1 skipped、14 warnings`；普通模式与预览模式均进入真实 Qt 事件循环。
+  - 隔离结果：普通模式只在绝对临时根目录生成 2 个资料库文件；预览模式生成 0 个文件。真实 `%LOCALAPPDATA%\DatumDock` 前后均为 707 个文件，树哈希均为 `A42D4762FF14EDD1AE633B619B3AD83D72F1167D426EEA5FE5A63E591023DF5B`。
 
 - [-] A0.8 完整交付暂未同步远端。
   - 原因：2026-07-20 对本地交付提交 `9a6e857` 执行三次 HTTPS 推送；第一次和第三次无法连接 `github.com:443`，第二次在发送阶段发生连接重置。随后只读 `ls-remote` 也无法连接，已按最多三次推送策略停止重试。
@@ -240,4 +252,4 @@
 
 ## English Summary
 
-The revised step-four interaction slice and phases 3.2–3.5 are implemented. A0.8 aligns the static home/workbench wordmark, adds a separate back button, keeps guides active in default selection mode, and adds pointer-anchored Ctrl+wheel zoom. Three GitHub HTTPS push attempts failed or reset, so the complete delivery remains safely committed on local `main` until connectivity recovers; local history was not rewritten. Model inference, export, complete X-AnyLabeling directory exchange, backup, and packaging remain on the roadmap.
+Managed X-AnyLabeling/LabelMe import and validated export are implemented with automated round-trip, recovery, and 100-image coverage. The hard gate remains open because X-AnyLabeling v3.3.10 could not be installed from a trusted source after TLS EOF failures, and the current Qt capture environment produced unreadable glyphs. No complete Step 5 or L2 claim is made until those external checks pass. Model inference, YOLO export, backup, and packaging remain on the roadmap.

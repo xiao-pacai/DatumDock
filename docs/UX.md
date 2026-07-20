@@ -324,6 +324,14 @@
 - 打开含已保留 shape 的图片时，右侧属性面板显示兼容性提示和 shape 数量；已保留内容在画布中以低干扰样式显示（若能安全渲染），不能被误认为可编辑矩形。保存前不需要用户额外选择“保留”，这是默认且不可关闭的安全行为。
 - 导出向导说明它会使用当前数据集标签的英文训练名，而中文别名仅用于 DatumDock 界面；完成页显示导出路径、图片/JSON 配对数量、保留 shape 数量及失败项，并提供“在资源管理器中打开”。
 
+### 步骤五正式接入状态
+
+- 普通模式顶部导入菜单区分“导入图片”和“导入 X-AnyLabeling”；导出菜单提供真实 X-AnyLabeling 导出。两个操作均进入数据集绑定的后台任务，切换数据集不会把迟到结果写入当前工作台。
+- 导入对话框先展示配对与文件级问题，再集中处理未知标签和重复图片；未知标签默认只读保留，用户可以显式映射或创建真实数据集标签。取消只在单样本边界生效，结果明确区分成功、跳过、失败和取消。
+- 导出对话框要求用户选择尚不存在的新目录，展示范围、空标注、兼容 shape 和阻断项；只有完整验证通过才出现最终目录。
+- `dataset.import_xany` 与 `dataset.export_xany` 已进入 `ActionRegistry`，默认不绑定快捷键，用户可在设置页配置。
+- `--ui-preview` 只演示流程，不打开文件选择器、不启动文件任务，也不写资料库或设置。
+
 ## English Summary
 
-Visual design v2 and the revised step-four interaction model form the current baseline. A0.8 aligns workbench and home-page branding, keeps guides active in default selection mode, and supports pointer-anchored Ctrl+wheel zoom. Fresh normal-mode and DPI evidence covers all three corrections.
+The normal-mode workbench now exposes real managed X-AnyLabeling import and export dialogs with source issues, explicit label resolution, duplicate decisions, progress, cancellation, and reports. Preview mode remains an in-memory demonstration. Actual third-party GUI verification and readable bilingual screenshot recapture remain open external checks.

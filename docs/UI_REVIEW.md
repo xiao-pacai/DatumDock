@@ -267,6 +267,28 @@ $env:QT_QPA_PLATFORM = "offscreen"
 - 文档与工程质量：9 / 10
 - **总分：98 / 100**
 
+## 23. 步骤五 X-AnyLabeling 互操作复验（外部硬闸门未通过）
+
+- 普通模式顶部导入/导出菜单已打开真实 `ManagedXAnyImportDialog` 和 `ManagedXAnyExportDialog`；预览模式继续使用内存原型，零写盘。
+- 自动化验证覆盖安全目录扫描、同 stem 配对、路径逃逸、来源变化、显式标签映射、重复决策、未知 shape 只读保留、私有字段递归清理、失败不发布和两个数据集任务隔离。
+- 100 图用例完成“导入 → 重启 Repository/Service → 分页浏览 → 导出 100 个 PNG/JSON → 核对 `labels.txt`”闭环。
+- Python 3.11 全量质量门结果为 `214 passed、1 skipped、14 warnings`；普通/预览模式均进入 Qt 事件循环。普通临时模式生成 2 个初始化文件，预览模式生成 0 个文件。
+- 真实 `%LOCALAPPDATA%\DatumDock` 复验前后均为 707 个文件，树哈希保持 `A42D4762FF14EDD1AE633B619B3AD83D72F1167D426EEA5FE5A63E591023DF5B`。
+- 离屏 Qt 首轮截图因无法枚举系统字体而显示方框，未计作证据；随后在原生 Windows Qt 平台重新生成中文/英文 × 三分辨率的导入预检、标签映射、导出预检和导出结果截图，共 24 张，文字和布局均可读。
+- 官方 X-AnyLabeling `v3.3.10` 源码已检出；可信 PyPI 安装第三方 GUI 依赖时遇到 TLS EOF。官方 Windows CPU 资产的发布元数据和 SHA-256 已取得，但一次 7 分钟下载仅完成 372,736 / 237,982,456 字节，未校验、未执行；实际打开、编辑、保存和回导仍未验证。
+
+### 步骤五当前评分
+
+- 需求覆盖：22 / 25
+- 数据完整性与事务安全：25 / 25
+- X-AnyLabeling 兼容性：9 / 15
+- GUI 与使用体验：9 / 10
+- 测试与稳定性：14 / 15
+- 文档与工程质量：9 / 10
+- **总分：88 / 100**
+
+由于实际 X-AnyLabeling 验证属于不可被评分抵消的硬闸门，步骤五保持“正式实现完成、外部验收受阻”，不使用计划中的完成交付表述，也不宣称完整 L2。
+
 ## English Summary
 
-This report preserves schema-v2 history and the earlier step-four/A0.5–A0.7 evidence. A0.8 is implemented and independently evidenced: the workbench uses the same static wordmark scale as the home page with a separate back button, guides stay active in default selection mode, and Ctrl+wheel zooms around the pointer. The Python 3.11 suite, normal-mode events, bilingual DPI screenshots, and data-isolation checks pass. Model inference, exports, complete X-AnyLabeling directory exchange, backups, and packaging remain future work.
+Managed X-AnyLabeling import/export, recovery, automated round trips, and 24 readable bilingual native-platform screenshots are implemented. Step 5 remains below its completion gate because actual X-AnyLabeling v3.3.10 GUI verification is blocked by trusted dependency installation. The project therefore makes no complete Step 5 or L2 claim. Model inference, YOLO export, backups, and packaging remain future work.

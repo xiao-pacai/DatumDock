@@ -52,4 +52,4 @@
 
 ## English Summary
 
-This directory is DatumDock's product and engineering source of truth. The revised step-four slice adds dataset-level labels, editable rectangles, ordered LabelMe persistence, immediate autosave, image-level review, label inspection, and recovery to the managed image pool. A0.5–A0.8 are implemented and verified, including shared home/workbench wordmark scale, persistent guides, and pointer-anchored Ctrl+wheel zoom. Models, full external directory exchange, exports, backups, and installer capabilities remain future work. Never describe planned or unverified behavior as implemented.
+This directory is DatumDock's product and engineering source of truth. Managed X-AnyLabeling/LabelMe directory import and validated export are now implemented and covered by automated round-trip and failure tests. Actual X-AnyLabeling v3.3.10 GUI open/edit/re-import verification is still blocked by trusted dependency installation, so Step 5 and complete L2 are not yet claimed. Models, YOLO export, backups, and installer capabilities remain future work. Never describe planned or externally unverified behavior as completed.

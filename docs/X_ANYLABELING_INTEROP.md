@@ -1,6 +1,6 @@
 # X-AnyLabeling 互操作规范
 
-> 实现状态（2026-07-19）：步骤四已完成受管池内 LabelMe 矩形编辑、混合 shape 保序、兼容字段保留和私有字段剔除。本文描述的完整目录导入、独立目录导出、`labels.txt` 及 X-AnyLabeling 实际打开验证尚未实现，因此当前不得宣称完整互操作。
+> 实现状态（2026-07-20）：正式受管目录预检/导入、显式标签解析、恢复型提交、独立目录导出、`labels.txt`、私有字段清理和自动化双向保真已经实现。X-AnyLabeling v3.3.10 实际打开、编辑、保存和回导因可信依赖安装 TLS 中断尚未完成，因此步骤五仍未通过最终硬闸门。
 
 ## 1. 目标
 
@@ -70,6 +70,15 @@ xanylabeling-export/
 - 使用 X-AnyLabeling 实际打开导出目录，确认图片加载、同名 JSON 自动加载、矩形框显示正确，且保留 shape 可见。
 - 任何兼容字段丢失、尺寸错误、`imagePath` 错误或无法被 X-AnyLabeling 打开均为阻断发布缺陷。
 
+## 5. 当前实现证据与未完成项
+
+- 正式 `ManagedDatasetGateway` 使用数据集级互操作服务，不调用旧 `Workspace/Project` 路径模型；预览模式仍为纯内存且零写盘。
+- 预检递归配对同相对目录、同 stem 的图片与 JSON，拒绝符号链接、绝对/UNC/盘符/`..` 路径、尺寸冲突、无效 `imageData` 和提交前来源变化。
+- 导入复用 PNG 规范化、重复判断和缩略图，并以单样本恢复日志、文件发布和 SQLite 事务作为提交边界；故障注入证明不会留下半登记样本。
+- 导出在目标父目录同卷暂存，回读图片/JSON、核对 shape/尺寸/标签并递归剔除 `datumdock_*` 后才原子发布；失败时最终目录不存在。
+- 自动化覆盖混合 shape 顺序、未知矩形只读保留、扩展字段、空标注、100 图导入/重开/导出、双数据集任务隔离和来源树不变。
+- 尚未完成：在独立环境中用固定 X-AnyLabeling v3.3.10 实际打开导出目录、编辑矩形、保存并回导。官方源码已取得，但可信 PyPI 安装第三方 GUI 依赖时发生 TLS EOF；官方 Windows CPU 资产下载也因网络过慢超时，未通过完整摘要校验且未执行。未关闭 TLS 校验。
+
 ## English Summary
 
-Step four implements ordered LabelMe rectangle editing and compatibility-payload preservation inside the managed pool. Complete X-AnyLabeling directory import, independent export with `labels.txt`, and actual reopen verification are still planned requirements described by this specification; DatumDock does not yet claim full interoperability.
+Managed directory import, explicit label resolution, recoverable commits, validated export with `labels.txt`, and automated compatibility-payload round trips are implemented. Actual open/edit/save/re-import verification with fixed X-AnyLabeling v3.3.10 remains blocked by trusted dependency installation, so Step 5 and full interoperability are not yet claimed.

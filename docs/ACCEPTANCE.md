@@ -308,10 +308,12 @@
 
 ## F.1 X-AnyLabeling 双向互操作
 
-- [ ] 用户可从当前数据集导出一个独立 X-AnyLabeling 目录，其中含 PNG 图片、同名 `.json` 和 `labels.txt`；每个 JSON 的 `imagePath` 指向同目录图片，尺寸与图片实际尺寸一致。
-- [ ] DatumDock 产生的矩形框以 LabelMe `shape_type: "rectangle"`、英文训练标签名和两个对角点写入；DatumDock 私有的样本 ID、复核状态、模型来源和数据集元数据不写入交换 JSON。
-- [ ] 从 X-AnyLabeling 导入后未经编辑即导出，以及编辑 DatumDock 矩形框、重命名训练标签后再导出，均能保留未支持 shape 和其兼容字段；发生冲突或解析失败时给出文件级报告而非生成不完整目录。
+- [x] 用户可从当前数据集导出一个独立 X-AnyLabeling 目录，其中含 PNG 图片、同名 `.json` 和 `labels.txt`；每个 JSON 的 `imagePath` 指向同目录图片，尺寸与图片实际尺寸一致。
+- [x] DatumDock 产生的矩形框以 LabelMe `shape_type: "rectangle"`、英文训练标签名和两个对角点写入；DatumDock 私有的样本 ID、复核状态、模型来源和数据集元数据不写入交换 JSON。
+- [x] 自动化回归证明导入后未经编辑再导出，以及 DatumDock 编辑矩形后再导出，均保留未支持 shape 和兼容字段；冲突或解析失败产生文件级报告且不发布不完整目录。训练名迁移已有步骤四独立回归覆盖。
 - [ ] 自动化测试覆盖 X-AnyLabeling 样例目录的导入、矩形编辑、未支持 shape 保留及再导出；人工回归用已安装的 X-AnyLabeling 打开导出目录并验证图片、标签和矩形框可见。
+
+> 2026-07-20 复验说明：上述最后一项的自动化部分和 100 图 DatumDock 闭环已通过；人工 X-AnyLabeling v3.3.10 打开/编辑/回导因可信依赖源 TLS 中断尚未完成，因此 F.1 和步骤五整体仍未通过硬性验收。
 
 ## G. 质量
 
@@ -349,4 +351,4 @@
 
 ## English Summary
 
-Acceptance A0.4–A0.8 is implemented and verified. A0.8 aligns the static workbench wordmark with the home-page logo, adds a separate back button, keeps guides active in default selection mode, and provides pointer-anchored Ctrl+wheel zoom. Normal-mode events, bilingual resolution/DPI evidence, Python 3.11 checks, and data-isolation verification pass. Model inference, exports, complete X-AnyLabeling directory exchange, backups, and packaging remain outside this gate.
+Managed X-AnyLabeling import/export satisfies the first three F.1 requirements through automated safety and round-trip evidence. The final hard gate remains open because actual X-AnyLabeling v3.3.10 GUI open/edit/re-import verification is blocked by trusted dependency installation. No complete Step 5 or L2 claim is made. Model inference, YOLO export, backups, and packaging remain outside this gate.

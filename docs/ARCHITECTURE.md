@@ -285,6 +285,15 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 - 导出前校验失败：列出未标注、损坏或不支持的样本，并明确让用户选择跳过或取消；绝不静默遗漏。
 - 教程正文或插图缺失：保留主页和数据集入口，显示可恢复的内容错误，不得因帮助资源损坏阻止应用启动。
 
+## 17. X-AnyLabeling / LabelMe 互操作边界
+
+- 正式流程由数据集级 `XAnyLabelingInteropService` 编排；页面和 Qt 对话框只通过 `ManagedDatasetGateway` 发出预检、提交、导出和取消请求，不直接访问外部目录或 SQLite。
+- 导入预检是只读阶段，保存根目录与每个源文件的相对路径、大小、修改时间和 SHA-256。提交前必须重核指纹；来源发生变化时拒绝继续，且外部目录从不被移动、改名或补写。
+- 标签解析只允许活动英文训练名的大小写不敏感精确匹配、用户显式映射、原子批量新建或只读保留；不使用模糊猜测。未知 shape 和未知标签 shape 作为兼容负载保留。
+- 每个导入样本以 `managed_operations` 的 `xany_import` 恢复清单、受管 PNG/缩略图/JSON 发布和单个 SQLite 事务为边界。启动对账可完成已提交样本或撤回未登记文件，无法证明一致时保留现场诊断。
+- 导出只接收当次范围快照和尚不存在的目标目录。在目标父目录同卷暂存，逐对回读图片与 JSON、核对尺寸/shape/标签并清除所有 `datumdock_*` 私有字段后，才原子发布最终目录。
+- 当前 schema 保持 v3；兼容负载仍以 LabelMe JSON 为事实来源，不为步骤五新增第二份字段数据库。
+
 ## English Summary
 
-The architecture implements schema v3 review state, recoverable JSON/SQLite commits, an exhaustive action registry, isolated quick-label transactions, contextual cursor resolution, a light backplate, and image-edge projection. A0.8 centralizes tool-independent guide derivation, Ctrl-first wheel dispatch with pointer-anchored zoom, and visible-bounds-aware branding shared by the home page and workbench. Domain and service validations still independently reject true out-of-bounds data. Model inference and export pipelines remain future work.
+The architecture now includes a managed-dataset X-AnyLabeling interoperability boundary: read-only source preflight, explicit label resolution, recoverable per-sample import, and validated atomic directory export. Automated evidence exists, while actual X-AnyLabeling v3.3.10 GUI verification remains externally blocked. Model inference, YOLO export, backup, and packaging remain future work.

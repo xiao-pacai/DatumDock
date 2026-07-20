@@ -1,6 +1,6 @@
 # DatumDock UI 与步骤四页面清单
 
-> 状态：步骤四及 A0.5～A0.8 已实现并复验。A0.8 统一首页/工作台 Logo 视觉尺寸，补齐默认选择模式持续辅助线与 `Ctrl + 滚轮` 锚定缩放；模型、导出、完整 X-AnyLabeling 目录交换和备份仍只提供界面或待接入提示。
+> 状态：步骤四及 A0.5～A0.8 已实现并复验。步骤五已接入正式 X-AnyLabeling 导入/导出对话框与受管任务；第三方应用实机验证仍受外部依赖安装阻塞。模型、YOLO 导出和备份仍只提供界面或待接入提示。
 
 ## 0. 本轮实现记录
 
@@ -81,7 +81,9 @@
 | `delete_current` | 删除当前图片 | 真实关联项、回收站或两步永久删除确认 |
 | `delete_batch` | 批量删除 | 真实数量、阈值、恢复性和影响范围 |
 | `yolo_export` | YOLO Detection 导出 | 范围、比例、种子、统计和目录结构预览 |
-| `xany_exchange` | X-AnyLabeling 导入/导出 | 方向选择、兼容 shape 和目录说明 |
+| `xany_import` | X-AnyLabeling 导入 | 正式目录预检、问题表、标签映射、重复决策、后台提交与报告 |
+| `xany_export` | X-AnyLabeling 导出 | 正式范围选择、阻断项预检、原子目录生成、验证与报告 |
+| `xany_exchange` | X-AnyLabeling 原型兼容别名 | 仅保留预览和旧覆盖兼容，不再作为普通模式正式入口 |
 | `backup_export` | 数据集备份导出 | 包含项、模型二进制排除说明 |
 | `backup_import` | 备份导入与完整性检查 | 版本、清单、校验和迁入名称 |
 | `dataset_transfer` | 数据集复制/移动/合并 | 标签签名、重复图和执行方式 |
@@ -128,11 +130,11 @@
 - 路由注册测试遍历全部页面并验证可创建、进入和返回。
 - 对话框注册测试遍历全部弹窗并验证可打开和关闭。
 - 中英文键集合一致，切换语言不改写演示数据内容。
-- 普通模式的图片池仅在用户明确操作后修改受管文件；标签与标注通过真实服务原子保存，模型、导出和备份入口不产生副作用。预览模式不接触资料库。
+- 普通模式的图片池仅在用户明确操作后修改受管文件；标签、标注和 X-AnyLabeling 交换通过真实服务处理。模型、YOLO 导出和备份入口不产生副作用；预览模式不接触资料库。
 - 普通模式启动会对账资料库索引与 UUID 目录；恢复、写盘故障和 Gateway 最终异常边界均有正式回归。
 - 1366×768、1440×900、1920×1080 与 100%、125%、150% DPI 完成布局和截图检查。
 - 步骤四核心截图包含真实标注工作台、标签管理、标签检查、迁移编辑和保存失败保护。
 
 ## English Summary
 
-This inventory records the revised step-four and A0.5–A0.8 baseline. A0.8 aligns home/workbench wordmark scale, verifies guides in default selection mode, and adds pointer-anchored Ctrl+wheel zoom. Normal-mode tests and bilingual resolution/DPI screenshots cover all three rows. Model inference, exports, complete X-AnyLabeling directory exchange, backups, and packaging remain future work.
+This inventory now includes real normal-mode X-AnyLabeling import and export dialogs backed by managed tasks. Automated routing and isolation tests pass, while actual third-party GUI validation and readable screenshot recapture remain open. Model inference, YOLO export, backups, and packaging remain future work.
