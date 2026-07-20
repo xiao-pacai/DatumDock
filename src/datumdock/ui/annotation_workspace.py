@@ -46,6 +46,7 @@ from datumdock.services.annotations import (
     AnnotationEditKind,
     AnnotationEditOrigin,
     AnnotationLoadResult,
+    AnnotationSaveFailure,
     AnnotationSaveRequest,
     AutosaveState,
 )
@@ -141,6 +142,7 @@ class AnnotationWorkspace(QWidget):
         self._annotation_load: AnnotationLoadResult | None = None
         self._annotation_document: AnnotationDocument | None = None
         self._annotation_disk_sha256 = ""
+        self._annotation_label_set_revision = 0
         self._save_future = None
         self._pending_recent_labels: dict[int, str] = {}
         self._pending_navigation_target: WorkspaceNavigationTarget | None = None
@@ -267,16 +269,20 @@ class AnnotationWorkspace(QWidget):
         layout.addWidget(self.dataset_combo)
         layout.addStretch()
         self.import_button = QPushButton()
+        self.import_button.setIcon(self.icons.icon("import"))
         self.import_menu = QMenu(self.import_button)
         self.import_button.setMenu(self.import_menu)
         self.export_button = QPushButton()
+        self.export_button.setIcon(self.icons.icon("export"))
         self.export_menu = QMenu(self.export_button)
         self.export_button.setMenu(self.export_menu)
         self.labels_button = QPushButton()
+        self.labels_button.setIcon(self.icons.icon("labels"))
         self.labels_button.clicked.connect(lambda: self.route_requested.emit("label_manager"))
         self.models_button = QPushButton()
+        self.models_button.setIcon(self.icons.icon("models"))
         self.models_button.clicked.connect(lambda: self.route_requested.emit("model_manager"))
-        self.settings_button = GhostButton("⚙")
+        self.settings_button = GhostButton()
         self.settings_button.setIcon(self.icons.icon("settings"))
         self.settings_button.setText("")
         self.settings_button.clicked.connect(lambda: self.route_requested.emit("settings"))
@@ -387,7 +393,8 @@ class AnnotationWorkspace(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
         self.annotation_title = QLabel()
-        self.annotation_collapse = QPushButton("⌃")
+        self.annotation_collapse = QPushButton()
+        self.annotation_collapse.setIcon(self.icons.icon("chevron_up"))
         layout.addWidget(self._panel_heading(self.annotation_title, self.annotation_collapse))
         self.annotation_list = QListWidget()
         self.annotation_list.setAlternatingRowColors(True)
@@ -408,9 +415,11 @@ class AnnotationWorkspace(QWidget):
         self.review_combo.setEnabled(False)
         action_row.addWidget(self.review_combo, 1)
         self.review_complete_button = GhostButton()
+        self.review_complete_button.setIcon(self.icons.icon("success"))
         self.review_complete_button.clicked.connect(self._mark_review_completed)
         action_row.addWidget(self.review_complete_button)
         self.delete_annotation_button = GhostButton()
+        self.delete_annotation_button.setIcon(self.icons.icon("delete_annotation"))
         self.delete_annotation_button.clicked.connect(self.canvas.delete_selected)
         action_row.addWidget(self.delete_annotation_button)
         layout.addLayout(action_row)
@@ -425,7 +434,8 @@ class AnnotationWorkspace(QWidget):
         layout.setContentsMargins(8, 0, 8, 8)
         layout.setSpacing(7)
         self.image_title = QLabel()
-        self.image_collapse = QPushButton("⌃")
+        self.image_collapse = QPushButton()
+        self.image_collapse.setIcon(self.icons.icon("chevron_up"))
         layout.addWidget(self._panel_heading(self.image_title, self.image_collapse))
         self.image_search = SearchBox()
         self.image_search.textChanged.connect(self._on_image_filter_changed)
@@ -477,10 +487,12 @@ class AnnotationWorkspace(QWidget):
         self.image_empty_body.setWordWrap(True)
         self.image_empty_body.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image_empty_import = PrimaryButton()
+        self.image_empty_import.setIcon(self.icons.icon("import"))
         self.image_empty_import.clicked.connect(
             lambda: self.dialog_requested.emit(f"image_import:{self.snapshot.dataset.id}")
         )
         self.image_empty_labels = GhostButton()
+        self.image_empty_labels.setIcon(self.icons.icon("labels"))
         self.image_empty_labels.clicked.connect(lambda: self.route_requested.emit("label_manager"))
         empty_layout.addWidget(self.image_empty_title)
         empty_layout.addWidget(self.image_empty_body)
@@ -492,8 +504,10 @@ class AnnotationWorkspace(QWidget):
         self.pagination = QWidget()
         pagination_layout = QHBoxLayout(self.pagination)
         pagination_layout.setContentsMargins(0, 0, 0, 0)
-        self.previous_page_button = GhostButton("‹")
-        self.next_page_button = GhostButton("›")
+        self.previous_page_button = GhostButton()
+        self.previous_page_button.setIcon(self.icons.icon("chevron_left"))
+        self.next_page_button = GhostButton()
+        self.next_page_button.setIcon(self.icons.icon("chevron_right"))
         self.page_label = QLabel()
         self.page_label.setObjectName("mutedText")
         self.page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -527,7 +541,9 @@ class AnnotationWorkspace(QWidget):
         )
         self.zoom_100_button = GhostButton("100%")
         self.zoom_100_button.clicked.connect(self.canvas.zoom_100)
-        self.save_label = QLabel()
+        self.save_label = GhostButton()
+        self.save_label.setEnabled(False)
+        self.save_label.clicked.connect(self._show_save_diagnostics)
         self.save_label.setStyleSheet(f"color:{THEME.tokens.success}; font-weight:600;")
         layout.addWidget(self.index_label)
         layout.addWidget(self.resolution_label)
@@ -561,6 +577,7 @@ class AnnotationWorkspace(QWidget):
         self.grid_toggle.setText(tr(self.locale, "workspace.grid"))
         self.grid_toggle.setIcon(self.icons.icon("grid"))
         self.preview_toggle.setText(tr(self.locale, "workspace.preview_boxes"))
+        self.save_label.setAccessibleName(tr(self.locale, "canvas.save_details"))
         self.image_empty_title.setText(tr(self.locale, "workspace.empty_images_title"))
         self.image_empty_body.setText(tr(self.locale, "workspace.empty_images_body"))
         self.image_empty_import.setText(tr(self.locale, "workspace.import"))
@@ -663,20 +680,30 @@ class AnnotationWorkspace(QWidget):
         self.export_menu.clear()
         self.import_menu.clear()
         image_import = self.import_menu.addAction(tr(self.locale, "dialog.import.title"))
+        image_import.setIcon(self.icons.icon("import"))
         image_import.triggered.connect(
             lambda: self.dialog_requested.emit(f"image_import:{self.snapshot.dataset.id}")
         )
         xany_import = self.import_menu.addAction(tr(self.locale, "dialog.xany.import_title"))
+        xany_import.setIcon(self.icons.icon("import"))
         xany_import.triggered.connect(
             lambda: self.dialog_requested.emit(f"xany_import:{self.snapshot.dataset.id}")
         )
+        xany_repair = self.import_menu.addAction(tr(self.locale, "dialog.xany.repair_title"))
+        xany_repair.setIcon(self.icons.icon("diagnostics"))
+        xany_repair.triggered.connect(
+            lambda: self.dialog_requested.emit(f"xany_repair:{self.snapshot.dataset.id}")
+        )
         yolo = self.export_menu.addAction("YOLO Detection")
+        yolo.setIcon(self.icons.icon("export"))
         yolo.triggered.connect(lambda: self.dialog_requested.emit("yolo_export"))
         xany = self.export_menu.addAction("X-AnyLabeling / LabelMe")
+        xany.setIcon(self.icons.icon("export"))
         xany.triggered.connect(
             lambda: self.dialog_requested.emit(f"xany_export:{self.snapshot.dataset.id}")
         )
         backup = self.export_menu.addAction(tr(self.locale, "dialog.backup.title"))
+        backup.setIcon(self.icons.icon("archive"))
         backup.triggered.connect(lambda: self.dialog_requested.emit("backup_export"))
         self.more_menu.clear()
         for text_key, target in (
@@ -685,20 +712,29 @@ class AnnotationWorkspace(QWidget):
             ("page.trash.title", "trash"),
         ):
             action = self.more_menu.addAction(tr(self.locale, text_key))
+            icon_name = {
+                "similarity_review": "copy",
+                "dataset_overview": "info",
+                "trash": "trash",
+            }[target]
+            action.setIcon(self.icons.icon(icon_name))
             action.triggered.connect(
                 lambda checked=False, route=target: self.route_requested.emit(route)
             )
         if self.managed_mode:
             self.more_menu.addSeparator()
             rename = self.more_menu.addAction(tr(self.locale, "dialog.rename.title"))
+            rename.setIcon(self.icons.icon("rename"))
             rename.triggered.connect(
                 lambda: self.dialog_requested.emit(f"rename_samples:{self.snapshot.dataset.id}")
             )
             tasks = self.more_menu.addAction(tr(self.locale, "dialog.task.title"))
+            tasks.setIcon(self.icons.icon("info"))
             tasks.triggered.connect(
                 lambda: self.dialog_requested.emit(f"task_center:{self.snapshot.dataset.id}")
             )
             self.delete_action = self.more_menu.addAction(tr(self.locale, "dialog.delete.title"))
+            self.delete_action.setIcon(self.icons.icon("delete_image"))
             self.delete_action.setEnabled(self.current_image_id is not None)
             self.delete_action.triggered.connect(self._request_current_delete)
         self._rebuild_annotations()
@@ -923,6 +959,11 @@ class AnnotationWorkspace(QWidget):
             else None
         )
         self._annotation_disk_sha256 = annotation_load.disk_sha256
+        self._annotation_label_set_revision = (
+            annotation_load.checkpoint.label_set_revision
+            if annotation_load.checkpoint is not None
+            else 0
+        )
         view = self._managed_view_data(sample)
         annotations = (
             tuple(self._annotation_view(item) for item in self._annotation_document.rectangles)
@@ -967,6 +1008,7 @@ class AnnotationWorkspace(QWidget):
         self.canvas.clear_preview()
         self._annotation_load = None
         self._annotation_document = None
+        self._annotation_label_set_revision = 0
         self.message_requested.emit("toast.image_load_failed")
 
     @staticmethod
@@ -1300,11 +1342,14 @@ class AnnotationWorkspace(QWidget):
             AnnotationEditOrigin.MANUAL,
             edit_kind,
             document.document_version - 1,
+            shape_id=self.selected_shape_id,
+            label_set_revision=self._annotation_label_set_revision,
         )
         self._save_future = self.gateway.queue_annotation_save(request)
         if recent_label_id is not None:
             self._pending_recent_labels[document.document_version] = recent_label_id
         self.save_label.setText(tr(self.locale, "canvas.saving"))
+        self.save_label.setEnabled(False)
         self.save_poll_timer.start()
 
     def _poll_annotation_save(self) -> None:
@@ -1320,6 +1365,7 @@ class AnnotationWorkspace(QWidget):
         except Exception:
             self.save_label.setText(tr(self.locale, "canvas.save_failed"))
             self.save_label.setStyleSheet(f"color:{THEME.tokens.danger}; font-weight:600;")
+            self.save_label.setEnabled(True)
             failure = self.gateway.annotation_save_failure(self.snapshot.dataset.id)
             if failure is not None:
                 self.save_label.setToolTip(failure.message)
@@ -1332,6 +1378,7 @@ class AnnotationWorkspace(QWidget):
         self._set_review_combo(result.review_status)
         self.save_label.setText("●  " + tr(self.locale, "canvas.autosaved"))
         self.save_label.setStyleSheet(f"color:{THEME.tokens.success}; font-weight:600;")
+        self.save_label.setEnabled(False)
         if self.sample_model is not None and self.current_image_id:
             sample = self.gateway.get_sample(
                 self.snapshot.dataset.id,
@@ -1348,9 +1395,82 @@ class AnnotationWorkspace(QWidget):
         state, _error = self.gateway.annotation_save_state(self.snapshot.dataset.id)
         if state != AutosaveState.FAILED:
             return
-        self._save_future = self.gateway.retry_annotation_save(self.snapshot.dataset.id)
+        try:
+            self._save_future = self.gateway.retry_annotation_save(self.snapshot.dataset.id)
+        except Exception:
+            self._show_save_diagnostics()
+            return
         self.save_label.setText(tr(self.locale, "canvas.saving"))
+        self.save_label.setEnabled(False)
         self.save_poll_timer.start()
+
+    def _show_save_diagnostics(self) -> None:
+        """展示可复制的结构化详情，只有可安全重试的失败才提供重试按钮。"""
+
+        if not self.managed_mode:
+            return
+        failure = self.gateway.annotation_save_failure(self.snapshot.dataset.id)
+        if failure is None:
+            return
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Icon.Critical)
+        dialog.setWindowTitle(tr(self.locale, "canvas.save_details"))
+        dialog.setText(failure.message)
+        dialog.setDetailedText(self._save_diagnostic_text(failure))
+        retry_button = None
+        if failure.retryable:
+            retry_button = dialog.addButton(
+                tr(self.locale, "action.annotation.retry_save"),
+                QMessageBox.ButtonRole.ActionRole,
+            )
+        reload_button = dialog.addButton(
+            tr(self.locale, "canvas.reload_from_disk"),
+            QMessageBox.ButtonRole.DestructiveRole,
+        )
+        dialog.addButton(QMessageBox.StandardButton.Close)
+        dialog.exec()
+        if retry_button is not None and dialog.clickedButton() is retry_button:
+            self._retry_save()
+        elif dialog.clickedButton() is reload_button:
+            answer = QMessageBox.question(
+                self,
+                tr(self.locale, "canvas.reload_from_disk"),
+                tr(self.locale, "canvas.reload_confirm"),
+            )
+            if answer == QMessageBox.StandardButton.Yes:
+                self._load_current_image()
+
+    def _save_diagnostic_text(self, failure: AnnotationSaveFailure) -> str:
+        """生成可复制的双语诊断字段，测试可在不打开模态窗口时核对内容。"""
+
+        details = [
+            f"{tr(self.locale, 'canvas.diagnostic_kind')}: {failure.kind.value}",
+            f"{tr(self.locale, 'canvas.diagnostic_request')}: {failure.request_id}",
+            f"{tr(self.locale, 'canvas.diagnostic_dataset')}: {failure.dataset_id}",
+            f"{tr(self.locale, 'canvas.diagnostic_sample')}: {failure.sample_id}",
+            f"{tr(self.locale, 'canvas.diagnostic_shape')}: {failure.shape_id or '-'}",
+            f"{tr(self.locale, 'canvas.diagnostic_edit')}: {failure.edit_kind}",
+            (
+                f"{tr(self.locale, 'canvas.diagnostic_versions')}: "
+                f"{failure.base_version} → {failure.requested_version}; "
+                f"current={failure.current_version}"
+            ),
+            (
+                f"{tr(self.locale, 'canvas.diagnostic_expected_sha')}: "
+                f"{failure.expected_disk_sha256 or '-'}"
+            ),
+            (
+                f"{tr(self.locale, 'canvas.diagnostic_current_sha')}: "
+                f"{failure.current_disk_sha256 or '-'}"
+            ),
+            (
+                f"{tr(self.locale, 'canvas.diagnostic_label_revision')}: "
+                f"{failure.label_set_revision}"
+            ),
+            (f"{tr(self.locale, 'canvas.diagnostic_recovery')}: {failure.recovery_required}"),
+            *failure.exception_chain,
+        ]
+        return "\n".join(details)
 
     def _on_label_combo_changed(self, index: int) -> None:
         label_id = self.label_combo.itemData(index) if index >= 0 else None
@@ -1553,6 +1673,7 @@ class AnnotationWorkspace(QWidget):
         if clicked is discard:
             self._annotation_document = None
             self._annotation_load = None
+            self._annotation_label_set_revision = 0
             return True
         if clicked is cancel:
             return False

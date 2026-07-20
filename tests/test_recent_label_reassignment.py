@@ -103,6 +103,15 @@ def test_imported_rectangle_double_click_reassigns_and_next_box_uses_recent_labe
         return QDialog.DialogCode.Accepted
 
     monkeypatch.setattr(QuickLabelSelectorDialog, "exec", choose_test2)
+    queued_requests = []
+    original_queue = gateway.queue_annotation_save
+
+    def record_save(request):
+        queued_requests.append(request)
+        return original_queue(request)
+
+    monkeypatch.setattr(gateway, "queue_annotation_save", record_save)
+    initial_version = gateway.load_annotation(dataset.id, sample_id).document.document_version
     original = workspace.canvas.annotations[0]
     rect = workspace.canvas._annotation_rect(original)
     qtbot.mouseDClick(
@@ -115,9 +124,18 @@ def test_imported_rectangle_double_click_reassigns_and_next_box_uses_recent_labe
         timeout=5000,
     )
     qtbot.waitUntil(lambda: workspace.canvas.current_label_id == second.id, timeout=3000)
+    # Windows 在模态小窗关闭后会补发双击序列的 release；它不能再形成一次虚假移动。
+    qtbot.mouseRelease(
+        workspace.canvas,
+        Qt.MouseButton.LeftButton,
+        pos=rect.center().toPoint(),
+    )
     loaded = gateway.load_annotation(dataset.id, sample_id)
     assert loaded.document is not None
     assert loaded.document.rectangles[0].label_id == second.id
+    assert loaded.document.document_version == initial_version + 1
+    assert len(queued_requests) == 1
+    assert queued_requests[0].edit_kind.value == "reassign"
     assert loaded.review_status == ReviewStatus.COMPLETED
 
     workspace.canvas.set_tool(CanvasTool.RECTANGLE)
@@ -184,4 +202,9 @@ def test_autosave_classifies_permission_failure_without_guessing_other_causes() 
     assert failure is not None
     assert failure.kind == AnnotationSaveFailureKind.PERMISSION
     assert "access denied" in failure.message
+    assert failure.request_id == request.request_id
+    assert failure.sample_id == sample_id
+    assert failure.edit_kind == AnnotationEditKind.REASSIGN.value
+    assert failure.retryable is True
+    assert failure.exception_chain == ("PermissionError: access denied",)
     autosave.close()

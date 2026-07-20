@@ -140,6 +140,7 @@ class PreviewAnnotationCanvas(QWidget):
         self._drag_origin: QPointF | None = None
         self._drag_snapshot: AnnotationItemViewData | None = None
         self._active_handle: str | None = None
+        self._suppress_left_release = False
         self._temporary: QRectF | None = None
         self._undo: list[list[AnnotationItemViewData]] = []
         self._redo: list[list[AnnotationItemViewData]] = []
@@ -186,6 +187,7 @@ class PreviewAnnotationCanvas(QWidget):
         self._drag_origin = None
         self._drag_snapshot = None
         self._active_handle = None
+        self._suppress_left_release = False
         self._middle_panning = False
         self._left_panning = False
         self._hover_point = None
@@ -210,6 +212,7 @@ class PreviewAnnotationCanvas(QWidget):
         self._drag_origin = None
         self._drag_snapshot = None
         self._active_handle = None
+        self._suppress_left_release = False
         self._middle_panning = False
         self._left_panning = False
         self._hover_point = None
@@ -249,6 +252,7 @@ class PreviewAnnotationCanvas(QWidget):
         self._drag_origin = None
         self._drag_snapshot = None
         self._active_handle = None
+        self._suppress_left_release = False
         self._middle_panning = False
         self._left_panning = False
         self._hover_point = None
@@ -319,6 +323,7 @@ class PreviewAnnotationCanvas(QWidget):
         self._drag_origin = None
         self._drag_snapshot = None
         self._active_handle = None
+        self._suppress_left_release = False
         self.set_tool(CanvasTool.SELECT)
 
     def select_shape(self, shape_id: str) -> None:
@@ -586,6 +591,18 @@ class PreviewAnnotationCanvas(QWidget):
             return
         if event.button() != Qt.MouseButton.LeftButton:
             return
+        if self._suppress_left_release:
+            # Qt 的双击序列在模态标签窗口关闭后仍会补发一次 release；该事件不属于拖动。
+            self._suppress_left_release = False
+            self._drag_origin = None
+            self._drag_snapshot = None
+            self._active_handle = None
+            self._hover_point = event.position()
+            self._refresh_snap_projection()
+            self._refresh_cursor(event.position())
+            self.update()
+            event.accept()
+            return
         if self._left_panning:
             self._left_panning = False
             self._drag_origin = None
@@ -622,7 +639,10 @@ class PreviewAnnotationCanvas(QWidget):
             current = next(
                 (item for item in self.annotations if item.id == self._drag_snapshot.id), None
             )
-            if current is not None and current != self._drag_snapshot:
+            if current is not None and _annotation_geometry_changed(
+                current,
+                self._drag_snapshot,
+            ):
                 snapshot = list(self.annotations)
                 snapshot[snapshot.index(current)] = self._drag_snapshot
                 self._undo.append(snapshot)
@@ -642,6 +662,11 @@ class PreviewAnnotationCanvas(QWidget):
         if event.button() == Qt.MouseButton.LeftButton and not self.managed_read_only:
             hit = self._shape_at(event.position())
             if hit is not None:
+                # 双击只表示改派标签，必须在打开模态窗口前终止第二次按下创建的拖动状态。
+                self._drag_origin = None
+                self._drag_snapshot = None
+                self._active_handle = None
+                self._suppress_left_release = True
                 self._draft = RectangleDraft()
                 self._temporary = None
                 self._snap_projection = None
@@ -1159,3 +1184,19 @@ class PreviewAnnotationCanvas(QWidget):
     def _emit_change(self, kind: str) -> None:
         self.document_changed.emit()
         self.edit_committed.emit(kind)
+
+
+def _annotation_geometry_changed(
+    current: AnnotationItemViewData,
+    original: AnnotationItemViewData,
+) -> bool:
+    """释放手势只比较几何，标签改派或兼容元数据变化不能伪装成移动。"""
+
+    return any(
+        abs(current_value - original_value) > 1e-9
+        for current_value, original_value in zip(
+            (current.x1, current.y1, current.x2, current.y2),
+            (original.x1, original.y1, original.x2, original.y2),
+            strict=True,
+        )
+    )
