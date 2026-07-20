@@ -39,7 +39,7 @@
 - [x] 实现应用入口及可启动的 PySide6 主窗口；支持普通安全模式和 `--ui-preview`。
 - [x] 普通模式与 `--ui-preview` 主窗口首次可见即最大化到当前单个显示器的可用区域；保留 Windows 原生标题栏、系统按钮和任务栏，对话框不跟随最大化。
 - [x] 按 `docs/VISUAL_DESIGN.md` 重建 `ThemeService`、现代视觉 v2 token、可缩放 QSS、图标状态和组件样式基线；正式入口不再使用旧样式。
-- [-] 生成并登记首批自有图标资产：已完成导航、画布、状态与常用操作 SVG 及状态着色；安装包多尺寸派生仍待发布阶段完成。
+- [-] 补齐自有图标系统：仓库已有双色 `DD` PNG/ICO 和 33 个 SVG，窗口/任务栏、返回、画布工具、设置、更多、列表/网格已接入；下一切片必须为首页导航、工作台导入/导出/标签/模型、数据集卡片和弹窗逐项绑定，移除字符图标替代，并完成中英文/DPI 截图。桌面、开始菜单、EXE 和卸载程序图标留在安装包阶段验证。
 - [x] 在阶段 0.5 的内部资料库上实现数据集重命名、归档、恢复和快速切换；不实现工作区创建或打开。
 - [x] 主页整数据集永久删除已接入：影响预检、名称输入、二次确认、保存/任务保护、UUID 边界、同卷暂存、资料库原子移除、启动恢复和故障注入通过；归档继续作为可恢复选择。
 - [x] 实现空数据集与源数据集模板创建，复用兼容标签集和数据集配置。
@@ -255,4 +255,4 @@
 
 ## English Summary
 
-The roadmap includes pending slices for safeguarded whole-dataset deletion, X-AnyLabeling label import, recent-label tracking, and maximized startup. Startup should maximize the main window on one active display before it becomes visible, while preserving native Windows controls, the taskbar, and content-sized dialogs.
+Whole-dataset deletion, X-AnyLabeling label import corrections, recent-label tracking, and maximized startup are implemented. The remaining icon slice must bind the existing DD and SVG assets across all core pages and dialogs, remove character substitutes, and verify bilingual/DPI states. Desktop, Start-menu, executable, and uninstaller icons remain part of packaging.

@@ -121,6 +121,7 @@
 
 - 品牌区、页面标题、面包屑、预览横幅、响应式操作栏和 Toast。
 - 主按钮、次按钮、幽灵按钮、危险按钮、图标工具按钮和分段按钮。
+- 图标绑定清单：应用/任务栏 `DD`、完整字标、返回、画布工具、设置、更多和列表/网格已接入；首页导航、工作台顶部导入/导出/标签/模型、数据集卡片、向导、危险操作与状态报告标记为待补齐，不因 SVG 文件存在而视为完成。
 - 输入框、搜索框、下拉框、筛选 chip、开关、步进输入和帮助问号。
 - 数据集卡片、教程卡片、统计卡片、快速开始步骤和状态徽标。
 - 表格、分页/虚拟列表、缩略图项、标注项和数据差异行。
@@ -139,4 +140,4 @@
 
 ## English Summary
 
-This inventory now records whole-dataset permanent deletion as a pending real dialog, including impact preflight, exact-name and final confirmation, save/task guards, progress, recovery diagnostics, and explicit external-file exclusion. Archive remains the reversible alternative; no implementation is claimed yet.
+This inventory records whole-dataset deletion as implemented and tracks icon integration separately. DD branding and several canvas/navigation icons are connected, while home navigation, top workbench actions, dataset cards, wizards, danger actions, and status reports remain pending binding and visual verification.

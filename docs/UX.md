@@ -218,6 +218,15 @@
 - 首批至少覆盖：应用图标、主页、数据集卡片、返回主页、导入、导出、标签、模型、自动标注、筛选、搜索、设置、帮助、保存、撤销/重做、删除、回收站、上一张/下一张、缩放、适配画布和状态提示。
 - 用户后续指定某个图标需要修改时，以对应源资产为唯一修改目标；更新后需生成目标尺寸并在亮色主题、悬停、禁用和高 DPI 下进行视觉回归。
 
+### 图标接入完整性
+
+- “资源文件存在”不等于“界面已完成”。每个需要图标的可见操作必须通过 `IconRegistry` 绑定语义名称，并在路由遍历和截图清单中验证实际显示。
+- 工作台顶部的导入、分类导出、标签管理和模型管理使用“20/24px 图标 + 文字”；首页学习中心、版本说明、设置和关于页使用同一规则。窗口变窄时可以收纳文字，但不得同时丢失图标、tooltip 和无障碍名称。
+- 数据集卡片菜单、图片治理、标签/模型管理、向导步骤、错误报告、危险删除和状态徽标使用与含义一致的自有图标；危险操作不能使用普通信息图标，图片删除与标注框删除必须保持不同语义。
+- 不再使用 `⚙`、`⋯` 等字符或 emoji 代替已有正式 SVG；原生平台确有更合适的标准控件符号时，必须在视觉清单中记录例外原因。
+- 当前实现状态：双色 `DD` 应用图标、完整字标、返回、左侧画布工具、设置、更多和列表/网格已接入；首页导航、工作台顶部四个主操作、数据集卡片和部分弹窗仍待补齐。完成前不得把图标系统标记为全面完成。
+- 开发启动只负责窗口和任务栏图标。桌面快捷方式、开始菜单、安装目录、EXE 资源和卸载程序图标由 PyInstaller/Inno Setup 阶段生成并在干净 Windows 环境验收。
+
 ## 5. 应用语言与设置
 
 - 主菜单或应用工具栏提供“设置”入口；设置页包含“界面语言”下拉框：`简体中文` 与 `English`，默认选中简体中文。
@@ -356,4 +365,4 @@
 
 ## English Summary
 
-The UX records pending corrections for safeguarded dataset deletion, dataset-scoped recent-label tracking, and maximized startup. DatumDock should become visible already maximized on one active display while retaining the native Windows title bar, controls, and taskbar; content-sized dialogs must not be forced full-screen.
+The UX now distinguishes existing icon assets from complete UI integration. The DD application icon and part of the navigation/tool icon set are connected, while home navigation, top workbench actions, dataset cards, and some dialogs still require semantic IconRegistry bindings, accessible tooltips, and DPI visual verification. Desktop and Start-menu icons remain installer-stage deliverables.

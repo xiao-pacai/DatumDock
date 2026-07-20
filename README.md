@@ -21,6 +21,8 @@
 
 > ✅ **近期集中整改已完成**：主页可在真实影响预检、完整名称输入和二次确认后永久删除整个受管数据集；X-AnyLabeling 未知标签默认新建为真实可编辑标签；双击矩形改派会准确保存并给出结构化错误；成功使用的标签会成为下一框默认标签；普通与预览模式启动均默认最大化。
 
+> 🟡 **图标系统仍在补齐**：仓库已包含双色 `DD` PNG/ICO 与 33 个自有 SVG 功能图标，窗口、任务栏、返回、画布工具、设置、更多和列表/网格等入口已经接入；首页导航、工作台顶部导入/导出/标签/模型、数据集卡片和部分弹窗仍有纯文字操作，不能视为完整验收。桌面与开始菜单快捷方式图标将在 Windows 安装包阶段接入。
+
 DatumDock 用于把分散在本地文件夹中的视觉数据，集中到安全、可追踪的数据集池中进行管理、标注、复核与导出。它的重点不只是“画框”，而是让多个独立数据集、标签体系、模型和训练导出在一个清晰的桌面工作流内协作。
 
 > **入口与资料库已完成重构（2026-07-19）**：新 GUI 不再显示工作区、项目树或打开目录。首页以类似游戏存档的方式展示内部受管数据集，点击卡片直接进入标注工作台。完整边界见 [内部数据集主页与存档式管理方案](docs/DATASET_LIBRARY.md)。
@@ -186,7 +188,7 @@ DatumDock/
 
 ![DatumDock Logo](assets/brand/datumdock-wordmark-v3.png)
 
-当前 Logo 由项目名称直接构成：浅橙色与浅蓝色交叠的 `DD` 单字母标记，搭配深炭灰 `DatumDock` 字标。它适用于 GitHub、关于页和文档；后续 Windows 应用图标将从 `DD` 标记另行导出，避免在小尺寸强行使用完整字标。资产说明见 [assets/brand/README.md](assets/brand/README.md)。
+当前 Logo 由项目名称直接构成：浅橙色与浅蓝色交叠的 `DD` 单字母标记，搭配深炭灰 `DatumDock` 字标。GitHub、首页、工作台和关于页使用完整字标；源码窗口与任务栏已经使用从 `DD` 标记派生的多尺寸 ICO。桌面、开始菜单、EXE 和卸载程序的统一图标仍需在 Windows 安装包阶段验证。资产说明见 [assets/brand/README.md](assets/brand/README.md)。
 
 ## English Summary
 
@@ -201,3 +203,5 @@ The repository uses the MIT license. Before public release, complete the checks 
 Model inference, YOLO export, backup, and installer delivery remain future work. The exact Step 5 test count and remaining external verification blocker are recorded in `docs/UI_REVIEW.md` and `docs/ROADMAP.md`.
 
 Whole-dataset permanent deletion is now a locked product requirement. Archive remains the reversible option; deletion must be name-confirmed, recoverable during interruption, limited to the managed UUID directory, and must never touch external sources, exports, or backups.
+
+The icon assets have not been removed: the repository contains the DD PNG/ICO and 33 project-owned SVG icons. Icon binding is still incomplete across home navigation, workbench top actions, dataset cards, and some dialogs. Desktop and Start-menu icons remain part of the Windows installer stage.

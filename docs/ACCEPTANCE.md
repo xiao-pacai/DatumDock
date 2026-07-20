@@ -157,6 +157,15 @@
 - [x] `6400%` 下仍能通过中键、滚轮和 `Alt + 滚轮` 到达图片四边与四角，框线、控制柄和标签不会随倍率无限放大。
 - [x] 800% 以下采用平滑插值，800% 及以上采用像素清晰模式；当前最大倍率锁定为 `6400%` 并有截图与坐标测试。
 
+### A0.11 图标接入完整性（待实施）
+
+- [ ] 首页学习中心、版本说明、设置、关于页和数据集卡片菜单实际显示 DatumDock 自有语义图标，不是仅有资源文件或纯文字占位。
+- [ ] 工作台顶部导入图片、分类导出、标签管理和模型管理使用“图标 + 文字”；窄窗口收纳后仍保留可理解的图标、tooltip 和无障碍名称。
+- [ ] 图片治理、标签/模型管理、向导、错误报告、危险删除和状态徽标逐项绑定正确图标；删除图片、删除框和删除数据集不得共用容易误认的图形。
+- [ ] 设置、更多等入口不再用 `⚙`、`⋯` 或 emoji 代替已有正式 SVG；所有绑定均来自集中式 `IconRegistry`。
+- [ ] 自动测试验证图标资产存在、SVG 可渲染、Action/控件绑定完整、缺失资源有明确降级；中英文与 100%、125%、150%、200% DPI 截图无空图标、模糊、裁切或状态不可辨。
+- [ ] 开发态窗口与任务栏使用双色 `DD` 多尺寸 ICO；发布阶段验证 EXE、安装目录、桌面快捷方式、开始菜单和卸载程序使用相同图标。源码启动不要求创建系统快捷方式。
+
 ### A0.5 十字辅助线持续跟随整改（已完成）
 
 > 本节是 2026-07-19 在 A0.4 验收后新增的规则，优先于 A0.4 中“中键平移时隐藏”的历史行为；2026-07-20 已取得实现、测试和截图证据。
@@ -377,4 +386,4 @@
 
 ## English Summary
 
-Acceptance now includes pending gates for safeguarded dataset deletion, X-AnyLabeling label import, recent-label tracking, and maximized startup. The startup gate requires the main window to appear maximized on one active display while retaining native Windows controls and taskbar, with dialogs remaining content-sized.
+Acceptance includes a pending A0.11 icon-integration gate. Existing DD and SVG files are not sufficient by themselves: core controls must bind the correct semantic icons, expose accessible text and states, and pass bilingual/DPI screenshots. Source windows use DD now; desktop, Start-menu, executable, and uninstaller icon checks remain packaging gates.

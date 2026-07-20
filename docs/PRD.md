@@ -285,6 +285,8 @@ export-name/
 - 启动最大化只作用于应用主窗口；新建数据集、标签选择、导入导出、危险确认和设置等对话框继续按内容使用合适尺寸，并在当前主窗口所在显示器内居中或钳制。
 - 首页可参考 Scratch 的友好、圆润、图标化和引导体验；标注工作台可参考 X-AnyLabeling 的画布优先、直接操作和信息密度。两者均不得复制第三方品牌、图标、代码或像素布局；标签颜色与应用主题和系统语义颜色严格分离。
 - 文字、选中、键盘焦点、错误、禁用、加载和复核状态必须有足够对比度，并使用图标/文字等非颜色线索；应尊重系统缩放与“减少动态效果”偏好。
+- 核心操作不能只停留在“已经生成图标文件”的状态。首页导航、工作台导入/导出/标签/模型、数据集卡片菜单、向导、危险操作、状态和报告必须实际绑定 `IconRegistry` 中的语义图标；高频主操作采用“图标 + 文字”，仅图标按钮必须具备中英文 tooltip、无障碍名称和清晰的 hover/active/disabled 状态。
+- Windows 应用品牌图标统一使用完整字标左侧的双色 `DD`：源码窗口与任务栏在开发阶段即可显示；EXE、安装目录、桌面快捷方式、开始菜单和卸载程序图标属于安装包交付范围。通过 `python -m datumdock` 启动不会自动创建桌面或开始菜单快捷方式，界面不得暗示已经安装。
 - 模型导入、探测和推理默认在本机执行；不自动上传模型、图片或标签信息。
 
 ## 10. 已确认的产品决策
@@ -401,4 +403,4 @@ export-name/
 
 ## English Summary
 
-DatumDock is a local-first dataset management and annotation desktop application. The documented pending UX corrections include safeguarded whole-dataset deletion, dataset-scoped recent-label tracking, and maximized startup on the active Windows display. Maximized startup retains the native title bar, system controls, and taskbar; dialogs remain content-sized rather than becoming full-screen.
+DatumDock is a local-first dataset management and annotation desktop application. The managed library, dataset-scoped recent-label tracking, and maximized startup are implemented. Icon completion requires actual semantic bindings—not only asset files—across home navigation, workbench actions, dataset cards, dialogs, states, and reports. Source launches provide the DD window/taskbar icon; desktop and Start-menu shortcuts belong to installer delivery.

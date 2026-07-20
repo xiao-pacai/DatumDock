@@ -263,6 +263,8 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 - 版式 token 使用 4px 基础网格和 8/12/16/24/32px 常用间距，分别支持宽松主页与紧凑标注工作台；包含字体层级、圆角、轻阴影和 120–180ms 可选状态动画，并尊重 DPI 与“减少动态效果”。
 - 状态色要同时使用图标、边框或文字，不得只依赖颜色区分；键盘焦点环不可被主题样式覆盖。
 - 自有图标资源存放于 `assets/icons/`，由 `IconRegistry` 以语义名称（如 `import`、`export`、`auto_annotate`、`delete`）提供给 UI；SVG 为优先源格式，按需生成 PNG/ICO 等发布尺寸。任何图标替换只修改受管源资产及其派生物，不影响业务代码中的语义名称。
+- 页面和对话框不得直接读取 SVG 路径、使用 emoji 代替图标或自行创建另一套缓存。可见操作从稳定 `action_id` 取得图标语义，再由 `IconRegistry` 渲染 normal/hover/active/disabled 状态；自动化清单同时验证注册项和控件绑定，避免出现“资产存在但页面仍是纯文字”的假完成。
+- `datumdock-app-icon.ico` 负责开发态窗口与任务栏；PyInstaller 版本资源和 Inno Setup 快捷方式显式引用同一双色 `DD` 派生资产。源码运行不负责创建系统快捷方式。
 - 保留 Windows 原生窗口边框和系统按钮，品牌顶栏位于应用内容区。任何无边框窗口方案必须先验证拖动、缩放、阴影、DPI、键盘和辅助功能，不能只为外观牺牲稳定性。
 - 应用入口负责在主窗口首次显示前请求 Windows/Qt 最大化状态；页面和业务 Gateway 不管理顶层窗口几何。最大化仅覆盖当前显示器可用区域，不把子对话框强制最大化，也不引入独占全屏或跨屏窗口逻辑。
 - 固定截图回归覆盖主页与标注工作台的中英文、空/有数据、hover/selected/disabled、100%/150% DPI；视觉禁止项出现即视为回归失败。
@@ -309,4 +311,4 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 
 ## English Summary
 
-The architecture now specifies safeguarded whole-dataset permanent deletion through a gateway-only service, impact preflight, revision-bound confirmation, same-volume staging, an atomic library update, and deterministic startup recovery. Archive remains the reversible option; external sources, exports, and backups are never deletion targets. This deletion flow is specified but not yet implemented.
+The architecture implements safeguarded whole-dataset deletion through a gateway-only service, impact preflight, revision-bound confirmation, same-volume staging, atomic library updates, and deterministic recovery. It also requires visible actions to resolve semantic icons through IconRegistry rather than direct paths, emoji, or page-local caches. Installer shortcuts reuse the DD application asset but are not created by source launches.
