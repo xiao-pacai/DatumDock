@@ -71,6 +71,18 @@ ACTION_DEFINITIONS: tuple[ActionDefinition, ...] = (
         "Ctrl+E",
     ),
     ActionDefinition(
+        "dataset.import_xany",
+        "action.dataset.import_xany",
+        "action.dataset.import_xany.help",
+        ActionGroup.DATASET,
+    ),
+    ActionDefinition(
+        "dataset.export_xany",
+        "action.dataset.export_xany",
+        "action.dataset.export_xany.help",
+        ActionGroup.DATASET,
+    ),
+    ActionDefinition(
         "dataset.switch",
         "action.dataset.switch",
         "action.dataset.switch.help",

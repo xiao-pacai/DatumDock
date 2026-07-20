@@ -158,8 +158,19 @@ class AnnotationWorkspace(QWidget):
     def _bind_actions(self) -> None:
         """页面只绑定动作 ID 与命令，具体按键全部来自统一注册表。"""
 
-        self.action_bindings.bind("dataset.import_images", self.import_button.click)
+        self.action_bindings.bind(
+            "dataset.import_images",
+            lambda: self.dialog_requested.emit(f"image_import:{self.snapshot.dataset.id}"),
+        )
         self.action_bindings.bind("dataset.export", self.export_button.click)
+        self.action_bindings.bind(
+            "dataset.import_xany",
+            lambda: self.dialog_requested.emit(f"xany_import:{self.snapshot.dataset.id}"),
+        )
+        self.action_bindings.bind(
+            "dataset.export_xany",
+            lambda: self.dialog_requested.emit(f"xany_export:{self.snapshot.dataset.id}"),
+        )
         self.action_bindings.bind("sample.previous", lambda: self._navigate_sample(-1))
         self.action_bindings.bind("sample.next", lambda: self._navigate_sample(1))
         self.action_bindings.bind(
@@ -255,9 +266,8 @@ class AnnotationWorkspace(QWidget):
         layout.addWidget(self.dataset_combo)
         layout.addStretch()
         self.import_button = QPushButton()
-        self.import_button.clicked.connect(
-            lambda: self.dialog_requested.emit(f"image_import:{self.snapshot.dataset.id}")
-        )
+        self.import_menu = QMenu(self.import_button)
+        self.import_button.setMenu(self.import_menu)
         self.export_button = QPushButton()
         self.export_menu = QMenu(self.export_button)
         self.export_button.setMenu(self.export_menu)
@@ -650,10 +660,21 @@ class AnnotationWorkspace(QWidget):
             button.setToolTip(tr(self.locale, f"tool.{name}"))
             button.setAccessibleName(button.toolTip())
         self.export_menu.clear()
+        self.import_menu.clear()
+        image_import = self.import_menu.addAction(tr(self.locale, "dialog.import.title"))
+        image_import.triggered.connect(
+            lambda: self.dialog_requested.emit(f"image_import:{self.snapshot.dataset.id}")
+        )
+        xany_import = self.import_menu.addAction(tr(self.locale, "dialog.xany.import_title"))
+        xany_import.triggered.connect(
+            lambda: self.dialog_requested.emit(f"xany_import:{self.snapshot.dataset.id}")
+        )
         yolo = self.export_menu.addAction("YOLO Detection")
         yolo.triggered.connect(lambda: self.dialog_requested.emit("yolo_export"))
         xany = self.export_menu.addAction("X-AnyLabeling / LabelMe")
-        xany.triggered.connect(lambda: self.dialog_requested.emit("xany_exchange"))
+        xany.triggered.connect(
+            lambda: self.dialog_requested.emit(f"xany_export:{self.snapshot.dataset.id}")
+        )
         backup = self.export_menu.addAction(tr(self.locale, "dialog.backup.title"))
         backup.triggered.connect(lambda: self.dialog_requested.emit("backup_export"))
         self.more_menu.clear()

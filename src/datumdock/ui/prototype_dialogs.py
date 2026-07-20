@@ -62,6 +62,8 @@ class DialogId(StrEnum):
     DELETE_CURRENT = "delete_current"
     DELETE_BATCH = "delete_batch"
     YOLO_EXPORT = "yolo_export"
+    XANY_IMPORT = "xany_import"
+    XANY_EXPORT = "xany_export"
     XANY_EXCHANGE = "xany_exchange"
     BACKUP_EXPORT = "backup_export"
     BACKUP_IMPORT = "backup_import"
@@ -94,6 +96,8 @@ TITLE_KEYS = {
     DialogId.DELETE_CURRENT: "dialog.delete.title",
     DialogId.DELETE_BATCH: "dialog.delete.title",
     DialogId.YOLO_EXPORT: "dialog.export.title",
+    DialogId.XANY_IMPORT: "dialog.xany.import_title",
+    DialogId.XANY_EXPORT: "dialog.xany.export_title",
     DialogId.XANY_EXCHANGE: "dialog.xany.title",
     DialogId.BACKUP_EXPORT: "dialog.backup.title",
     DialogId.BACKUP_IMPORT: "dialog.backup.title",

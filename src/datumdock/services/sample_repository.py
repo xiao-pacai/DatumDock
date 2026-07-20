@@ -686,6 +686,28 @@ class DatasetSampleRepository:
         except (sqlite3.Error, ValueError) as error:
             raise SampleRepositoryError(f"样本登记失败: {error}") from error
 
+    def add_sample_with_annotation(
+        self,
+        sample: DatasetSample,
+        shape_labels: Sequence[tuple[str, str]],
+    ) -> None:
+        """在一个事务中登记样本、标注摘要和矩形到标签的反向索引。"""
+
+        self._validate_sample(sample)
+        if sample.annotation_count != len(shape_labels):
+            raise SampleRepositoryError("标注框数量与标签索引不一致")
+        try:
+            with self._connection() as connection:
+                self._insert_sample(connection, sample)
+                connection.executemany(
+                    "INSERT INTO sample_labels(sample_id, label_id, shape_id) VALUES (?, ?, ?)",
+                    ((sample.id, label_id, shape_id) for shape_id, label_id in shape_labels),
+                )
+        except SampleRepositoryError:
+            raise
+        except (sqlite3.Error, ValueError) as error:
+            raise SampleRepositoryError(f"样本与标注登记失败: {error}") from error
+
     def _insert_sample(self, connection: sqlite3.Connection, sample: DatasetSample) -> None:
         review_value: str | None = (
             sample.review_status.value if sample.review_status is not None else None

@@ -15,6 +15,10 @@ from datumdock.ui.annotation_workspace import AnnotationWorkspace
 from datumdock.ui.components import ToastOverlay
 from datumdock.ui.managed_gateway import ManagedDatasetGateway
 from datumdock.ui.managed_governance_pages import ManagedGovernancePage
+from datumdock.ui.managed_interop_dialogs import (
+    ManagedXAnyExportDialog,
+    ManagedXAnyImportDialog,
+)
 from datumdock.ui.managed_label_pages import ManagedLabelInspectionPage, ManagedLabelPage
 from datumdock.ui.managed_media_dialogs import (
     ManagedImageImportDialog,
@@ -338,6 +342,8 @@ class ApplicationShell(QMainWindow):
             DialogId.RENAME_DATASET,
             DialogId.ARCHIVE_DATASET,
             DialogId.IMAGE_IMPORT,
+            DialogId.XANY_IMPORT,
+            DialogId.XANY_EXPORT,
             DialogId.RENAME_SAMPLES,
             DialogId.DELETE_CURRENT,
             DialogId.DELETE_BATCH,
@@ -350,6 +356,12 @@ class ApplicationShell(QMainWindow):
             return
         if not self.gateway.preview_mode and identifier == DialogId.IMAGE_IMPORT:
             self._open_managed_import(dataset_id)
+            return
+        if not self.gateway.preview_mode and identifier == DialogId.XANY_IMPORT:
+            self._open_managed_xany_import(dataset_id)
+            return
+        if not self.gateway.preview_mode and identifier == DialogId.XANY_EXPORT:
+            self._open_managed_xany_export(dataset_id)
             return
         if not self.gateway.preview_mode and identifier == DialogId.RENAME_SAMPLES:
             self._open_managed_rename(dataset_id)
@@ -443,6 +455,39 @@ class ApplicationShell(QMainWindow):
         home = self.navigation.pages.get(RouteId.HOME)
         if isinstance(home, HomePage):
             home.update_snapshot(self.gateway.home_snapshot())
+
+    def _open_managed_xany_import(self, dataset_id: str) -> None:
+        """打开正式交换目录导入向导，并在完成后刷新工作台。"""
+
+        if not dataset_id or not isinstance(self.gateway, ManagedDatasetGateway):
+            self.show_message("toast.dataset_unavailable")
+            return
+        dialog = ManagedXAnyImportDialog(
+            self.locale_service,
+            self.gateway,
+            dataset_id,
+            self,
+        )
+        dialog.import_finished.connect(self._managed_import_finished)
+        dialog.finished.connect(lambda: self._forget_dialog(dialog))
+        self._active_dialogs.append(dialog)
+        dialog.open()
+
+    def _open_managed_xany_export(self, dataset_id: str) -> None:
+        """导出向导只接收当前数据集 ID，不把受管路径暴露给页面。"""
+
+        if not dataset_id or not isinstance(self.gateway, ManagedDatasetGateway):
+            self.show_message("toast.dataset_unavailable")
+            return
+        dialog = ManagedXAnyExportDialog(
+            self.locale_service,
+            self.gateway,
+            dataset_id,
+            parent=self,
+        )
+        dialog.finished.connect(lambda: self._forget_dialog(dialog))
+        self._active_dialogs.append(dialog)
+        dialog.open()
 
     def _open_managed_rename(self, dataset_id: str) -> None:
         if not dataset_id or not isinstance(self.gateway, ManagedDatasetGateway):

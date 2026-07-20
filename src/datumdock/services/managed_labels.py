@@ -222,6 +222,34 @@ class LabelSetService:
         )
         return self.repository.save(dataset_id, updated)
 
+    def apply_import_labels(
+        self,
+        dataset_id: str,
+        labels: tuple[Label, ...],
+        *,
+        expected_revision: int,
+    ) -> LabelSet:
+        """把一次互操作会话确认的新标签作为单次修订原子保存。"""
+
+        current = self.repository.load(dataset_id)
+        if current.revision != expected_revision:
+            raise ManagedLabelError("标签集已被其他操作修改，请重新执行导入预检")
+        if not labels:
+            return current
+        existing_ids = {label.id for label in current.labels}
+        if any(label.id in existing_ids for label in labels):
+            raise ManagedLabelError("待导入标签包含已存在的稳定 ID")
+        timestamp = utc_now()
+        updated = current.model_copy(
+            deep=True,
+            update={
+                "labels": [*current.labels, *(label.model_copy(deep=True) for label in labels)],
+                "revision": current.revision + 1,
+                "updated_at": timestamp,
+            },
+        )
+        return self.repository.save(dataset_id, updated)
+
     def preview_change(
         self,
         dataset_id: str,

@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import tempfile
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, ClassVar, Protocol
 from uuid import UUID
@@ -83,6 +84,9 @@ class LabelMeRepository:
         label_set: LabelSet,
         fallback_filename: str,
         fallback_size: tuple[int, int],
+        *,
+        external_label_ids: Mapping[str, str | None] | None = None,
+        preserve_unknown_rectangles: bool = False,
     ) -> AnnotationDocument:
         """仅把已知标签的标准 rectangle 转为可编辑框，其余 shape 原样保留。"""
 
@@ -103,10 +107,17 @@ class LabelMeRepository:
             shape_order.append(shape_id)
             points = shape.get("points")
             private_label_id = str(shape.get("datumdock_label_id") or "")
-            label = by_id.get(private_label_id) or by_name.get(
-                str(shape.get("label", "")).casefold()
+            external_name = str(shape.get("label", "")).strip()
+            mapped_id = None
+            if external_label_ids is not None:
+                mapped_id = external_label_ids.get(external_name.casefold())
+            label = (
+                by_id.get(mapped_id or "")
+                or by_id.get(private_label_id)
+                or by_name.get(external_name.casefold())
             )
             is_rectangle = shape.get("shape_type") == "rectangle"
+            read_only_compat = bool(shape.get("datumdock_read_only_compat"))
             valid_points = (
                 isinstance(points, list)
                 and len(points) == 2
@@ -117,7 +128,12 @@ class LabelMeRepository:
                     for point in points
                 )
             )
-            if is_rectangle and label is None:
+            if (
+                is_rectangle
+                and label is None
+                and not preserve_unknown_rectangles
+                and not read_only_compat
+            ):
                 raise UnknownLabelReferenceError(
                     f"矩形引用了当前标签集中不存在的标签: {shape.get('label', '')}"
                 )
@@ -136,6 +152,8 @@ class LabelMeRepository:
                     )
                 )
             else:
+                if is_rectangle and label is None and preserve_unknown_rectangles:
+                    shape["datumdock_read_only_compat"] = True
                 unsupported_shapes.append(shape)
         try:
             width = int(payload.get("imageWidth") or fallback_size[0])
@@ -163,6 +181,28 @@ class LabelMeRepository:
             )
         except ValueError as error:
             raise LabelMeError(f"LabelMe 文档验证失败: {error}") from error
+
+    def from_external_payload(
+        self,
+        payload: dict[str, Any],
+        sample_id: str,
+        label_set: LabelSet,
+        fallback_filename: str,
+        fallback_size: tuple[int, int],
+        label_resolutions: Mapping[str, str | None],
+    ) -> AnnotationDocument:
+        """按用户确认的映射导入外部文档，未映射矩形只读保留而不丢失。"""
+
+        normalized = {name.casefold(): label_id for name, label_id in label_resolutions.items()}
+        return self.from_payload(
+            payload,
+            sample_id,
+            label_set,
+            fallback_filename,
+            fallback_size,
+            external_label_ids=normalized,
+            preserve_unknown_rectangles=True,
+        )
 
     def save(self, path: Path, document: AnnotationDocument, label_set: LabelSet) -> str:
         """原子写入受管 JSON，并在替换前后重新解析验证。"""

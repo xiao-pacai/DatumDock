@@ -248,6 +248,10 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "action.dataset.import_images.help": "打开当前数据集的图片导入向导。",
         "action.dataset.export": "导出数据集",
         "action.dataset.export.help": "打开分类导出入口。",
+        "action.dataset.import_xany": "导入 X-AnyLabeling 目录",
+        "action.dataset.import_xany.help": "把图片和同名 LabelMe JSON 安全导入当前数据集。",
+        "action.dataset.export_xany": "导出 X-AnyLabeling 目录",
+        "action.dataset.export_xany.help": "导出可由 X-AnyLabeling 独立打开的交换目录。",
         "action.dataset.switch": "切换数据集",
         "action.dataset.switch.help": "聚焦数据集切换控件。",
         "action.sample.previous": "上一张图片",
@@ -746,6 +750,14 @@ PROTOTYPE_CATALOGS: dict[str, dict[str, str]] = {
         "action.dataset.import_images.help": "Open image import for the current dataset.",
         "action.dataset.export": "Export Dataset",
         "action.dataset.export.help": "Open the categorized export entry.",
+        "action.dataset.import_xany": "Import X-AnyLabeling Directory",
+        "action.dataset.import_xany.help": (
+            "Safely import images and same-stem LabelMe JSON into this dataset."
+        ),
+        "action.dataset.export_xany": "Export X-AnyLabeling Directory",
+        "action.dataset.export_xany.help": (
+            "Export a standalone directory that X-AnyLabeling can open."
+        ),
         "action.dataset.switch": "Switch Dataset",
         "action.dataset.switch.help": "Focus the dataset switcher.",
         "action.sample.previous": "Previous Image",

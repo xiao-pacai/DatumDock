@@ -45,6 +45,14 @@ from datumdock.services.image_pool import (
     ThumbnailService,
 )
 from datumdock.services.library_repository import resolve_data_root
+from datumdock.services.managed_interop import (
+    XAnyExportPreflight,
+    XAnyExportRequest,
+    XAnyImportCommitRequest,
+    XAnyImportPreflight,
+    XAnyImportPreflightRequest,
+    XAnyLabelingInteropService,
+)
 from datumdock.services.managed_labels import (
     LabelChangePreview,
     LabelInspectionService,
@@ -93,6 +101,7 @@ class ManagedDatasetGateway:
         self.settings = self.settings_repository.load()
         self.tasks = BackgroundTaskService()
         self._preflights: dict[str, ImageImportPreflight] = {}
+        self._xany_import_preflights: dict[str, XAnyImportPreflight] = {}
         self._annotation_autosaves: dict[str, AnnotationAutosaveService] = {}
 
     @classmethod
@@ -409,6 +418,112 @@ class ManagedDatasetGateway:
             return
         bundle, paths, repository = self._media(dataset_id)
         ImageImportService(paths, bundle.dataset, repository).discard_preflight(session_id)
+
+    def start_xany_import_preflight(
+        self,
+        dataset_id: str,
+        source_directory: Path,
+    ) -> str:
+        """在线程池中扫描外部交换目录，预检阶段不登记任何样本。"""
+
+        interop = XAnyLabelingInteropService(self.service, dataset_id)
+
+        def work(context):
+            context.phase("xany_import_preflight")
+            result = interop.preflight_import(
+                XAnyImportPreflightRequest(dataset_id, source_directory),
+                progress=context.progress,
+                cancelled=context.cancelled,
+            )
+            self._xany_import_preflights[result.session_id] = result
+            return result
+
+        return self.tasks.start(dataset_id, "xany_import_preflight", work)
+
+    def start_xany_import_commit(
+        self,
+        request: XAnyImportCommitRequest,
+    ) -> str:
+        """按预检会话提交交换图片和标注，并保留文件级部分成功报告。"""
+
+        preflight = self._xany_import_preflights.pop(request.preflight.session_id, None)
+        if preflight is None or preflight != request.preflight:
+            raise ImagePoolError("X-AnyLabeling 导入预检会话不存在或已变化")
+        interop = XAnyLabelingInteropService(self.service, request.dataset_id)
+
+        def work(context):
+            context.phase("xany_import_commit")
+            report = interop.commit_import(
+                request,
+                progress=context.progress,
+                cancelled=context.cancelled,
+            )
+            for source, error in report.failures.items():
+                context.add_error(f"{source}: {error}")
+            return report
+
+        return self.tasks.start(request.dataset_id, "xany_import_commit", work)
+
+    def discard_xany_import_preflight(self, dataset_id: str, session_id: str) -> None:
+        """取消交换导入时只清理当前数据集内部暂存文件。"""
+
+        preflight = self._xany_import_preflights.pop(session_id, None)
+        if preflight is None:
+            return
+        XAnyLabelingInteropService(self.service, dataset_id).discard_import_preflight(preflight)
+
+    def load_xany_prepared_image(
+        self,
+        dataset_id: str,
+        session_id: str,
+        item_id: str,
+    ) -> bytes:
+        """重复对比只返回预检 PNG 字节，不向页面公开内部路径。"""
+
+        preflight = self._xany_import_preflights.get(session_id)
+        if preflight is None:
+            raise ImagePoolError("X-AnyLabeling 导入预检会话不存在")
+        item = next((value for value in preflight.items if value.image.id == item_id), None)
+        if item is None:
+            raise ImagePoolError("X-AnyLabeling 导入预检项不存在")
+        bundle, paths, repository = self._media(dataset_id)
+        return ImageImportService(paths, bundle.dataset, repository).load_prepared_image(item.image)
+
+    def start_xany_export_preflight(self, request: XAnyExportRequest) -> str:
+        """固定导出样本范围并检查受管文件健康状态。"""
+
+        interop = XAnyLabelingInteropService(self.service, request.dataset_id)
+
+        def work(context):
+            context.phase("xany_export_preflight")
+            result = interop.preflight_export(request)
+            context.progress(len(result.sample_ids), len(result.sample_ids), "")
+            return result
+
+        return self.tasks.start(request.dataset_id, "xany_export_preflight", work)
+
+    def start_xany_export_commit(
+        self,
+        dataset_id: str,
+        preflight_task_id: str,
+    ) -> str:
+        """使用预检快照生成并原子发布独立交换目录。"""
+
+        result = self.tasks.result(preflight_task_id)
+        if not isinstance(result, XAnyExportPreflight):
+            raise ImagePoolError("X-AnyLabeling 导出预检不存在")
+        preflight = result
+        interop = XAnyLabelingInteropService(self.service, dataset_id)
+
+        def work(context):
+            context.phase("xany_export_commit")
+            return interop.export(
+                preflight,
+                progress=context.progress,
+                cancelled=context.cancelled,
+            )
+
+        return self.tasks.start(dataset_id, "xany_export_commit", work)
 
     def task_snapshot(self, task_id: str) -> TaskSnapshot:
         return self.tasks.snapshot(task_id)

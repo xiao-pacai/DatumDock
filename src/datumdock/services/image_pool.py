@@ -553,6 +553,7 @@ class ImagePoolMaintenanceService:
         """已知操作按日志恢复；未知 PNG 和临时文件只报告、不删除。"""
 
         self._recover_import_operations()
+        self._recover_xany_import_operations()
         self._recover_rename_operations()
         self._recover_trash_operations()
         self._recover_restore_operations()
@@ -649,6 +650,85 @@ class ImagePoolMaintenanceService:
                 continue
             staged_image.unlink(missing_ok=True)
             staged_thumbnail.unlink(missing_ok=True)
+            self.repository.finish_operation(operation.id)
+
+    def _recover_xany_import_operations(self) -> None:
+        """恢复 X-AnyLabeling 图片、缩略图、JSON 与索引的成组提交。"""
+
+        for operation in self.repository.list_operations():
+            if operation.operation_type != "xany_import":
+                continue
+            payload = operation.payload
+            try:
+                sample = DatasetSample.model_validate(payload["sample"])
+                staged_image = self.repository.resolve_path(
+                    str(payload["staged_image"]), "cache/import-staging"
+                )
+                staged_thumbnail = self.repository.resolve_path(
+                    str(payload["staged_thumbnail"]), "cache/import-staging"
+                )
+                target_image = self.repository.resolve_path(
+                    str(payload["target_image"]), "pool/images"
+                )
+                target_thumbnail = self.repository.resolve_path(
+                    str(payload["target_thumbnail"]), "cache/thumbnails"
+                )
+                staged_annotation_value = str(payload.get("staged_annotation", ""))
+                target_annotation_value = str(payload.get("target_annotation", ""))
+                staged_annotation = (
+                    self.repository.resolve_path(staged_annotation_value, "cache/import-staging")
+                    if staged_annotation_value
+                    else None
+                )
+                target_annotation = (
+                    self.repository.resolve_path(target_annotation_value, "pool/annotations")
+                    if target_annotation_value
+                    else None
+                )
+                raw_shape_labels = payload.get("shape_labels", [])
+                if not isinstance(raw_shape_labels, list):
+                    raise ValueError("shape_labels 不是数组")
+                shape_labels = tuple(
+                    (str(item[0]), str(item[1]))
+                    for item in raw_shape_labels
+                    if isinstance(item, list) and len(item) == 2
+                )
+                if len(shape_labels) != len(raw_shape_labels):
+                    raise ValueError("shape_labels 内容损坏")
+            except (KeyError, ValueError, SampleRepositoryError):
+                continue
+            if self.repository.get_sample(sample.id, include_trashed=True) is not None:
+                self.repository.finish_operation(operation.id)
+                continue
+            targets_ready = target_image.is_file() and target_thumbnail.is_file()
+            if target_annotation is not None:
+                targets_ready = targets_ready and target_annotation.is_file()
+            if targets_ready:
+                try:
+                    self.repository.add_sample_with_annotation(sample, shape_labels)
+                    self.repository.finish_operation(operation.id)
+                except SampleRepositoryError:
+                    continue
+                continue
+            rollback_pairs = [
+                (target_thumbnail, staged_thumbnail),
+                (target_image, staged_image),
+            ]
+            if target_annotation is not None and staged_annotation is not None:
+                rollback_pairs.insert(0, (target_annotation, staged_annotation))
+            rollback_failed = False
+            for target, staged in rollback_pairs:
+                if target.exists() and not staged.exists():
+                    try:
+                        staged.parent.mkdir(parents=True, exist_ok=True)
+                        os.replace(target, staged)
+                    except OSError:
+                        rollback_failed = True
+            if rollback_failed:
+                continue
+            for staged in (staged_image, staged_thumbnail, staged_annotation):
+                if staged is not None:
+                    staged.unlink(missing_ok=True)
             self.repository.finish_operation(operation.id)
 
     def _recover_rename_operations(self) -> None:

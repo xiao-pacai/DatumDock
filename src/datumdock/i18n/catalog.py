@@ -249,6 +249,57 @@ CATALOGS: dict[str, dict[str, str]] = {
         "dialog.xany.import_title": "导入 X-AnyLabeling / LabelMe 目录",
         "dialog.xany.export_title": "导出 X-AnyLabeling 项目",
         "dialog.xany.folder_name": "导出目录名称",
+        "dialog.xany.readonly_notice": (
+            "外部目录只读。DatumDock 会把图片复制并规范化到当前数据集，不会修改源图片或 JSON。"
+        ),
+        "dialog.xany.choose_source": "选择交换目录",
+        "dialog.xany.choose_source_hint": "请选择包含图片和同名 LabelMe JSON 的目录。",
+        "dialog.xany.issue_level": "级别",
+        "dialog.xany.issue_file": "文件",
+        "dialog.xany.issue_detail": "详情",
+        "dialog.xany.issue_severity_error": "错误",
+        "dialog.xany.issue_severity_warning": "警告",
+        "dialog.xany.issue_missing_annotation": "图片没有同名 JSON，将作为无标注图片导入",
+        "dialog.xany.issue_orphan_annotation": "JSON 没有同名图片，已跳过且未修改来源文件",
+        "dialog.xany.issue_symlink_skipped": "符号链接已按安全规则跳过",
+        "dialog.xany.issue_image_prepare_failed": "图片准备失败：{detail}",
+        "dialog.xany.issue_invalid_annotation": "标注 JSON 无效：{detail}",
+        "dialog.xany.issue_sample_not_exportable": "样本无法导出：{detail}",
+        "dialog.xany.external_label": "外部标签",
+        "dialog.xany.shape_count": "引用数",
+        "dialog.xany.mapping": "导入方式",
+        "dialog.xany.preserve_readonly": "只读保留（不丢失）",
+        "dialog.xany.create_label": "新建数据集标签",
+        "dialog.xany.created_description": "从 X-AnyLabeling / LabelMe 目录导入",
+        "dialog.xany.preflight": "开始预检",
+        "dialog.xany.preflighting": "正在只读扫描、转码和校验…",
+        "dialog.xany.preflight_summary": (
+            "发现 {images} 张图片，存在 {errors} 个阻断问题。请确认标签映射后继续。"
+        ),
+        "dialog.xany.start_import": "确认导入",
+        "dialog.xany.importing": "正在提交图片、标注和索引…",
+        "dialog.xany.import_report": (
+            "导入 {imported} 张，跳过 {skipped} 张，失败 {failed} 张；"
+            "保留兼容 shape {compatibility} 个。"
+        ),
+        "dialog.xany.cancelling": "正在当前样本边界安全取消…",
+        "dialog.xany.choose_target_parent": "选择导出父目录",
+        "dialog.xany.target_parent": "父目录",
+        "dialog.xany.invalid_folder_name": "请输入不含路径分隔符的新目录名称。",
+        "dialog.xany.scope": "导出范围",
+        "dialog.xany.scope_all": "全部活动图片",
+        "dialog.xany.scope_selected": "选中的 {count} 张图片",
+        "dialog.xany.export_hint": "导出只会创建一个新目录，不会修改数据集池。",
+        "dialog.xany.start_export": "确认导出",
+        "dialog.xany.export_preflight_summary": (
+            "将导出 {images} 张图片：有标注 {annotated} 张，空标注 {empty} 张。"
+        ),
+        "dialog.xany.exporting": "正在生成并验证独立交换目录…",
+        "dialog.xany.export_report": (
+            "已导出 {images} 张图片、{rectangles} 个矩形，其中空标注 {empty} 张。"
+        ),
+        "dialog.xany.cancel_title": "取消当前任务",
+        "dialog.xany.cancel_body": "将在当前样本安全提交完成后取消，已完成项目会保留。继续吗？",
         "dialog.xany.import_complete": (
             "已导入 {imported} 张；缺少标注 {missing} 张；无效 JSON {invalid} 个。"
         ),
@@ -537,6 +588,71 @@ CATALOGS: dict[str, dict[str, str]] = {
         "dialog.xany.import_title": "Import X-AnyLabeling / LabelMe Directory",
         "dialog.xany.export_title": "Export X-AnyLabeling Project",
         "dialog.xany.folder_name": "Export folder name",
+        "dialog.xany.readonly_notice": (
+            "The external directory is read-only. DatumDock copies and normalizes images "
+            "into this dataset without changing source images or JSON files."
+        ),
+        "dialog.xany.choose_source": "Choose Exchange Directory",
+        "dialog.xany.choose_source_hint": (
+            "Choose a directory containing images and same-stem LabelMe JSON files."
+        ),
+        "dialog.xany.issue_level": "Level",
+        "dialog.xany.issue_file": "File",
+        "dialog.xany.issue_detail": "Details",
+        "dialog.xany.issue_severity_error": "Error",
+        "dialog.xany.issue_severity_warning": "Warning",
+        "dialog.xany.issue_missing_annotation": (
+            "The image has no same-stem JSON and will be imported without annotations."
+        ),
+        "dialog.xany.issue_orphan_annotation": (
+            "The JSON has no same-stem image; it was skipped without changing the source."
+        ),
+        "dialog.xany.issue_symlink_skipped": "The symbolic link was skipped for safety.",
+        "dialog.xany.issue_image_prepare_failed": "Image preparation failed: {detail}",
+        "dialog.xany.issue_invalid_annotation": "Invalid annotation JSON: {detail}",
+        "dialog.xany.issue_sample_not_exportable": "The sample cannot be exported: {detail}",
+        "dialog.xany.external_label": "External Label",
+        "dialog.xany.shape_count": "Uses",
+        "dialog.xany.mapping": "Import As",
+        "dialog.xany.preserve_readonly": "Preserve Read-only (No Loss)",
+        "dialog.xany.create_label": "Create Dataset Label",
+        "dialog.xany.created_description": "Imported from an X-AnyLabeling / LabelMe directory",
+        "dialog.xany.preflight": "Run Preflight",
+        "dialog.xany.preflighting": "Scanning, normalizing, and validating read-only sources…",
+        "dialog.xany.preflight_summary": (
+            "Found {images} images with {errors} blocking issues. "
+            "Confirm label mappings to continue."
+        ),
+        "dialog.xany.start_import": "Import",
+        "dialog.xany.importing": "Committing images, annotations, and indexes…",
+        "dialog.xany.import_report": (
+            "Imported {imported}, skipped {skipped}, failed {failed}; "
+            "preserved {compatibility} compatibility shapes."
+        ),
+        "dialog.xany.cancelling": "Cancelling safely at the current sample boundary…",
+        "dialog.xany.choose_target_parent": "Choose Export Parent",
+        "dialog.xany.target_parent": "Parent Directory",
+        "dialog.xany.invalid_folder_name": "Enter a new folder name without path separators.",
+        "dialog.xany.scope": "Export Scope",
+        "dialog.xany.scope_all": "All Active Images",
+        "dialog.xany.scope_selected": "{count} Selected Images",
+        "dialog.xany.export_hint": (
+            "Export creates a new directory and never modifies the managed pool."
+        ),
+        "dialog.xany.start_export": "Export",
+        "dialog.xany.export_preflight_summary": (
+            "Export {images} images: {annotated} annotated and {empty} empty."
+        ),
+        "dialog.xany.exporting": "Generating and validating the standalone exchange directory…",
+        "dialog.xany.export_report": (
+            "Exported {images} images and {rectangles} rectangles, "
+            "including {empty} empty annotations."
+        ),
+        "dialog.xany.cancel_title": "Cancel Current Task",
+        "dialog.xany.cancel_body": (
+            "Cancellation takes effect after the current sample commits safely. "
+            "Completed items remain. Continue?"
+        ),
         "dialog.xany.import_complete": (
             "Imported {imported}; missing annotations {missing}; invalid JSON {invalid}."
         ),
