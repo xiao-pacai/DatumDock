@@ -7,8 +7,8 @@ import ctypes
 import sys
 from dataclasses import dataclass
 
-from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QCursor, QIcon
+from PySide6.QtWidgets import QApplication, QMainWindow
 
 from datumdock.i18n.catalog import LocaleService
 from datumdock.resources import application_icon_path
@@ -72,5 +72,20 @@ def main(arguments: list[str] | None = None) -> int:
     options, qt_arguments = parse_launch_options(raw_arguments)
     application = create_application([sys.argv[0], *qt_arguments])
     window = ApplicationShell.for_mode(LocaleService(), options.ui_preview)
-    window.show()
+    show_application_window(application, window)
     return application.exec()
+
+
+def show_application_window(application: QApplication, window: QMainWindow) -> None:
+    """设置当前屏幕的还原几何后直接最大化，保留原生标题栏和任务栏。"""
+
+    screen = application.screenAt(QCursor.pos()) or application.primaryScreen()
+    if screen is not None:
+        available = screen.availableGeometry()
+        width = min(1440, available.width())
+        height = min(900, available.height())
+        left = available.left() + max(0, (available.width() - width) // 2)
+        top = available.top() + max(0, (available.height() - height) // 2)
+        window.setGeometry(left, top, width, height)
+    # 不先 show()，避免启动时短暂闪现普通窗口；用户仍可通过系统按钮还原。
+    window.showMaximized()

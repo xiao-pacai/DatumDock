@@ -12,7 +12,7 @@ from PySide6.QtGui import QIcon
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel, QMessageBox
 
-from datumdock.app import create_application, parse_launch_options
+from datumdock.app import create_application, parse_launch_options, show_application_window
 from datumdock.domain.models import ManagedDatasetConfiguration, NamingPolicy
 from datumdock.i18n.catalog import CATALOGS, LocaleService, tr
 from datumdock.resources import application_icon_path, resource_root
@@ -38,6 +38,20 @@ def test_launch_options_keep_qt_arguments() -> None:
     options, remaining = parse_launch_options(["--ui-preview", "-style", "Fusion"])
     assert options.ui_preview is True
     assert remaining == ["-style", "Fusion"]
+
+
+def test_startup_shows_native_window_maximized_without_forcing_fullscreen(qtbot) -> None:
+    """普通与预览共用入口：首次可见即最大化，但仍能还原为原生窗口。"""
+
+    window = ApplicationShell.for_mode(LocaleService(), True)
+    qtbot.addWidget(window)
+    show_application_window(_application(), window)
+    qtbot.waitUntil(window.isMaximized, timeout=2000)
+    assert not window.isFullScreen()
+    window.showNormal()
+    qtbot.waitUntil(lambda: not window.isMaximized(), timeout=2000)
+    assert window.width() >= window.minimumWidth()
+    assert window.height() >= window.minimumHeight()
 
 
 def test_application_and_shell_use_dd_window_icon(qtbot) -> None:
