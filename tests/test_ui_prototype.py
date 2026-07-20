@@ -8,13 +8,14 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QPoint, Qt
+from PySide6.QtGui import QIcon
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel, QMessageBox
 
 from datumdock.app import create_application, parse_launch_options
 from datumdock.domain.models import ManagedDatasetConfiguration, NamingPolicy
 from datumdock.i18n.catalog import CATALOGS, LocaleService, tr
-from datumdock.resources import resource_root
+from datumdock.resources import application_icon_path, resource_root
 from datumdock.services.dataset_library import DatasetLibraryService
 from datumdock.ui.annotation_workspace import AnnotationWorkspace
 from datumdock.ui.application_shell import ApplicationShell
@@ -37,6 +38,19 @@ def test_launch_options_keep_qt_arguments() -> None:
     options, remaining = parse_launch_options(["--ui-preview", "-style", "Fusion"])
     assert options.ui_preview is True
     assert remaining == ["-style", "Fusion"]
+
+
+def test_application_and_shell_use_dd_window_icon(qtbot) -> None:
+    """源码窗口也必须显式使用与安装包相同的双色 DD 图标。"""
+
+    application = create_application(["datumdock-icon-test"])
+    window = ApplicationShell(LocaleService(), PreviewGateway())
+    qtbot.addWidget(window)
+
+    expected = QIcon(str(application_icon_path())).pixmap(64, 64).toImage()
+    assert not expected.isNull()
+    assert application.windowIcon().pixmap(64, 64).toImage() == expected
+    assert window.windowIcon().pixmap(64, 64).toImage() == expected
 
 
 def test_normal_gateway_rejects_side_effects() -> None:

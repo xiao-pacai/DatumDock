@@ -292,11 +292,12 @@ CATALOGS: dict[str, dict[str, str]] = {
         "dialog.xany.export_hint": "导出只会创建一个新目录，不会修改数据集池。",
         "dialog.xany.start_export": "确认导出",
         "dialog.xany.export_preflight_summary": (
-            "将导出 {images} 张图片：有标注 {annotated} 张，空标注 {empty} 张。"
+            "将导出 {images} 张图片：有标注并生成 JSON {annotated} 张，"
+            "无标注且不生成 JSON {empty} 张。"
         ),
         "dialog.xany.exporting": "正在生成并验证独立交换目录…",
         "dialog.xany.export_report": (
-            "已导出 {images} 张图片、{rectangles} 个矩形，其中空标注 {empty} 张。"
+            "已导出 {images} 张图片、{rectangles} 个矩形；{empty} 张无标注图片未生成 JSON。"
         ),
         "dialog.xany.cancel_title": "取消当前任务",
         "dialog.xany.cancel_body": "将在当前样本安全提交完成后取消，已完成项目会保留。继续吗？",
@@ -641,12 +642,13 @@ CATALOGS: dict[str, dict[str, str]] = {
         ),
         "dialog.xany.start_export": "Export",
         "dialog.xany.export_preflight_summary": (
-            "Export {images} images: {annotated} annotated and {empty} empty."
+            "Export {images} images: {annotated} annotated images will include JSON, "
+            "and {empty} unannotated images will not."
         ),
         "dialog.xany.exporting": "Generating and validating the standalone exchange directory…",
         "dialog.xany.export_report": (
             "Exported {images} images and {rectangles} rectangles, "
-            "including {empty} empty annotations."
+            "with no JSON created for {empty} unannotated images."
         ),
         "dialog.xany.cancel_title": "Cancel Current Task",
         "dialog.xany.cancel_body": (

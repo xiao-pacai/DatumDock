@@ -152,7 +152,7 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 - SQLite 迁移必须在事务中完成并保留回滚；主页摘要、筛选、标签检查和导出候选只从新枚举与独立健康字段读取。
 - `trash/` 只保存被选择“移入回收站”的完整样本包及恢复元数据；永久删除和大批量删除不进入该目录。
 - 图片导入时只复制/转码图片，不创建空 LabelMe JSON；首次画框或确认负样本时才创建。索引只保留原始文件名，不持久化外部绝对来源路径。
-- 外部 X-AnyLabeling/LabelMe 文件的兼容载荷与 DatumDock 的可编辑矩形框分层存储：矩形框解析为内部 `label_id` 与像素坐标；其他 shape 及 `flags`、`attributes`、`description`、`difficult`、`score` 等未知或未支持字段保留为只读兼容载荷。`LabelMeRepository` 在写回或导出时按原顺序合并该载荷，不将私有稳定 ID、复核状态或模型元数据泄漏到交换 JSON。
+- 外部 X-AnyLabeling/LabelMe 文件的兼容载荷与 DatumDock 的可编辑矩形框分层存储：矩形框解析为内部 `label_id` 与像素坐标；其他 shape 及 `flags`、`attributes`、`description`、`difficult`、`score` 等未知或未支持字段保留为只读兼容载荷。`LabelMeRepository` 在写回或导出时按原顺序合并该载荷，不将私有稳定 ID、复核状态或模型元数据泄漏到交换 JSON。交换导出始终复制范围内图片，但仅在文档至少包含一个可编辑或兼容 shape 时写出同名 JSON。
 - `XAnyLabelingInteropService` 的目录导入导出仍是后续边界。步骤四只实现受管池内 LabelMe 的有序兼容读写和私有字段剔除；完整流程仍应遵循“扫描配对 → 校验 → 临时目录 → 交换验证 → 原子发布”。
 - `dataset.json` 包含可选 `naming_policy`。它只定义受管池中图片的整理名称，绝不回写外部来源文件；`DatasetSample.id` 是不随文件名变化的内部身份。
 - 样本 ID 必须独立于文件排序；建议由导入时生成 UUID，并记录原始规范化路径、最终 PNG 内容哈希和文件指纹用于完全重复检测。
@@ -264,6 +264,7 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 - 状态色要同时使用图标、边框或文字，不得只依赖颜色区分；键盘焦点环不可被主题样式覆盖。
 - 自有图标资源存放于 `assets/icons/`，由 `IconRegistry` 以语义名称（如 `import`、`export`、`auto_annotate`、`delete`）提供给 UI；SVG 为优先源格式，按需生成 PNG/ICO 等发布尺寸。任何图标替换只修改受管源资产及其派生物，不影响业务代码中的语义名称。
 - 保留 Windows 原生窗口边框和系统按钮，品牌顶栏位于应用内容区。任何无边框窗口方案必须先验证拖动、缩放、阴影、DPI、键盘和辅助功能，不能只为外观牺牲稳定性。
+- 应用入口负责在主窗口首次显示前请求 Windows/Qt 最大化状态；页面和业务 Gateway 不管理顶层窗口几何。最大化仅覆盖当前显示器可用区域，不把子对话框强制最大化，也不引入独占全屏或跨屏窗口逻辑。
 - 固定截图回归覆盖主页与标注工作台的中英文、空/有数据、hover/selected/disabled、100%/150% DPI；视觉禁止项出现即视为回归失败。
 
 ## 15. 内置教程内容与进度
@@ -294,6 +295,18 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 - 导出只接收当次范围快照和尚不存在的目标目录。在目标父目录同卷暂存，逐对回读图片与 JSON、核对尺寸/shape/标签并清除所有 `datumdock_*` 私有字段后，才原子发布最终目录。
 - 当前 schema 保持 v3；兼容负载仍以 LabelMe JSON 为事实来源，不为步骤五新增第二份字段数据库。
 
+## 18. 整数据集永久删除事务
+
+- 新增正式边界 `DatasetDeletionService`、`DatasetDeletionPreflight`、`DatasetDeletionRequest`、`DatasetDeletionReport` 与 `DatasetDeletionRecoveryManifest`。UI 只能通过 `ManagedDatasetGateway` 请求预检和提交，不直接拼接目录或递归删除文件。
+- 预检以数据集稳定 UUID 解析唯一受管目录，拒绝数据集名称路径、绝对/转义路径、非 UUID 目录和符号链接；统计图片、标注、标签、模型、索引、缩略图、缓存、样本回收站、内部恢复项、文件总数与字节数。
+- 提交请求携带数据集 UUID、预检摘要、资料库修订号、用户输入的完整名称及第二次确认令牌。预检后名称、目录摘要、运行任务或资料库修订发生变化时，原确认失效并要求重新预检。
+- 删除前由保存离开保护确认该数据集不存在失败的内存标注；后台任务服务确认没有仍在写入的导入、重命名、标注迁移、自动标注、样本删除或恢复任务。只读查询任务可取消并等待退出。
+- 在资料库根目录的 `recovery/dataset-deletions/<operation_uuid>/` 写入原子恢复清单，然后将 `datasets/<dataset_uuid>` 在同卷原子移动到该操作的暂存目录。移动范围只允许这一条已解析 UUID 目录，不跟随其中未知符号链接。
+- 暂存成功后原子更新 `library.json`，移除对应登记并刷新主页摘要；最后清理暂存树和恢复清单。最终清理结束前不得返回完整成功。
+- 启动恢复按清单阶段处理：资料库仍登记时把完整暂存目录移回原 UUID 位置；资料库已移除时继续清理暂存内容。无法证明目录完整性或阶段一致时保留现场并显示诊断，不猜测覆盖、重新登记或删除其他目录。
+- 递归清理只能删除恢复清单逐项登记且仍位于暂存目录内的普通文件/目录；遇到重解析点、路径逃逸、权限变化或摘要不符立即停止并报告。外部来源、已导出目录和备份包永远不进入清单。
+- 首版不建立整数据集回收站。归档只修改元数据且可恢复；永久删除与样本级回收站是不同操作，不能复用“少量样本阈值”推断用户意图。
+
 ## English Summary
 
-The architecture now includes a managed-dataset X-AnyLabeling interoperability boundary: read-only source preflight, explicit label resolution, recoverable per-sample import, and validated atomic directory export. Automated evidence exists, while actual X-AnyLabeling v3.3.10 GUI verification remains externally blocked. Model inference, YOLO export, backup, and packaging remain future work.
+The architecture now specifies safeguarded whole-dataset permanent deletion through a gateway-only service, impact preflight, revision-bound confirmation, same-volume staging, an atomic library update, and deterministic startup recovery. Archive remains the reversible option; external sources, exports, and backups are never deletion targets. This deletion flow is specified but not yet implemented.

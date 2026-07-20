@@ -66,6 +66,7 @@
 | `dataset_diagnostics` | 损坏数据集诊断 | 单页只读真实名称、UUID、原因与原文件保护说明；普通模式不显示演示统计 |
 | `rename_dataset` | 重命名数据集 | 名称校验和预览 |
 | `archive_dataset` | 归档数据集 | 影响说明与确认 |
+| `delete_dataset` | 永久删除整个数据集 | **待实现**：影响预检、名称输入、二次确认、保存/任务阻断、进度、恢复诊断和外部文件排除说明 |
 | `label_editor` | 标签创建/编辑 | 普通模式真实保存英文名、别名、描述、同义词、类别 ID 和颜色 |
 | `label_color` | 标签颜色选择 | 调色板、占用颜色和冲突提示 |
 | `model_import` | 模型导入 | 文件外观、解析阶段与格式提示 |
@@ -82,7 +83,7 @@
 | `delete_batch` | 批量删除 | 真实数量、阈值、恢复性和影响范围 |
 | `yolo_export` | YOLO Detection 导出 | 范围、比例、种子、统计和目录结构预览 |
 | `xany_import` | X-AnyLabeling 导入 | 正式目录预检、问题表、标签映射、重复决策、后台提交与报告 |
-| `xany_export` | X-AnyLabeling 导出 | 正式范围选择、阻断项预检、原子目录生成、验证与报告 |
+| `xany_export` | X-AnyLabeling 导出 | 正式范围选择、阻断项预检、仅为含 shape 图片生成 JSON、原子目录生成、验证与报告 |
 | `xany_exchange` | X-AnyLabeling 原型兼容别名 | 仅保留预览和旧覆盖兼容，不再作为普通模式正式入口 |
 | `backup_export` | 数据集备份导出 | 包含项、模型二进制排除说明 |
 | `backup_import` | 备份导入与完整性检查 | 版本、清单、校验和迁入名称 |
@@ -137,4 +138,4 @@
 
 ## English Summary
 
-This inventory now includes real normal-mode X-AnyLabeling import and export dialogs backed by managed tasks. Automated routing and isolation tests pass, while actual third-party GUI validation and readable screenshot recapture remain open. Model inference, YOLO export, backups, and packaging remain future work.
+This inventory now records whole-dataset permanent deletion as a pending real dialog, including impact preflight, exact-name and final confirmation, save/task guards, progress, recovery diagnostics, and explicit external-file exclusion. Archive remains the reversible alternative; no implementation is claimed yet.

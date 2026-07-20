@@ -37,9 +37,11 @@
 
 - [-] 初始化 Python 项目、依赖和质量检查配置：已建立 `pyproject.toml`、Ruff 与 pre-commit 规则；应用依赖和可启动包结构待随首个 GUI 模块加入。
 - [x] 实现应用入口及可启动的 PySide6 主窗口；支持普通安全模式和 `--ui-preview`。
+- [ ] 让普通模式与 `--ui-preview` 主窗口在首次可见前默认最大化到当前单个显示器的可用区域；保留 Windows 原生标题栏、系统按钮和任务栏，对话框不跟随全屏。
 - [x] 按 `docs/VISUAL_DESIGN.md` 重建 `ThemeService`、现代视觉 v2 token、可缩放 QSS、图标状态和组件样式基线；正式入口不再使用旧样式。
 - [-] 生成并登记首批自有图标资产：已完成导航、画布、状态与常用操作 SVG 及状态着色；安装包多尺寸派生仍待发布阶段完成。
 - [x] 在阶段 0.5 的内部资料库上实现数据集重命名、归档、恢复和快速切换；不实现工作区创建或打开。
+- [ ] 实现主页整数据集永久删除：影响预检、名称输入、二次确认、保存/任务保护、UUID 边界、同卷暂存、资料库原子移除、启动恢复和故障注入；归档继续作为可恢复选择，首版不建立整数据集回收站。
 - [x] 实现空数据集与源数据集模板创建，复用兼容标签集和数据集配置。
 - [x] 实现全局设置、简体中文/英文翻译资源、即时界面语言切换和真实偏好原子持久化。
 - [ ] 覆盖首页教程首次显示、折叠/恢复、功能跳转、离线阅读、双语章节保持、内容版本迁移和损坏资源降级测试。
@@ -74,6 +76,7 @@
 
 - [x] 实现数据集级标签数据模型、标签管理面板和唯一颜色显示。
 - [x] 实现可搜索标签选择器，支持中文别名、英文名、同义词和描述，并显示标签说明。
+- [ ] 修复新建矩形的默认标签跟随：按数据集保存当前会话最近一次成功使用的标签，成功创建或确认改派后更新；取消、零面积、保存失败和跨数据集切换不得错误更新或串用。
 - [x] 实现按标签提取样本的分页检查视图、SQLite 查询和目标标注框高亮跳转；网格式检查可后续增强。
 - [x] 实现标签修改影响预检、确认对话框和可恢复的 LabelMe 批量迁移。
 - [x] 实现矩形框创建、选中、移动、八点缩放和删除。
@@ -171,7 +174,8 @@
 ## 阶段 4：标注持久化与模型格式导出
 
 - [x] 实现受管池内 LabelMe JSON 有序读取、矩形框原子写入和私有稳定 ID。
-- [-] 实现 X-AnyLabeling 交换目录导出（PNG、同名 LabelMe JSON、`labels.txt`）：临时目录生成、回读验证、私有字段递归清理和原子发布已完成；等待独立 X-AnyLabeling 实机回归后勾选。
+- [ ] 修复 X-AnyLabeling 导入标签映射：读取根目录 `labels.txt`，未知标签默认新建，非训练名安全转换并保留原别名，修复映射表裁切/重叠，并以自动化证明导入矩形成为可编辑标注。
+- [-] 实现 X-AnyLabeling 交换目录导出（全部 PNG、仅有 shape 图片的同名 LabelMe JSON、`labels.txt`）：无 shape 图片不生成空 JSON，兼容 shape 仍无损保留；临时目录生成、回读验证、私有字段递归清理和原子发布已完成，等待独立 X-AnyLabeling 实机回归后勾选。
 - [-] 实现兼容载荷回写：自动化双向回归已证明混合 shape 顺序、未知 shape 和扩展字段保留；第三方应用实际打开证据仍被外部依赖安装阻塞。
 - [x] 覆盖正常、损坏、缺失和未知标签 JSON 的测试；损坏文件原字节保持不变。
 - [ ] 实现数据集级模型目录、模型管理页面和模型条目增删改查。
@@ -225,7 +229,7 @@
   - 原问题：离屏 Qt 平台枚举到的系统字体数量为 0，首轮截图文字显示为方框；该结果未被计作视觉通过。
   - 恢复结果：移除离屏平台覆盖后使用同一临时资料库脚本重新生成中文/英文 × 三种分辨率的导入预检、标签映射、导出预检和导出结果截图，文字恢复可读；共 24 张，保存于 Git 忽略的 `build/ui-review/step5-xany/`。
 - [x] 步骤五 Python 3.11 与资料库隔离复验完成。
-  - 验证结果：Ruff、格式、`compileall` 和完整 pytest 通过，结果为 `214 passed、1 skipped、14 warnings`；普通模式与预览模式均进入真实 Qt 事件循环。
+  - 验证结果：Ruff、格式、`compileall` 和完整 pytest 通过，最新结果为 `217 passed、1 skipped、14 warnings`；普通模式与预览模式均进入真实 Qt 事件循环。
   - 隔离结果：普通模式只在绝对临时根目录生成 2 个资料库文件；预览模式生成 0 个文件。真实 `%LOCALAPPDATA%\DatumDock` 前后均为 707 个文件，树哈希均为 `A42D4762FF14EDD1AE633B619B3AD83D72F1167D426EEA5FE5A63E591023DF5B`。
 
 - [x] A0.8 与步骤五本地交付已恢复远端同步。
@@ -250,4 +254,4 @@
 
 ## English Summary
 
-Managed X-AnyLabeling/LabelMe import and validated export are implemented with automated round-trip, recovery, and 100-image coverage. The hard gate remains open because X-AnyLabeling v3.3.10 could not be installed from a trusted source after TLS EOF failures, and the current Qt capture environment produced unreadable glyphs. No complete Step 5 or L2 claim is made until those external checks pass. Model inference, YOLO export, backup, and packaging remain on the roadmap.
+The roadmap includes pending slices for safeguarded whole-dataset deletion, X-AnyLabeling label import, recent-label tracking, and maximized startup. Startup should maximize the main window on one active display before it becomes visible, while preserving native Windows controls, the taskbar, and content-sized dialogs.

@@ -244,8 +244,8 @@ def test_source_change_and_path_escape_are_blocked(tmp_path: Path) -> None:
     assert service.samples.count_active() == 0
 
 
-def test_unannotated_image_exports_standard_empty_json(tmp_path: Path) -> None:
-    """没有 JSON 的图片导入后可导出为空 shapes 的标准交换文档。"""
+def test_unannotated_image_exports_without_json(tmp_path: Path) -> None:
+    """没有任何 shape 的图片只导出 PNG，不创建无意义的空 JSON。"""
 
     source = tmp_path / "external"
     source.mkdir()
@@ -260,12 +260,40 @@ def test_unannotated_image_exports_standard_empty_json(tmp_path: Path) -> None:
 
     target = tmp_path / "empty-export"
     report = service.export(service.preflight_export(XAnyExportRequest(dataset.id, target)))
-    exported = json.loads(next(target.glob("*.json")).read_text("utf-8"))
     assert report.empty_annotation_count == 1
-    assert exported["shapes"] == []
-    assert exported["imageData"] is None
-    assert exported["imageWidth"] == 80
-    assert exported["imageHeight"] == 50
+    assert report.image_count == 1
+    assert report.json_count == 0
+    assert (target / "image_000001.png").is_file()
+    assert tuple(target.glob("*.json")) == ()
+
+
+def test_existing_empty_annotation_json_is_omitted_on_export(tmp_path: Path) -> None:
+    """即使受管池已有合法空 JSON，没有 shape 时仍不得把它导出。"""
+
+    source = tmp_path / "external"
+    source.mkdir()
+    image = source / "empty.png"
+    Image.new("RGB", (80, 50), (30, 60, 90)).save(image)
+    payload = _payload(image.name)
+    payload["shapes"] = []
+    (source / "empty.json").write_text(json.dumps(payload), encoding="utf-8")
+    library = DatasetLibraryService(tmp_path / "library")
+    dataset = library.create_dataset("已有空标注").dataset
+    service = XAnyLabelingInteropService(library, dataset.id)
+    preflight = service.preflight_import(XAnyImportPreflightRequest(dataset.id, source))
+    imported = service.commit_import(XAnyImportCommitRequest(dataset.id, preflight, {}))
+    assert len(imported.imported_sample_ids) == 1
+
+    target = tmp_path / "empty-json-export"
+    export_preflight = service.preflight_export(XAnyExportRequest(dataset.id, target))
+    assert export_preflight.annotated_count == 0
+    assert export_preflight.empty_count == 1
+    report = service.export(export_preflight)
+
+    assert report.image_count == 1
+    assert report.json_count == 0
+    assert report.empty_annotation_count == 1
+    assert tuple(target.glob("*.json")) == ()
 
 
 def test_export_rejects_existing_target(tmp_path: Path) -> None:
@@ -406,9 +434,10 @@ def test_one_hundred_images_import_restart_and_export(tmp_path: Path) -> None:
         export_service.preflight_export(XAnyExportRequest(dataset.id, target))
     )
     assert exported.image_count == 100
-    assert exported.json_count == 100
+    assert exported.json_count == 0
+    assert exported.empty_annotation_count == 100
     assert len(tuple(target.glob("*.png"))) == 100
-    assert len(tuple(target.glob("*.json"))) == 100
+    assert len(tuple(target.glob("*.json"))) == 0
 
 
 def test_sqlite_failure_rolls_back_all_published_interop_files(

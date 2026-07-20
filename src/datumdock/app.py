@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
 import sys
 from dataclasses import dataclass
 
@@ -10,7 +11,7 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from datumdock.i18n.catalog import LocaleService
-from datumdock.resources import resource_root
+from datumdock.resources import application_icon_path
 from datumdock.ui.application_shell import ApplicationShell
 from datumdock.ui.theme import application_stylesheet
 
@@ -38,15 +39,30 @@ def parse_launch_options(arguments: list[str] | None = None) -> tuple[LaunchOpti
 def create_application(arguments: list[str] | None = None) -> QApplication:
     """创建单一 QApplication 并安装现代视觉 v2 主题。"""
 
+    _set_windows_application_identity()
     application = QApplication.instance()
     if application is None:
         application = QApplication(arguments if arguments is not None else sys.argv)
     application.setApplicationName("DatumDock")
     application.setOrganizationName("DatumDock")
-    icon_path = resource_root() / "assets" / "brand" / "datumdock-app-icon.ico"
-    application.setWindowIcon(QIcon(str(icon_path)))
+    application.setWindowIcon(QIcon(str(application_icon_path())))
     application.setStyleSheet(application_stylesheet())
     return application
+
+
+def _set_windows_application_identity() -> None:
+    """让源码运行和安装版都按 DatumDock 分组，避免任务栏回退为 Python 图标。"""
+
+    if sys.platform != "win32":
+        return
+    try:
+        shell32 = getattr(getattr(ctypes, "windll", None), "shell32", None)
+        if shell32 is None:
+            return
+        shell32.SetCurrentProcessExplicitAppUserModelID("DatumDock.DatumDock")
+    except (AttributeError, OSError):
+        # 极少数精简 Windows 环境没有对应 Shell API，窗口自身图标仍可正常使用。
+        return
 
 
 def main(arguments: list[str] | None = None) -> int:

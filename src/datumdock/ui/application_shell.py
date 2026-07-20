@@ -5,11 +5,12 @@ from __future__ import annotations
 import logging
 
 from PySide6.QtCore import QThreadPool, QTimer
-from PySide6.QtGui import QCloseEvent, QResizeEvent
+from PySide6.QtGui import QCloseEvent, QIcon, QResizeEvent
 from PySide6.QtWidgets import QDialog, QMainWindow, QMessageBox, QStackedWidget, QWidget
 
 from datumdock.domain.models import AppSettings
 from datumdock.i18n.catalog import LocaleService, tr
+from datumdock.resources import application_icon_path
 from datumdock.services.shortcuts import ActionRegistry, ShortcutProfileService
 from datumdock.ui.annotation_workspace import AnnotationWorkspace
 from datumdock.ui.components import ToastOverlay
@@ -95,6 +96,8 @@ class ApplicationShell(QMainWindow):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
+        # 主窗口显式绑定 DD 图标，避免嵌入式启动器覆盖 QApplication 的继承图标。
+        self.setWindowIcon(QIcon(str(application_icon_path())))
         self.locale_service = locale_service
         self.gateway = gateway
         self.managed_settings = getattr(gateway, "settings", None)

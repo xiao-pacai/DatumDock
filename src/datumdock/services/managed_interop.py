@@ -201,7 +201,7 @@ class XAnyExportPreflight:
 
 @dataclass(slots=True)
 class XAnyExportReport:
-    """完成后可展示的交换目录统计，不写入数据集。"""
+    """完成后可展示的交换目录统计；空标注计数表示未生成 JSON 的图片。"""
 
     output_directory: Path
     image_count: int = 0
@@ -519,6 +519,7 @@ class XAnyLabelingInteropService:
         issues: list[InteropIssue] = []
         estimated = 0
         annotated = 0
+        label_set = self.library.open_dataset(self.dataset_id).label_set
         for sample in samples:
             try:
                 image_path = self.samples.resolve_path(sample.image_path, "pool/images")
@@ -537,9 +538,17 @@ class XAnyLabelingInteropService:
                     )
                     if not annotation_path.is_file():
                         raise InteropError("索引引用的标注 JSON 缺失")
-                    estimated += annotation_path.stat().st_size
-                    annotated += 1
-            except (OSError, SampleRepositoryError, InteropError) as error:
+                    document = self.labelme.load(
+                        annotation_path,
+                        sample.id,
+                        label_set,
+                        sample.filename,
+                        (sample.width, sample.height),
+                    )
+                    if _document_has_exportable_shapes(document):
+                        estimated += annotation_path.stat().st_size
+                        annotated += 1
+            except (LabelMeError, OSError, SampleRepositoryError, InteropError) as error:
                 issues.append(
                     InteropIssue(
                         InteropIssueSeverity.ERROR,
@@ -595,14 +604,15 @@ class XAnyLabelingInteropService:
                 document.image_filename = sample.filename
                 document.image_width = width
                 document.image_height = height
-                payload = self.labelme.export_payload(document, label_set)
-                json_target = temporary / f"{Path(sample.filename).stem}.json"
-                _write_json_file(json_target, payload)
-                _validate_export_pair(image_target, json_target, label_set, self.labelme)
                 report.image_count += 1
-                report.json_count += 1
                 report.rectangle_count += len(document.rectangles)
-                if not document.rectangles and not document.unsupported_shapes:
+                if _document_has_exportable_shapes(document):
+                    payload = self.labelme.export_payload(document, label_set)
+                    json_target = temporary / f"{Path(sample.filename).stem}.json"
+                    _write_json_file(json_target, payload)
+                    _validate_export_pair(image_target, json_target, label_set, self.labelme)
+                    report.json_count += 1
+                else:
                     report.empty_annotation_count += 1
                 for shape in document.unsupported_shapes:
                     shape_type = str(shape.get("shape_type") or "unknown")
@@ -613,7 +623,11 @@ class XAnyLabelingInteropService:
                     if name:
                         compatibility_names.add(name)
             _write_labels_file(temporary / "labels.txt", label_set, compatibility_names)
-            _validate_export_directory(temporary, len(preflight.sample_ids))
+            _validate_export_directory(
+                temporary,
+                expected_image_count=len(preflight.sample_ids),
+                expected_json_count=report.json_count,
+            )
             if progress:
                 progress(len(preflight.sample_ids), len(preflight.sample_ids), "")
             os.replace(temporary, target)
@@ -962,12 +976,23 @@ def _write_labels_file(path: Path, label_set: LabelSet, compatibility_names: Ite
     path.write_text("\n".join(names) + ("\n" if names else ""), encoding="utf-8")
 
 
-def _validate_export_directory(root: Path, expected_count: int) -> None:
+def _document_has_exportable_shapes(document: AnnotationDocument) -> bool:
+    """仅在至少存在一个可编辑或兼容 shape 时生成 LabelMe JSON。"""
+
+    return bool(document.rectangles or document.unsupported_shapes)
+
+
+def _validate_export_directory(
+    root: Path,
+    *,
+    expected_image_count: int,
+    expected_json_count: int,
+) -> None:
     images = tuple(root.glob("*.png"))
     json_files = tuple(root.glob("*.json"))
-    if len(images) != expected_count or len(json_files) != expected_count:
-        raise InteropError("交换目录图片与 JSON 数量不完整")
+    if len(images) != expected_image_count or len(json_files) != expected_json_count:
+        raise InteropError("交换目录图片或标注 JSON 数量不完整")
     if not (root / "labels.txt").is_file():
         raise InteropError("交换目录缺少 labels.txt")
-    if {path.stem for path in images} != {path.stem for path in json_files}:
-        raise InteropError("交换目录存在未配对的图片或 JSON")
+    if not {path.stem for path in json_files} <= {path.stem for path in images}:
+        raise InteropError("交换目录存在没有同名图片的 JSON")

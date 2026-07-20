@@ -80,7 +80,18 @@ flowchart LR
 4. 原子创建目录、元数据和索引；任一步失败均回滚，不留下无法打开的半成品卡片。
 5. 创建成功后直接进入空标注工作台，提示用户先管理标签或导入图片。
 
-### 4.4 首页教程与帮助
+### 4.4 归档与永久删除数据集
+
+- “归档数据集”继续作为可恢复操作：它只改变主页可见状态，不删除图片、标注、标签、模型、索引、回收站或配置。
+- 数据集卡片“更多”菜单提供危险操作“永久删除数据集”；点击卡片主体仍只负责打开数据集，不能把删除放在容易误触的主操作区。
+- 删除前先执行只读影响预检，至少展示图片、标注文件、矩形框、标签、模型文件、缩略图、缓存、样本回收站、索引和占用空间统计；统计失败时禁止继续。
+- 用户必须先输入完整数据集名称，大小写和空格处理后的结果必须与当前名称完全匹配；随后再进行一次明确写有“永久删除且无法恢复”的最终确认。
+- 当前数据集存在保存失败的内存标注、未完成恢复操作或正在修改数据的后台任务时，删除入口必须阻止继续，并引导用户先重试/放弃保存、等待/取消任务或完成恢复。
+- 删除范围只允许是资料库中该数据集稳定 UUID 对应的受管目录及其资料库登记：`dataset.json`、图片、标注、标签、模型、SQLite、缩略图、缓存、样本回收站和内部恢复信息。外部导入来源、已导出的训练目录、X-AnyLabeling 交换目录和用户另存的备份包均不属于删除范围。
+- 首版不建立“整数据集回收站”。用户需要可恢复地隐藏数据集时使用归档；选择永久删除即表示确认清理全部内部受管内容。
+- 删除必须使用恢复清单和同卷暂存目录。进程中断时，资料库索引仍登记则恢复数据集目录；登记已原子移除则继续清理暂存目录。无法证明一致时保留诊断现场，不伪报删除成功。
+
+### 4.5 首页教程与帮助
 
 - “快速开始”用创建数据集、配置标签、导入图片、标注/审核和导出训练数据五个步骤连接产品主流程；完成状态保存在全局设置中，可跳过、折叠并重新打开。
 - “学习中心”以内置离线教程卡片提供 DatumDock 使用教程、YOLO Detection 基础、数据划分与数据泄露、导出与训练准备、X-AnyLabeling 互操作、备份恢复和常见问题。
@@ -221,11 +232,11 @@ flowchart LR
 以下问题不影响本次文档定向，但应在对应实现开始前确认：
 
 - 数据集封面默认取第一张图片、最近图片，还是允许用户指定。
-- 主页删除数据集是否先进入“数据集回收站”，以及保留多久。
+- [已确认] 首版不建立整数据集回收站；归档是可恢复选择，永久删除使用影响预览、名称确认、二次确认和恢复日志。
 - 是否在高级设置提供整个内部资料库的位置迁移功能。
 - [已确认] 提供“归档数据集”，归档不删除任何内容，并可从主页筛选后恢复。
 - 旧预发布工作区数据是否已有真实用户数据，需要提供一次性迁移向导。
 
 ## English Summary
 
-DatumDock's revised step-four library uses schema v3. The first effective manual edit completes a model-pending image in the same recoverable save operation; no-edit review uses an explicit button or configurable shortcut. Unannotated samples and health errors remain separate from the two user-visible review states. The verified canvas uses a light backplate and clamps eligible rectangle input from that backplate to valid image-edge coordinates.
+DatumDock's managed library uses isolated UUID dataset directories. Whole-dataset deletion is now a locked requirement: archive remains reversible, while permanent deletion requires impact preflight, exact-name and final confirmation, a recoverable operation manifest, and strict exclusion of external sources, exports, and backups. This requirement is documented but not yet implemented.

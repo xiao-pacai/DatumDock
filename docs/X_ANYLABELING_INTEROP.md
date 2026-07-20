@@ -32,10 +32,14 @@
 - 任何 JSON 损坏、图片缺失、尺寸不一致、未知标签或不支持 shape 都必须在导入报告中逐项呈现。
 - 不支持 shape 绝不因保存、重命名、标签迁移或导出被静默删除。若用户执行会影响其语义的操作，应用必须先提示兼容风险。
 
-### 标签集导入
+### 标签集导入整改要求（待实施）
 
-- 默认从所有 shape 的 `label` 收集英文训练名，创建或匹配项目标签集。
-- 若用户同时提供 X-AnyLabeling 的标签列表或配置文件，导入向导可读取预定义标签和颜色作为辅助信息；项目级中文别名、描述和稳定类别 ID 仍由 DatumDock 管理。
+- [ ] 同时从所有 shape 的 `label` 与交换目录根部的 UTF-8/UTF-8 BOM `labels.txt` 收集标签；`labels.txt` 中引用数为零的预定义标签也要进入映射页。
+- [ ] 活动标签的英文训练名大小写不敏感完全一致时自动映射到现有标签；当前数据集中不存在的标签默认选择“新建数据集标签”，用户仍可改为已有标签或只读保留。
+- [ ] 默认新建保留外部原名作为别名。原名符合训练名规则时直接用作英文训练名；中文、空格或其他不安全字符应生成稳定、唯一的安全训练名，用户后续可通过正式迁移流程修改。
+- [ ] 修复新建标签映射控件的渲染问题：使用足够行高、可伸缩下拉框和清晰的“别名 · 英文训练名”展示，不能出现裁切、重叠或无法辨认当前选择。
+- [ ] 确认导入后，新建标签必须真实写入当前数据集标签集；X-AnyLabeling JSON 中已映射的 rectangle 必须按稳定标签 ID 导入为可编辑矩形，而不是错误降级为只读兼容 shape。
+- [ ] 导入报告显示新建标签数与逐文件失败原因；若 `labels.txt` 或 JSON 在预检后变化，必须在创建标签前阻止提交并要求重新预检。
 - 标签名称冲突按 DatumDock 标签集比较规则处理，不自动猜测两个不同名称是否同义。
 
 ## 3. 导出为 X-AnyLabeling 可打开目录
@@ -47,11 +51,12 @@ xanylabeling-export/
 ├─ image_000001.png
 ├─ image_000001.json
 ├─ image_000002.png
-├─ image_000002.json
 └─ labels.txt
 ```
 
-- 每张图片导出为受管 PNG 的副本，且具有同名 `.json` 文件。
+- 每张图片都导出为受管 PNG 的副本。
+- 只有图片至少包含一个 DatumDock 可编辑矩形或导入时保留的兼容 shape，才生成同名 `.json` 文件；完全没有 shape 的图片不生成空 JSON。
+- 只含 polygon、rotation、circle、line、point 或未知标签 shape 等兼容内容的图片仍生成 JSON，确保外部标注不会因 DatumDock 当前不可编辑而丢失。
 - JSON 使用标准 LabelMe 字段：`version`、`flags`、`shapes`、`imagePath`、`imageData`（默认 `null`）、`imageHeight`、`imageWidth`。
 - DatumDock 矩形框写入 `shape_type: "rectangle"`、英文训练名 `label` 和两个对角点 `points`。
 - 导入时保留的不支持 shape 和兼容字段与 DatumDock 矩形框合并写回；相对图片路径和尺寸按导出目录重新生成。
@@ -75,10 +80,10 @@ xanylabeling-export/
 - 正式 `ManagedDatasetGateway` 使用数据集级互操作服务，不调用旧 `Workspace/Project` 路径模型；预览模式仍为纯内存且零写盘。
 - 预检递归配对同相对目录、同 stem 的图片与 JSON，拒绝符号链接、绝对/UNC/盘符/`..` 路径、尺寸冲突、无效 `imageData` 和提交前来源变化。
 - 导入复用 PNG 规范化、重复判断和缩略图，并以单样本恢复日志、文件发布和 SQLite 事务作为提交边界；故障注入证明不会留下半登记样本。
-- 导出在目标父目录同卷暂存，回读图片/JSON、核对 shape/尺寸/标签并递归剔除 `datumdock_*` 后才原子发布；失败时最终目录不存在。
-- 自动化覆盖混合 shape 顺序、未知矩形只读保留、扩展字段、空标注、100 图导入/重开/导出、双数据集任务隔离和来源树不变。
+- 导出在目标父目录同卷暂存，回读全部图片和实际生成的 JSON、核对 shape/尺寸/标签并递归剔除 `datumdock_*` 后才原子发布；失败时最终目录不存在。
+- 自动化当前已覆盖混合 shape 顺序、未知矩形只读保留、扩展字段、无标注图片不生成 JSON、100 图导入/重开/导出、双数据集任务隔离和来源树不变；`labels.txt`、未知标签默认新建、映射 UI 和新标签可编辑矩形闭环仍待按本节补充。
 - 尚未完成：在独立环境中用固定 X-AnyLabeling v3.3.10 实际打开导出目录、编辑矩形、保存并回导。官方源码已取得，但可信 PyPI 安装第三方 GUI 依赖时发生 TLS EOF；官方 Windows CPU 资产下载也因网络过慢超时，未通过完整摘要校验且未执行。未关闭 TLS 校验。
 
 ## English Summary
 
-Managed directory import, explicit label resolution, recoverable commits, validated export with `labels.txt`, and automated compatibility-payload round trips are implemented. Actual open/edit/save/re-import verification with fixed X-AnyLabeling v3.3.10 remains blocked by trusted dependency installation, so Step 5 and full interoperability are not yet claimed.
+The next interoperability correction is documented but not yet implemented: import must read JSON shape labels and root `labels.txt`, default unknown labels to dataset-label creation, repair the mapping UI, preserve unsafe names as aliases, and reopen mapped rectangles as editable annotations. Existing recoverable import/export and compatibility-payload tests remain in place, while the external X-AnyLabeling GUI hard gate is still pending.

@@ -32,6 +32,13 @@
 - [ ] 创建两个数据集后，图片、标签、标注、模型、索引、复核状态、回收站与缓存均不串用。
 - [ ] 单个数据集元数据损坏不会导致主页或其他数据集无法使用，并提供明确诊断或恢复信息。
 - [ ] 如存在旧 `Workspace -> Project -> Dataset` 数据，迁移可预览、可校验、失败可回退且不会自动删除来源。
+- [ ] 数据集卡片“更多”菜单提供整数据集永久删除；卡片主体点击、打开和切换操作不会误触删除。
+- [ ] 永久删除前显示图片、标注、标签、模型、索引、缩略图、缓存、样本回收站、文件数和占用空间；统计失败时禁止删除。
+- [ ] 用户必须输入完整数据集名称并完成第二次明确确认；任一步取消、关闭或按 `Esc` 均不修改资料库。
+- [ ] 保存失败的内存标注、未完成恢复操作或写入型后台任务会阻止删除，且应用不会自动放弃标注或强制中断原子步骤。
+- [ ] 删除只作用于资料库登记的目标 UUID 目录和登记信息；外部来源、X-AnyLabeling/YOLO 导出目录、备份包和其他数据集的文件树哈希保持不变。
+- [ ] 在目录暂存、资料库登记移除、最终清理和启动恢复各阶段注入失败后，不会留下仍登记但无法打开的半删除卡片；不能证明一致时保留诊断现场且不报告成功。
+- [ ] 归档仍可恢复且不删除内容；首版不提供整数据集回收站，样本级回收站阈值不会影响整数据集永久删除行为。
 
 ### A0.1 步骤二验收记录（2026-07-19）
 
@@ -131,6 +138,22 @@
 - [x] 图片可通过按钮和比例输入放大到 `6400%`，并可一键恢复 `100%` 或适配窗口；非法和越界比例被安全钳制。
 - [x] 高倍率缩放只改变视图变换，不创建与放大尺寸等大的图片副本；原图只保留单份像素缓存。
 - [x] 在 `100%`、`800%`、`3200%` 和 `6400%` 下，矩形坐标、鼠标命中、八点控制柄、十字辅助线和保存后的 LabelMe 像素坐标无可观察漂移。
+
+### A0.9 最近使用标签跟随（待实施）
+
+- [ ] 在同一数据集内先用 `test1` 创建矩形，再改用 `test2` 成功创建或确认改派后，下一次进入矩形创建必须默认选中 `test2`。
+- [ ] 最近使用标签跨当前数据集的图片保持，但两个数据集各自独立；快速切换数据集不会串用标签 ID 或显示名称。
+- [ ] 打开后取消标签小窗、仅搜索/浏览、零面积矩形、`Esc` 取消、只读 shape 和保存失败均不改变最近使用标签。
+- [ ] 最近标签归档、删除或不属于当前数据集后立即失效，并要求重新选择活动标签，不静默使用标签表第一项代替。
+- [ ] 最近标签变化本身不创建撤销历史、不单独写 LabelMe JSON，也不改变图片复核状态；pytest-qt 覆盖创建、改派、取消、失败和数据集切换。
+
+### A0.10 启动默认最大化（待实施）
+
+- [ ] `python -m datumdock` 与 `python -m datumdock --ui-preview` 的主窗口首次可见时已经最大化，不先闪现普通尺寸窗口。
+- [ ] 最大化范围是当前单个显示器的可用工作区；保留 Windows 原生标题栏、最小化/还原/关闭按钮和任务栏，不进入无边框独占全屏。
+- [ ] 用户还原并调整窗口后仍可正常使用；关闭并重新启动时再次按产品默认最大化。
+- [ ] 新建数据集、标签选择、导入导出、设置和危险确认等对话框保持内容适配尺寸，并完整位于当前显示器可用区域内。
+- [ ] 在 1366×768、1440×900、1920×1080，以及 100%、125%、150% DPI 与至少双显示器模拟环境下验证最大化几何、无裁切和无跨屏拉伸。
 - [x] `6400%` 下仍能通过中键、滚轮和 `Alt + 滚轮` 到达图片四边与四角，框线、控制柄和标签不会随倍率无限放大。
 - [x] 800% 以下采用平滑插值，800% 及以上采用像素清晰模式；当前最大倍率锁定为 `6400%` 并有截图与坐标测试。
 
@@ -308,7 +331,10 @@
 
 ## F.1 X-AnyLabeling 双向互操作
 
-- [x] 用户可从当前数据集导出一个独立 X-AnyLabeling 目录，其中含 PNG 图片、同名 `.json` 和 `labels.txt`；每个 JSON 的 `imagePath` 指向同目录图片，尺寸与图片实际尺寸一致。
+- [ ] 导入预检同时读取 JSON `shape.label` 与根目录 `labels.txt`；未知标签默认新建为当前数据集标签，现有同名活动标签自动映射，用户仍可显式改为已有标签或只读保留。
+- [ ] 新建映射对引用数为零的预定义标签有效；中文、空格等外部显示名保留为别名并获得合法唯一训练名，导入矩形按稳定标签 ID 成为可编辑标注。
+- [ ] 标签映射表在中英文和目标分辨率下无裁切、重叠或不可辨识选择；导入报告展示新建标签数与文件级失败原因。
+- [x] 用户可从当前数据集导出一个独立 X-AnyLabeling 目录，其中含范围内全部 PNG、仅有 shape 图片的同名 `.json` 和 `labels.txt`；完全无 shape 图片不生成空 JSON，只含兼容 shape 的图片仍生成 JSON。每个已生成 JSON 的 `imagePath` 指向同目录图片，尺寸与图片实际尺寸一致。
 - [x] DatumDock 产生的矩形框以 LabelMe `shape_type: "rectangle"`、英文训练标签名和两个对角点写入；DatumDock 私有的样本 ID、复核状态、模型来源和数据集元数据不写入交换 JSON。
 - [x] 自动化回归证明导入后未经编辑再导出，以及 DatumDock 编辑矩形后再导出，均保留未支持 shape 和兼容字段；冲突或解析失败产生文件级报告且不发布不完整目录。训练名迁移已有步骤四独立回归覆盖。
 - [ ] 自动化测试覆盖 X-AnyLabeling 样例目录的导入、矩形编辑、未支持 shape 保留及再导出；人工回归用已安装的 X-AnyLabeling 打开导出目录并验证图片、标签和矩形框可见。
@@ -351,4 +377,4 @@
 
 ## English Summary
 
-Managed X-AnyLabeling import/export satisfies the first three F.1 requirements through automated safety and round-trip evidence. The final hard gate remains open because actual X-AnyLabeling v3.3.10 GUI open/edit/re-import verification is blocked by trusted dependency installation. No complete Step 5 or L2 claim is made. Model inference, YOLO export, backups, and packaging remain outside this gate.
+Acceptance now includes pending gates for safeguarded dataset deletion, X-AnyLabeling label import, recent-label tracking, and maximized startup. The startup gate requires the main window to appear maximized on one active display while retaining native Windows controls and taskbar, with dialogs remaining content-sized.
