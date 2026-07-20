@@ -415,10 +415,12 @@ class AnnotationWorkspace(QWidget):
         self.review_combo.setEnabled(False)
         action_row.addWidget(self.review_combo, 1)
         self.review_complete_button = GhostButton()
+        self.review_complete_button.setMinimumWidth(124)
         self.review_complete_button.setIcon(self.icons.icon("success"))
         self.review_complete_button.clicked.connect(self._mark_review_completed)
         action_row.addWidget(self.review_complete_button)
         self.delete_annotation_button = GhostButton()
+        self.delete_annotation_button.setMinimumWidth(124)
         self.delete_annotation_button.setIcon(self.icons.icon("delete_annotation"))
         self.delete_annotation_button.clicked.connect(self.canvas.delete_selected)
         action_row.addWidget(self.delete_annotation_button)
@@ -952,6 +954,16 @@ class AnnotationWorkspace(QWidget):
         if sample is None:
             return
         asset, annotation_load = payload
+        incoming_document = annotation_load.document
+        if (
+            self._annotation_document is not None
+            and self._annotation_document.sample_id == sample_id
+            and incoming_document is not None
+            and self._annotation_document.document_version > incoming_document.document_version
+        ):
+            # 较早启动的同图加载可能在人工编辑后才返回；低版本结果绝不能
+            # 覆盖已经排入自动保存队列的较新内存文档。
+            return
         self._annotation_load = annotation_load
         self._annotation_document = (
             annotation_load.document.model_copy(deep=True)
@@ -1270,6 +1282,9 @@ class AnnotationWorkspace(QWidget):
         if not self.managed_mode or self._annotation_document is None:
             self.message_requested.emit("workspace.saved")
             return
+        # 人工编辑发生后，此前启动的同图读取都只能算旧请求；即使它们稍后
+        # 完成，也不能把内存标注和保存基准回退到编辑前版本。
+        self._image_generation += 1
         previous = self._annotation_document
         old_rectangles = {rectangle.id: rectangle for rectangle in previous.rectangles}
         rectangles = [
@@ -1438,7 +1453,14 @@ class AnnotationWorkspace(QWidget):
                 tr(self.locale, "canvas.reload_confirm"),
             )
             if answer == QMessageBox.StandardButton.Yes:
-                self._load_current_image()
+                if self.managed_mode and self._managed_sample is not None:
+                    # 用户明确选择放弃内存修改时，先清空版本保护，再从受管
+                    # Gateway 重新读取磁盘事实；普通预览仍沿用内存加载。
+                    self._annotation_document = None
+                    self._annotation_load = None
+                    self._start_managed_image_load(self._managed_sample)
+                else:
+                    self._load_current_image()
 
     def _save_diagnostic_text(self, failure: AnnotationSaveFailure) -> str:
         """生成可复制的双语诊断字段，测试可在不打开模态窗口时核对内容。"""

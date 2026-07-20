@@ -10,6 +10,7 @@ import pytest
 from PIL import Image
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtWidgets import QDialog
+from pytestqt.exceptions import TimeoutError as QtWaitTimeout
 
 from datumdock.domain.models import AnnotationDocument, ReviewStatus, new_id
 from datumdock.i18n.catalog import LocaleService
@@ -47,8 +48,27 @@ def _wait_task(gateway: ManagedDatasetGateway, task_id: str) -> object:
     raise AssertionError("后台任务未按时完成")
 
 
+def _wait_annotation_saved(qtbot, gateway, dataset_id: str, context: str) -> None:
+    """等待当前串行保存终态，并在失败或卡住时保留结构化诊断。"""
+
+    try:
+        qtbot.waitUntil(
+            lambda: gateway.annotation_save_state(dataset_id)[0].value in {"saved", "failed"},
+            timeout=10000,
+        )
+    except QtWaitTimeout:
+        state, failure = gateway.annotation_save_state(dataset_id)
+        detail = gateway.annotation_save_failure(dataset_id)
+        pytest.fail(f"{context}未结束: state={state.value}, failure={failure!r}, detail={detail!r}")
+    state, failure = gateway.annotation_save_state(dataset_id)
+    detail = gateway.annotation_save_failure(dataset_id)
+    assert state.value == "saved", f"{context}失败: {failure!r}, detail={detail!r}"
+
+
 def test_imported_rectangle_double_click_reassigns_and_next_box_uses_recent_label(
-    qtbot, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    qtbot,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """test1→test2 成功保存后，下一框立即使用 test2 且重启仍可编辑。"""
 
@@ -97,6 +117,10 @@ def test_imported_rectangle_double_click_reassigns_and_next_box_uses_recent_labe
     workspace = window.navigation.pages[RouteId.ANNOTATION_WORKSPACE]
     assert isinstance(workspace, AnnotationWorkspace)
     qtbot.waitUntil(lambda: len(workspace.canvas.annotations) == 1, timeout=5000)
+    stale_load = workspace._annotation_load
+    assert stale_load is not None and stale_load.document is not None
+    assert stale_load.document.document_version == 0
+    stale_asset = gateway.load_image(dataset.id, sample_id)
 
     def choose_test2(dialog: QuickLabelSelectorDialog) -> QDialog.DialogCode:
         dialog.selected_label_id = second.id
@@ -119,10 +143,18 @@ def test_imported_rectangle_double_click_reassigns_and_next_box_uses_recent_labe
         Qt.MouseButton.LeftButton,
         pos=rect.center().toPoint(),
     )
-    qtbot.waitUntil(
-        lambda: gateway.annotation_save_state(dataset.id)[0].value == "saved",
-        timeout=5000,
+    # 先确认本次改派请求确实入队，再等待它完成；否则图片加载阶段残留的
+    # SAVED 状态可能让测试过早继续，掩盖真实的串行保存时序。
+    qtbot.waitUntil(lambda: len(queued_requests) == 1, timeout=3000)
+    _wait_annotation_saved(qtbot, gateway, dataset.id, "标签改派保存")
+    assert workspace._annotation_document is not None
+    assert workspace._annotation_document.document_version == initial_version + 1
+    workspace._managed_image_ready(
+        workspace._image_generation,
+        sample_id,
+        (stale_asset, stale_load),
     )
+    assert workspace._annotation_document.document_version == initial_version + 1
     qtbot.waitUntil(lambda: workspace.canvas.current_label_id == second.id, timeout=3000)
     # Windows 在模态小窗关闭后会补发双击序列的 release；它不能再形成一次虚假移动。
     qtbot.mouseRelease(
@@ -130,6 +162,7 @@ def test_imported_rectangle_double_click_reassigns_and_next_box_uses_recent_labe
         Qt.MouseButton.LeftButton,
         pos=rect.center().toPoint(),
     )
+    assert workspace._annotation_document.document_version == initial_version + 1
     loaded = gateway.load_annotation(dataset.id, sample_id)
     assert loaded.document is not None
     assert loaded.document.rectangles[0].label_id == second.id
@@ -139,6 +172,7 @@ def test_imported_rectangle_double_click_reassigns_and_next_box_uses_recent_labe
     assert loaded.review_status == ReviewStatus.COMPLETED
 
     workspace.canvas.set_tool(CanvasTool.RECTANGLE)
+    assert workspace._annotation_document.document_version == initial_version + 1
     image_rect = workspace.canvas._image_rect()
     start = QPoint(round(image_rect.left() + 20), round(image_rect.top() + 20))
     end = QPoint(round(image_rect.left() + 90), round(image_rect.top() + 80))
@@ -148,11 +182,14 @@ def test_imported_rectangle_double_click_reassigns_and_next_box_uses_recent_labe
     qtbot.waitUntil(lambda: len(workspace.canvas.annotations) == 2, timeout=3000)
     assert workspace.canvas.annotations[-1].label_id == second.id
     assert first.id != second.id
+    qtbot.waitUntil(lambda: len(queued_requests) == 2, timeout=3000)
+    _wait_annotation_saved(qtbot, gateway, dataset.id, "第二个矩形保存")
 
     restarted = DatasetLibraryService(library_root)
     reopened_gateway = ManagedDatasetGateway(restarted)
     reopened = reopened_gateway.load_annotation(dataset.id, sample_id)
     assert reopened.document is not None
+    assert len(reopened.document.rectangles) == 2
     assert all(shape.label_id == second.id for shape in reopened.document.rectangles)
     reopened_gateway.close()
     gateway.close()

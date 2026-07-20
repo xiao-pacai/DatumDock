@@ -146,7 +146,8 @@ CATALOGS: dict[str, dict[str, str]] = {
         "canvas.discard": "放弃内存修改",
         "canvas.review": "图片复核状态",
         "canvas.label": "当前绘制标签",
-        "review.none": "无复核结论",
+        # 空复核值不是第三种用户状态，界面只显示中性占位符。
+        "review.none": "—",
         "review.pending_review": "待复核",
         "review.completed": "已完成",
         "review.mark_completed": "确认已完成",
@@ -529,13 +530,13 @@ CATALOGS: dict[str, dict[str, str]] = {
         "canvas.discard": "Discard In-Memory Changes",
         "canvas.review": "Image review status",
         "canvas.label": "Drawing label",
-        "review.none": "No review decision",
+        "review.none": "—",
         "review.pending_review": "Pending Review",
         "review.completed": "Completed",
-        "review.mark_completed": "Mark Completed",
+        "review.mark_completed": "Complete",
         "label.filter_all": "All Labels",
         "label.archived_hint": "Archived",
-        "annotation.delete_selected": "Delete Selected Box",
+        "annotation.delete_selected": "Delete Box",
         "toast.label_saved": "Label saved",
         "toast.recent_label_unavailable": (
             "The recent label was archived, deleted, or belongs to another dataset. "

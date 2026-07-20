@@ -494,6 +494,27 @@ def test_a_d_navigation_and_s_review_shortcut_use_real_managed_state(qtbot, tmp_
     assert library.open_dataset(dataset_id).dataset.statistics.image_count == 2
 
 
+def test_empty_review_value_is_not_exposed_as_a_third_status(qtbot, tmp_path: Path) -> None:
+    """空复核值只用占位符表达，英文界面不得显示或裁切第三种状态文案。"""
+
+    _library, _gateway, window, workspace, _dataset_id, _sample_id, _label = _workspace_with_label(
+        qtbot, tmp_path
+    )
+    window.change_locale("en_US")
+    qtbot.waitUntil(lambda: workspace.review_combo.currentText() == "—", timeout=2000)
+    assert workspace.review_combo.itemText(0) == "—"
+    assert workspace.review_combo.count() == 3
+    assert workspace.review_complete_button.text() == "Complete"
+    assert workspace.delete_annotation_button.text() == "Delete Box"
+    assert workspace.sort_combo.itemText(0) == "A–Z"
+    assert workspace.review_combo.fontMetrics().horizontalAdvance("—") < (
+        workspace.review_combo.width() - 24
+    )
+    for button in (workspace.review_complete_button, workspace.delete_annotation_button):
+        assert button.minimumWidth() == 124
+        assert button.width() >= button.minimumWidth()
+
+
 def test_managed_label_and_inspection_pages_use_real_sqlite(qtbot, tmp_path: Path) -> None:
     """标签管理页展示真实标签，检查页通过 SQLite 标签索引找到图片。"""
 

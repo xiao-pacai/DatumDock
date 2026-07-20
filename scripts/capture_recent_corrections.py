@@ -55,6 +55,9 @@ def capture(output_root: Path) -> int:
             gateway = ManagedDatasetGateway(service)
             window = ApplicationShell(locale, gateway)
             try:
+                # 正式外壳会以受管设置为语言事实；截图必须通过同一设置边界切换，
+                # 否则英文目录可能错误地保存中文页面，形成虚假的双语证据。
+                window.change_locale(locale_name)
                 window.navigate(f"{RouteId.ANNOTATION_WORKSPACE.value}:{dataset.id}")
                 show_application_window(QApplication.instance(), window)
                 QApplication.processEvents()
