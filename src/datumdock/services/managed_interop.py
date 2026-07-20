@@ -7,8 +7,10 @@ import copy
 import hashlib
 import json
 import os
+import re
 import shutil
 import tempfile
+import unicodedata
 from collections.abc import Callable, Iterable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
@@ -70,6 +72,14 @@ class XAnyExportScope(StrEnum):
     SELECTED = "selected"
 
 
+class ExternalLabelAction(StrEnum):
+    """未知外部标签必须显式映射、新建或只读保留。"""
+
+    MAP = "map"
+    CREATE = "create"
+    PRESERVE_READONLY = "preserve_readonly"
+
+
 @dataclass(frozen=True, slots=True)
 class InteropIssue:
     """可定位到单个相对文件的结构化互操作问题。"""
@@ -97,6 +107,26 @@ class ExternalLabelReference:
     name: str
     shape_count: int
     matched_label_id: str | None = None
+    proposed_training_name: str | None = None
+    archived_label_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ProposedImportLabel:
+    """Service 根据外部文本生成的可复验标签提案。"""
+
+    external_name: str
+    training_name: str
+    alias: str
+
+
+@dataclass(frozen=True, slots=True)
+class ExternalLabelDecision:
+    """UI 只提交选择，不在 Qt 层构造领域标签对象。"""
+
+    external_name: str
+    action: ExternalLabelAction
+    target_label_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,6 +172,7 @@ class XAnyImportPreflight:
     external_labels: tuple[ExternalLabelReference, ...]
     label_set_revision: int
     discovered_image_count: int
+    labels_fingerprint: SourceFingerprint | None = None
 
     @property
     def blocking_count(self) -> int:
@@ -157,6 +188,7 @@ class XAnyImportCommitRequest:
     duplicate_decisions: Mapping[str, DuplicateDecision]
     label_resolutions: tuple[ExternalLabelResolution, ...] = ()
     new_labels: tuple[Label, ...] = ()
+    label_decisions: tuple[ExternalLabelDecision, ...] = ()
 
 
 @dataclass(slots=True)
@@ -169,6 +201,9 @@ class XAnyImportReport:
     duplicate_item_ids: list[str] = field(default_factory=list)
     compatibility_shape_count: int = 0
     created_label_ids: list[str] = field(default_factory=list)
+    mapped_label_count: int = 0
+    readonly_label_count: int = 0
+    generated_training_names: dict[str, str] = field(default_factory=dict)
     failures: dict[str, str] = field(default_factory=dict)
     cancelled: bool = False
 
@@ -241,6 +276,12 @@ class XAnyLabelingInteropService:
         if not root.is_dir() or request.source_directory.is_symlink():
             raise InteropError("X-AnyLabeling 来源必须是非符号链接目录")
         image_paths, json_paths, discovery_issues = _discover_exchange_files(root)
+        labels_path = root / "labels.txt"
+        labels_fingerprint = None
+        declared_labels: tuple[str, ...] = ()
+        if labels_path.is_file() and not labels_path.is_symlink():
+            labels_fingerprint = _fingerprint(labels_path, root)
+            declared_labels = _read_labels_file(labels_path)
         image_preflight = self.images.preflight(
             ImageImportPreflightRequest(self.dataset_id, image_paths, recursive=False),
             progress=progress,
@@ -260,7 +301,9 @@ class XAnyLabelingInteropService:
                 )
             )
         items: list[PreparedInteropItem] = []
-        label_counts: dict[str, tuple[str, int]] = {}
+        label_counts: dict[str, tuple[str, int]] = {
+            name.casefold(): (name, 0) for name in declared_labels
+        }
         paired_json: set[Path] = set()
         for source in image_paths:
             if cancelled and cancelled():
@@ -343,14 +386,27 @@ class XAnyLabelingInteropService:
             for label in label_set.labels
             if label.status == LabelStatus.ACTIVE
         }
-        references = tuple(
-            ExternalLabelReference(
-                name,
-                count,
-                active_by_name.get(key).id if key in active_by_name else None,
+        archived_by_name = {
+            label.name.casefold(): label
+            for label in label_set.labels
+            if label.status == LabelStatus.ARCHIVED
+        }
+        used_names = {label.name.casefold() for label in label_set.labels}
+        references_list: list[ExternalLabelReference] = []
+        for key, (name, count) in label_counts.items():
+            proposed_name = _safe_training_name(name, used_names)
+            if key not in active_by_name:
+                used_names.add(proposed_name.casefold())
+            references_list.append(
+                ExternalLabelReference(
+                    name,
+                    count,
+                    active_by_name.get(key).id if key in active_by_name else None,
+                    proposed_name,
+                    archived_by_name.get(key).id if key in archived_by_name else None,
+                )
             )
-            for key, (name, count) in sorted(label_counts.items())
-        )
+        references = tuple(references_list)
         return XAnyImportPreflight(
             image_preflight.session_id,
             root,
@@ -360,6 +416,7 @@ class XAnyLabelingInteropService:
             references,
             label_set.revision,
             len(image_paths),
+            labels_fingerprint,
         )
 
     def commit_import(
@@ -379,20 +436,42 @@ class XAnyLabelingInteropService:
         current = self.library.open_dataset(self.dataset_id).label_set
         if current.revision != request.preflight.label_set_revision:
             raise InteropError("标签集已发生变化，请重新执行导入预检")
-        if request.new_labels:
+        self._verify_import_preflight_sources(request.preflight)
+        generated_names: dict[str, str] = {}
+        if request.label_decisions or not (request.label_resolutions or request.new_labels):
+            current, resolution_by_name, created_labels, mapped_count, readonly_count = (
+                self._apply_label_decisions(current, request)
+            )
+            generated_names = {
+                decision.external_name: next(
+                    label.name for label in created_labels if label.alias == decision.external_name
+                )
+                for decision in request.label_decisions
+                if decision.action == ExternalLabelAction.CREATE
+            }
+        else:
+            created_labels = request.new_labels
+            resolution_by_name = {
+                resolution.external_name.casefold(): resolution.target_label_id
+                for resolution in request.label_resolutions
+            }
+            mapped_count = sum(value is not None for value in resolution_by_name.values())
+            readonly_count = sum(value is None for value in resolution_by_name.values())
+        if created_labels:
             try:
                 current = self.labels.apply_import_labels(
                     self.dataset_id,
-                    request.new_labels,
+                    created_labels,
                     expected_revision=current.revision,
                 )
             except ManagedLabelError as error:
                 raise InteropError(str(error)) from error
-        report = XAnyImportReport(created_label_ids=[label.id for label in request.new_labels])
-        resolution_by_name = {
-            resolution.external_name.casefold(): resolution.target_label_id
-            for resolution in request.label_resolutions
-        }
+        report = XAnyImportReport(
+            created_label_ids=[label.id for label in created_labels],
+            mapped_label_count=mapped_count,
+            readonly_label_count=readonly_count,
+            generated_training_names=generated_names,
+        )
         for reference in request.preflight.external_labels:
             if reference.matched_label_id and reference.name.casefold() not in resolution_by_name:
                 resolution_by_name[reference.name.casefold()] = reference.matched_label_id
@@ -489,6 +568,88 @@ class XAnyLabelingInteropService:
                 report.failures["<cleanup>"] = str(error)
         self.library.synchronize_statistics(self.dataset_id)
         return report
+
+    def _verify_import_preflight_sources(self, preflight: XAnyImportPreflight) -> None:
+        """创建任何标签前一次性确认全部来源指纹，避免留下无来源标签。"""
+
+        if preflight.labels_fingerprint is not None:
+            _verify_fingerprint(
+                preflight.source_directory / preflight.labels_fingerprint.relative_path,
+                preflight.labels_fingerprint,
+                preflight.source_directory,
+            )
+        for item in preflight.items:
+            _verify_fingerprint(
+                item.image.source_path,
+                item.image_fingerprint,
+                preflight.source_directory,
+            )
+            if item.annotation_path and item.annotation_fingerprint:
+                _verify_fingerprint(
+                    item.annotation_path,
+                    item.annotation_fingerprint,
+                    preflight.source_directory,
+                )
+
+    def _apply_label_decisions(
+        self,
+        current: LabelSet,
+        request: XAnyImportCommitRequest,
+    ) -> tuple[LabelSet, dict[str, str | None], tuple[Label, ...], int, int]:
+        """把映射决定转换为一次标签集修订，未知标签默认安全新建。"""
+
+        decisions = {item.external_name.casefold(): item for item in request.label_decisions}
+        active_ids = {label.id for label in current.labels if label.status == LabelStatus.ACTIVE}
+        used_class_ids = {label.class_id for label in current.labels}
+        used_names = {label.name.casefold() for label in current.labels}
+        staged = current.model_copy(deep=True)
+        new_labels: list[Label] = []
+        resolutions: dict[str, str | None] = {}
+        mapped = 0
+        readonly = 0
+        for reference in request.preflight.external_labels:
+            decision = decisions.get(reference.name.casefold())
+            if decision is None:
+                if reference.matched_label_id:
+                    decision = ExternalLabelDecision(
+                        reference.name, ExternalLabelAction.MAP, reference.matched_label_id
+                    )
+                else:
+                    decision = ExternalLabelDecision(reference.name, ExternalLabelAction.CREATE)
+            if decision.action == ExternalLabelAction.MAP:
+                if decision.target_label_id not in active_ids:
+                    raise InteropError(f"标签映射目标不可用: {reference.name}")
+                resolutions[reference.name.casefold()] = decision.target_label_id
+                mapped += 1
+                continue
+            if decision.action == ExternalLabelAction.PRESERVE_READONLY:
+                resolutions[reference.name.casefold()] = None
+                readonly += 1
+                continue
+            training_name = _safe_training_name(reference.name, used_names)
+            used_names.add(training_name.casefold())
+            class_id = next(
+                value for value in range(len(used_class_ids) + 1) if value not in used_class_ids
+            )
+            used_class_ids.add(class_id)
+            timestamp = utc_now()
+            label = Label(
+                id=new_id(),
+                class_id=class_id,
+                name=training_name,
+                alias=reference.name,
+                description="从 X-AnyLabeling 标签目录导入",
+                color=self.labels.colors.allocate(staged),
+                created_at=timestamp,
+                modified_at=timestamp,
+            )
+            new_labels.append(label)
+            staged = LabelSet.model_validate(
+                staged.model_copy(update={"labels": [*staged.labels, label]})
+            )
+            active_ids.add(label.id)
+            resolutions[reference.name.casefold()] = label.id
+        return current, resolutions, tuple(new_labels), mapped, readonly
 
     def discard_import_preflight(self, preflight: XAnyImportPreflight) -> None:
         """放弃向导时只删除当前数据集内部的预检缓存。"""
@@ -836,6 +997,44 @@ def _discover_exchange_files(
         return path.relative_to(root).as_posix().casefold()
 
     return tuple(sorted(images, key=key)), tuple(sorted(json_files, key=key)), tuple(issues)
+
+
+def _read_labels_file(path: Path) -> tuple[str, ...]:
+    """按声明顺序读取 UTF-8/BOM 标签，空行和大小写重复项不进入映射。"""
+
+    names: list[str] = []
+    seen: set[str] = set()
+    for line in path.read_text(encoding="utf-8-sig").splitlines():
+        name = line.strip()
+        if not name or name.casefold() in seen:
+            continue
+        seen.add(name.casefold())
+        names.append(name)
+    return tuple(names)
+
+
+def _safe_training_name(external_name: str, used_casefold_names: set[str]) -> str:
+    """保留合法训练名；非法文本生成可重复且不会覆盖既有标签的 ASCII 名称。"""
+
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", external_name):
+        base = external_name
+    else:
+        normalized = unicodedata.normalize("NFKD", external_name)
+        ascii_text = normalized.encode("ascii", "ignore").decode("ascii")
+        base = re.sub(r"[^A-Za-z0-9_.-]+", "_", ascii_text).strip("._-")
+        if not base or not base[0].isalnum():
+            digest = hashlib.sha256(external_name.encode("utf-8")).hexdigest()
+            base = f"label_{digest[:10]}"
+    if base.casefold() not in used_casefold_names:
+        return base
+    digest = hashlib.sha256(external_name.encode("utf-8")).hexdigest()
+    candidate = f"{base}_{digest[:6]}"
+    if candidate.casefold() not in used_casefold_names:
+        return candidate
+    suffix = 2
+    while f"{candidate}_{suffix}".casefold() in used_casefold_names:
+        suffix += 1
+    return f"{candidate}_{suffix}"
 
 
 def _read_external_payload(path: Path) -> dict[str, Any]:

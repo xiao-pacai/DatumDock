@@ -14,6 +14,8 @@ from datumdock.domain.models import Label, new_id, utc_now
 from datumdock.i18n.catalog import LocaleService
 from datumdock.services.dataset_library import DatasetLibraryService
 from datumdock.services.managed_interop import (
+    ExternalLabelAction,
+    ExternalLabelDecision,
     ExternalLabelResolution,
     InteropError,
     InteropIssueSeverity,
@@ -208,6 +210,98 @@ def test_unknown_rectangle_is_read_only_preserved_and_roundtrips(tmp_path: Path)
     assert "datumdock_" not in json.dumps(rectangle)
 
 
+def test_unknown_labels_default_to_real_editable_dataset_labels(tmp_path: Path) -> None:
+    """未知标签默认由 Service 新建，非法训练名安全转换且矩形重启后仍可编辑。"""
+
+    source = tmp_path / "external-default-label"
+    source.mkdir()
+    image = source / "sample.png"
+    Image.new("RGB", (80, 50), (40, 80, 120)).save(image)
+    (source / "sample.json").write_text(
+        json.dumps(_payload(image.name, label="中文 零件")), encoding="utf-8"
+    )
+    (source / "labels.txt").write_text(
+        "\ufeff中文 零件\nunused_label\n中文 零件\n\n", encoding="utf-8"
+    )
+    library_root = tmp_path / "library"
+    library = DatasetLibraryService(library_root)
+    dataset = library.create_dataset("默认新建标签").dataset
+    service = XAnyLabelingInteropService(library, dataset.id)
+    preflight = service.preflight_import(XAnyImportPreflightRequest(dataset.id, source))
+
+    assert [item.name for item in preflight.external_labels] == [
+        "中文 零件",
+        "unused_label",
+        "outline",
+    ]
+    assert preflight.external_labels[0].proposed_training_name.startswith("label_")
+    report = service.commit_import(XAnyImportCommitRequest(dataset.id, preflight, {}))
+    assert len(report.created_label_ids) == 3
+    assert not report.failures
+
+    restarted = DatasetLibraryService(library_root)
+    labels = restarted.open_dataset(dataset.id).label_set
+    imported = next(label for label in labels.labels if label.alias == "中文 零件")
+    assert imported.name.startswith("label_")
+    sample = DatasetSampleRepository(
+        restarted.dataset_repository.paths(dataset.id), dataset.id
+    ).get_sample(report.imported_sample_ids[0])
+    assert sample is not None and sample.annotation_count == 1
+    loaded = XAnyLabelingInteropService(restarted, dataset.id)._load_export_document(
+        sample, labels, sample.width, sample.height
+    )
+    rectangle = next(shape for shape in loaded.rectangles if shape.label_id == imported.id)
+    assert rectangle.label_id == imported.id
+
+
+def test_labels_file_change_rejects_before_creating_labels(tmp_path: Path) -> None:
+    """labels.txt 在预检后变化时整批标签事务不得先行落盘。"""
+
+    source = tmp_path / "source-change"
+    source.mkdir()
+    image = source / "sample.png"
+    Image.new("RGB", (80, 50), "white").save(image)
+    labels_path = source / "labels.txt"
+    labels_path.write_text("new_label\n", encoding="utf-8")
+    library = DatasetLibraryService(tmp_path / "library-change")
+    dataset = library.create_dataset("来源变化").dataset
+    service = XAnyLabelingInteropService(library, dataset.id)
+    preflight = service.preflight_import(XAnyImportPreflightRequest(dataset.id, source))
+    labels_path.write_text("changed_label\n", encoding="utf-8")
+
+    with pytest.raises(InteropError, match="来源文件在预检后发生变化"):
+        service.commit_import(XAnyImportCommitRequest(dataset.id, preflight, {}))
+    assert library.open_dataset(dataset.id).label_set.labels == []
+
+
+def test_import_dialog_defaults_unknown_label_to_create(qtbot, tmp_path: Path) -> None:
+    """未知标签映射行默认选择新建，并把决定交给 Service 而非 Qt 构造标签。"""
+
+    source = tmp_path / "dialog-source"
+    source.mkdir()
+    image = source / "sample.png"
+    Image.new("RGB", (80, 50), "white").save(image)
+    (source / "sample.json").write_text(
+        json.dumps(_payload(image.name, label="new_external")), encoding="utf-8"
+    )
+    library = DatasetLibraryService(tmp_path / "dialog-library")
+    dataset = library.create_dataset("映射界面").dataset
+    service = XAnyLabelingInteropService(library, dataset.id)
+    preflight = service.preflight_import(XAnyImportPreflightRequest(dataset.id, source))
+    gateway = ManagedDatasetGateway(library)
+    dialog = ManagedXAnyImportDialog(LocaleService("zh_CN"), gateway, dataset.id)
+    qtbot.addWidget(dialog)
+    dialog.preflight = preflight
+    dialog._show_preflight()
+
+    combo = dialog.mapping_combos["new_external"]
+    assert combo.currentData() == "__create__"
+    decisions = dialog._collect_label_decisions()
+    assert ExternalLabelDecision("new_external", ExternalLabelAction.CREATE) in decisions
+    gateway.discard_xany_import_preflight(dataset.id, preflight.session_id)
+    gateway.close()
+
+
 def test_source_change_and_path_escape_are_blocked(tmp_path: Path) -> None:
     """来源变化要求重新预检，危险 imagePath 不进入受管池。"""
 
@@ -231,16 +325,16 @@ def test_source_change_and_path_escape_are_blocked(tmp_path: Path) -> None:
     valid = service.preflight_import(XAnyImportPreflightRequest(dataset.id, source))
     Image.new("RGB", (80, 50), (1, 2, 3)).save(image)
     label = _new_label()
-    changed = service.commit_import(
-        XAnyImportCommitRequest(
-            dataset.id,
-            valid,
-            {},
-            (ExternalLabelResolution("part", label.id),),
-            (label,),
+    with pytest.raises(InteropError, match="来源文件在预检后发生变化"):
+        service.commit_import(
+            XAnyImportCommitRequest(
+                dataset.id,
+                valid,
+                {},
+                (ExternalLabelResolution("part", label.id),),
+                (label,),
+            )
         )
-    )
-    assert any("发生变化" in message for message in changed.failures.values())
     assert service.samples.count_active() == 0
 
 

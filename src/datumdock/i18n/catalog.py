@@ -270,6 +270,9 @@ CATALOGS: dict[str, dict[str, str]] = {
         "dialog.xany.mapping": "导入方式",
         "dialog.xany.preserve_readonly": "只读保留（不丢失）",
         "dialog.xany.create_label": "新建数据集标签",
+        "dialog.xany.archived_conflict": (
+            "存在同名归档标签；请只读保留、映射其他活动标签或新建标签。"
+        ),
         "dialog.xany.created_description": "从 X-AnyLabeling / LabelMe 目录导入",
         "dialog.xany.preflight": "开始预检",
         "dialog.xany.preflighting": "正在只读扫描、转码和校验…",
@@ -617,6 +620,10 @@ CATALOGS: dict[str, dict[str, str]] = {
         "dialog.xany.mapping": "Import As",
         "dialog.xany.preserve_readonly": "Preserve Read-only (No Loss)",
         "dialog.xany.create_label": "Create Dataset Label",
+        "dialog.xany.archived_conflict": (
+            "An archived label uses this name. Preserve read-only, map another active label, "
+            "or create a new label."
+        ),
         "dialog.xany.created_description": "Imported from an X-AnyLabeling / LabelMe directory",
         "dialog.xany.preflight": "Run Preflight",
         "dialog.xany.preflighting": "Scanning, normalizing, and validating read-only sources…",

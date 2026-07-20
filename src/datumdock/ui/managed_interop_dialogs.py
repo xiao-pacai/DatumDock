@@ -22,11 +22,11 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from datumdock.domain.models import Label, LabelSet, new_id, utc_now
 from datumdock.i18n.catalog import LocaleService, tr
 from datumdock.services.image_pool import DuplicateDecision
 from datumdock.services.managed_interop import (
-    ExternalLabelResolution,
+    ExternalLabelAction,
+    ExternalLabelDecision,
     InteropIssue,
     InteropIssueSeverity,
     XAnyExportRequest,
@@ -34,7 +34,6 @@ from datumdock.services.managed_interop import (
     XAnyImportCommitRequest,
     XAnyImportPreflight,
 )
-from datumdock.services.managed_labels import LabelColorService
 from datumdock.services.tasks import TaskState
 from datumdock.ui.components import GhostButton, PrimaryButton
 from datumdock.ui.managed_media_dialogs import DuplicateDecisionDialog
@@ -111,6 +110,11 @@ class ManagedXAnyImportDialog(QDialog):
         self.mapping_table.horizontalHeader().setSectionResizeMode(
             2, QHeaderView.ResizeMode.Stretch
         )
+        self.mapping_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.ResizeToContents
+        )
+        self.mapping_table.verticalHeader().setDefaultSectionSize(44)
+        self.mapping_table.setMinimumHeight(220)
         self.mapping_table.hide()
         root.addWidget(self.mapping_table, 1)
         self.progress = QProgressBar()
@@ -213,13 +217,28 @@ class ManagedXAnyImportDialog(QDialog):
             self.mapping_table.setItem(row, 0, QTableWidgetItem(reference.name))
             self.mapping_table.setItem(row, 1, QTableWidgetItem(str(reference.shape_count)))
             combo = QComboBox()
+            combo.setMinimumHeight(34)
+            combo.setSizeAdjustPolicy(
+                QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+            )
+            combo.setMinimumContentsLength(28)
             combo.addItem(tr(self.locale, "dialog.xany.preserve_readonly"), None)
-            combo.addItem(tr(self.locale, "dialog.xany.create_label"), "__create__")
+            proposed = reference.proposed_training_name or reference.name
+            combo.addItem(
+                f"{tr(self.locale, 'dialog.xany.create_label')} · {proposed}",
+                "__create__",
+            )
             for label in labels:
                 combo.addItem(f"{label.alias} · {label.name}", label.id)
             if reference.matched_label_id:
                 index = combo.findData(reference.matched_label_id)
                 combo.setCurrentIndex(index if index >= 0 else 0)
+            elif reference.archived_label_id:
+                combo.setCurrentIndex(0)
+                combo.setToolTip(tr(self.locale, "dialog.xany.archived_conflict"))
+            else:
+                # 未知外部标签默认新建，避免导入后矩形变成不可编辑兼容负载。
+                combo.setCurrentIndex(1)
             self.mapping_table.setCellWidget(row, 2, combo)
             self.mapping_combos[reference.name] = combo
         self.mapping_table.show()
@@ -241,7 +260,7 @@ class ManagedXAnyImportDialog(QDialog):
     def _start_commit(self) -> None:
         if self.preflight is None:
             return
-        decisions: dict[str, DuplicateDecision] = {}
+        duplicate_decisions: dict[str, DuplicateDecision] = {}
         items_by_id = {item.image.id: item for item in self.preflight.items}
         for item in self.preflight.items:
             if not item.image.requires_duplicate_decision or item.blocking_issues:
@@ -275,15 +294,14 @@ class ManagedXAnyImportDialog(QDialog):
             )
             if dialog.exec() != QDialog.DialogCode.Accepted or dialog.decision is None:
                 return
-            decisions[item.image.id] = dialog.decision
+            duplicate_decisions[item.image.id] = dialog.decision
         try:
-            resolutions, new_labels = self._collect_label_resolutions()
+            label_decisions = self._collect_label_decisions()
             request = XAnyImportCommitRequest(
-                self.dataset_id,
-                self.preflight,
-                decisions,
-                resolutions,
-                new_labels,
+                dataset_id=self.dataset_id,
+                preflight=self.preflight,
+                duplicate_decisions=duplicate_decisions,
+                label_decisions=label_decisions,
             )
             self.task_id = self.gateway.start_xany_import_commit(request)
         except Exception as error:
@@ -295,39 +313,23 @@ class ManagedXAnyImportDialog(QDialog):
         self.status.setText(tr(self.locale, "dialog.xany.importing"))
         self.poll_timer.start()
 
-    def _collect_label_resolutions(
-        self,
-    ) -> tuple[tuple[ExternalLabelResolution, ...], tuple[Label, ...]]:
-        label_set = self.gateway.get_label_set(self.dataset_id).model_copy(deep=True)
-        used_class_ids = {label.class_id for label in label_set.labels}
-        resolutions: list[ExternalLabelResolution] = []
-        new_labels: list[Label] = []
+    def _collect_label_decisions(self) -> tuple[ExternalLabelDecision, ...]:
+        """Qt 只收集用户意图；稳定 ID、类别 ID、名称和颜色全部由 Service 生成。"""
+
+        decisions: list[ExternalLabelDecision] = []
         for external_name, combo in self.mapping_combos.items():
             target = combo.currentData()
-            if target != "__create__":
-                resolutions.append(ExternalLabelResolution(external_name, target))
-                continue
-            class_id = next(
-                index for index in range(len(used_class_ids) + 1) if index not in used_class_ids
-            )
-            used_class_ids.add(class_id)
-            timestamp = utc_now()
-            label = Label(
-                id=new_id(),
-                class_id=class_id,
-                name=external_name,
-                alias=external_name,
-                description=tr(self.locale, "dialog.xany.created_description"),
-                color=LabelColorService().allocate(label_set),
-                created_at=timestamp,
-                modified_at=timestamp,
-            )
-            new_labels.append(label)
-            label_set = LabelSet.model_validate(
-                label_set.model_copy(update={"labels": [*label_set.labels, label]})
-            )
-            resolutions.append(ExternalLabelResolution(external_name, label.id))
-        return tuple(resolutions), tuple(new_labels)
+            if target == "__create__":
+                decisions.append(ExternalLabelDecision(external_name, ExternalLabelAction.CREATE))
+            elif target is None:
+                decisions.append(
+                    ExternalLabelDecision(external_name, ExternalLabelAction.PRESERVE_READONLY)
+                )
+            else:
+                decisions.append(
+                    ExternalLabelDecision(external_name, ExternalLabelAction.MAP, str(target))
+                )
+        return tuple(decisions)
 
     def _show_report(self, report) -> None:
         self.phase = "done"
