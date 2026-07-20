@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 
 from datumdock.i18n.catalog import LocaleService, tr
 from datumdock.resources import resource_root
+from datumdock.ui.icons import IconRegistry
 from datumdock.ui.prototype_models import DatasetCardViewData, DatasetHealth, ImageStatus
 from datumdock.ui.theme import THEME
 
@@ -378,6 +379,7 @@ class DatasetCard(SectionCard):
         super().__init__(parent)
         self.locale = locale
         self.data = data
+        self.icons = IconRegistry(resource_root())
         self.setMinimumWidth(270)
         self.setMaximumWidth(380)
         self.body.addWidget(CoverPreview(data.cover_seed))
@@ -385,26 +387,32 @@ class DatasetCard(SectionCard):
         title = QLabel(data.name)
         title.setObjectName("sectionTitle")
         title_row.addWidget(title, 1)
-        more = GhostButton("•••")
+        more = GhostButton()
+        more.setIcon(self.icons.icon("more"))
         more.setAccessibleName(tr(locale, "nav.more"))
         more.setToolTip(tr(locale, "nav.more"))
         more.setFixedWidth(38)
         menu = QMenu(more)
         if data.archived:
             restore = menu.addAction(tr(locale, "action.restore"))
+            restore.setIcon(self.icons.icon("restore"))
             restore.triggered.connect(lambda: self.restore_requested.emit(data.id))
         elif data.health == DatasetHealth.READY:
             rename = menu.addAction(tr(locale, "action.rename_dataset"))
+            rename.setIcon(self.icons.icon("rename"))
             rename.triggered.connect(lambda: self.rename_requested.emit(data.id))
             archive = menu.addAction(tr(locale, "action.archive"))
+            archive.setIcon(self.icons.icon("archive"))
             archive.triggered.connect(lambda: self.archive_requested.emit(data.id))
         if data.health == DatasetHealth.DAMAGED:
             diagnostics = menu.addAction(tr(locale, "home.diagnostics"))
+            diagnostics.setIcon(self.icons.icon("diagnostics"))
             diagnostics.triggered.connect(lambda: self.diagnostics_requested.emit(data.id))
         if data.health in {DatasetHealth.READY, DatasetHealth.DAMAGED} or data.archived:
             if not menu.isEmpty():
                 menu.addSeparator()
             delete_dataset = menu.addAction(tr(locale, "action.delete_dataset"))
+            delete_dataset.setIcon(self.icons.icon("delete_dataset"))
             delete_dataset.triggered.connect(lambda: self.delete_requested.emit(data.id))
         more.setMenu(menu)
         more.setEnabled(not menu.isEmpty())
@@ -443,15 +451,18 @@ class DatasetCard(SectionCard):
         action = PrimaryButton()
         if data.archived:
             action.setText(tr(locale, "action.restore"))
+            action.setIcon(self.icons.icon("restore"))
             action.clicked.connect(lambda: self.restore_requested.emit(data.id))
         elif data.health == DatasetHealth.DAMAGED:
             action.setText(tr(locale, "home.diagnostics"))
+            action.setIcon(self.icons.icon("diagnostics"))
             action.clicked.connect(lambda: self.diagnostics_requested.emit(data.id))
         elif data.health == DatasetHealth.LOADING:
             action.setText(tr(locale, "home.loading"))
             action.setEnabled(False)
         else:
             action.setText(tr(locale, "home.open"))
+            action.setIcon(self.icons.icon("dataset"))
             action.clicked.connect(lambda: self.opened.emit(data.id))
         self.body.addWidget(action)
 
@@ -475,7 +486,9 @@ class TutorialCard(SectionCard):
         self.tutorial_id = tutorial_id
         self.title_key = title_key
         self.summary_key = summary_key
-        icon = QLabel("▣")
+        self.icons = IconRegistry(resource_root())
+        icon = QLabel()
+        icon.setPixmap(self.icons.icon("tutorial", size=24).pixmap(24, 24))
         icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         icon.setFixedSize(42, 42)
         icon.setStyleSheet(

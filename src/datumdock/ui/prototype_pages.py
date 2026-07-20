@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 
 from datumdock.domain.models import AppSettings
 from datumdock.i18n.catalog import LocaleService, tr
+from datumdock.resources import resource_root
 from datumdock.services.settings import AppSettingsError
 from datumdock.services.shortcuts import (
     ActionGroup,
@@ -57,6 +58,7 @@ from datumdock.ui.components import (
     brand_asset_path,
     clear_layout,
 )
+from datumdock.ui.icons import IconRegistry
 from datumdock.ui.prototype_models import HomeSnapshot, ImageStatus, WorkspaceSnapshot
 from datumdock.ui.theme import THEME
 
@@ -137,6 +139,7 @@ class HomePage(BasePage):
         self.locale = locale
         self.preview_mode = preview_mode
         self.snapshot = snapshot
+        self.icons = IconRegistry(resource_root())
         self._column_count = 3
         self._build_ui()
         self.retranslate_ui()
@@ -153,20 +156,25 @@ class HomePage(BasePage):
         top_layout.addWidget(BrandLockup(False))
         top_layout.addStretch()
         self.learning_button = GhostButton()
+        self.learning_button.setIcon(self.icons.icon("tutorial"))
         self.learning_button.clicked.connect(
             lambda: self.route_requested.emit(RouteId.LEARNING_CENTER.value)
         )
         self.release_button = GhostButton()
+        self.release_button.setIcon(self.icons.icon("info"))
         self.release_button.clicked.connect(
             lambda: self.route_requested.emit(RouteId.RELEASE_NOTES.value)
         )
         self.settings_button = GhostButton()
+        self.settings_button.setIcon(self.icons.icon("settings"))
         self.settings_button.clicked.connect(
             lambda: self.route_requested.emit(RouteId.SETTINGS.value)
         )
         self.about_button = GhostButton()
+        self.about_button.setIcon(self.icons.icon("help"))
         self.about_button.clicked.connect(lambda: self.route_requested.emit(RouteId.ABOUT.value))
         self.gallery_button = GhostButton()
+        self.gallery_button.setIcon(self.icons.icon("grid"))
         self.gallery_button.setVisible(self.preview_mode)
         self.gallery_button.clicked.connect(
             lambda: self.route_requested.emit(RouteId.COMPONENT_GALLERY.value)
@@ -214,8 +222,10 @@ class HomePage(BasePage):
         self.hero_subtitle.setObjectName("mutedText")
         self.hero_subtitle.setWordWrap(True)
         self.hero_new = PrimaryButton()
+        self.hero_new.setIcon(self.icons.icon("add"))
         self.hero_new.clicked.connect(lambda: self.dialog_requested.emit("create_dataset"))
         self.hero_template = GhostButton()
+        self.hero_template.setIcon(self.icons.icon("copy"))
         self.hero_template.clicked.connect(
             lambda: self.dialog_requested.emit("create_from_template")
         )
@@ -294,10 +304,12 @@ class HomePage(BasePage):
         self.archive_filter = QComboBox()
         self.archive_filter.currentIndexChanged.connect(self._rebuild_dataset_cards)
         self.template_button = GhostButton()
+        self.template_button.setIcon(self.icons.icon("copy"))
         self.template_button.clicked.connect(
             lambda: self.dialog_requested.emit("create_from_template")
         )
         self.new_button = PrimaryButton()
+        self.new_button.setIcon(self.icons.icon("add"))
         self.new_button.clicked.connect(lambda: self.dialog_requested.emit("create_dataset"))
         title_row.addWidget(self.dataset_search)
         title_row.addWidget(self.dataset_sort)
@@ -323,6 +335,7 @@ class HomePage(BasePage):
         copy.addWidget(self.learning_subtitle)
         title_row.addLayout(copy, 1)
         self.learning_all = GhostButton()
+        self.learning_all.setIcon(self.icons.icon("tutorial"))
         self.learning_all.clicked.connect(
             lambda: self.route_requested.emit(RouteId.LEARNING_CENTER.value)
         )

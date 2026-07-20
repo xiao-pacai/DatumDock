@@ -23,6 +23,7 @@ from datumdock.app import (
 from datumdock.domain.models import ManagedDatasetConfiguration, NamingPolicy
 from datumdock.i18n.catalog import CATALOGS, LocaleService, tr
 from datumdock.resources import application_icon_path, resource_root
+from datumdock.services.annotations import AnnotationSaveFailure, AnnotationSaveFailureKind
 from datumdock.services.dataset_library import DatasetLibraryService
 from datumdock.ui.annotation_workspace import AnnotationWorkspace
 from datumdock.ui.application_shell import ApplicationShell
@@ -755,11 +756,94 @@ def test_icon_registry_renders_all_prototype_icons() -> None:
         "archive",
         "tutorial",
         "info",
+        "import",
+        "export",
+        "labels",
+        "models",
+        "settings",
+        "dataset",
+        "delete_annotation",
+        "delete_image",
+        "delete_dataset",
+        "diagnostics",
+        "rename",
+        "copy",
+        "chevron_left",
+        "chevron_right",
+        "chevron_up",
     }
+    assert registry.missing(names) == ()
     for name in names:
         assert registry.exists(name)
         assert not registry.icon(name).isNull()
         assert not registry.icon(name, "disabled").isNull()
+
+
+def test_primary_production_surfaces_bind_semantic_icons(qtbot) -> None:
+    """主页和工作台的正式高频操作不得再退化为字符占位。"""
+
+    window = ApplicationShell.for_mode(LocaleService(), True)
+    qtbot.addWidget(window)
+    home = window.navigation.pages[RouteId.HOME]
+    assert isinstance(home, HomePage)
+    for button in (
+        home.learning_button,
+        home.release_button,
+        home.settings_button,
+        home.about_button,
+        home.hero_new,
+        home.hero_template,
+        home.new_button,
+    ):
+        assert not button.icon().isNull()
+
+
+def test_save_diagnostic_details_are_actionable_and_localized(qtbot) -> None:
+    """保存失败详情必须包含可定位版本与摘要，而不是只有笼统权限提示。"""
+
+    window = ApplicationShell.for_mode(LocaleService(), True)
+    qtbot.addWidget(window)
+    workspace = window.navigation.pages[RouteId.ANNOTATION_WORKSPACE]
+    failure = AnnotationSaveFailure(
+        AnnotationSaveFailureKind.VERSION_CONFLICT,
+        "标注文档版本发生冲突",
+        request_id="request-1",
+        dataset_id="dataset-1",
+        sample_id="sample-1",
+        shape_id="shape-1",
+        edit_kind="reassign",
+        requested_version=4,
+        base_version=3,
+        current_version=5,
+        expected_disk_sha256="a" * 64,
+        current_disk_sha256="b" * 64,
+        label_set_revision=7,
+        retryable=False,
+        exception_chain=("AnnotationConflictError: 文档版本冲突",),
+    )
+
+    details = workspace._save_diagnostic_text(failure)
+
+    assert "request-1" in details
+    assert "3 → 4; current=5" in details
+    assert "a" * 64 in details
+    assert "b" * 64 in details
+    assert "AnnotationConflictError" in details
+
+    window.navigate(RouteId.ANNOTATION_WORKSPACE.value)
+    workspace = window.navigation.pages[RouteId.ANNOTATION_WORKSPACE]
+    assert isinstance(workspace, AnnotationWorkspace)
+    for button in (
+        workspace.import_button,
+        workspace.export_button,
+        workspace.labels_button,
+        workspace.models_button,
+        workspace.settings_button,
+        workspace.delete_annotation_button,
+        workspace.previous_page_button,
+        workspace.next_page_button,
+    ):
+        assert not button.icon().isNull()
 
 
 def test_responsive_window_sizes_keep_valid_central_geometry() -> None:

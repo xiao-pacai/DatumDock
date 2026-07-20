@@ -52,3 +52,16 @@ class IconRegistry:
         """供测试和组件样例页验证语义图标是否存在。"""
 
         return (self.root / "assets" / "icons" / f"{name}.svg").is_file()
+
+    def missing(self, names: set[str] | tuple[str, ...] | list[str]) -> tuple[str, ...]:
+        """返回缺失的语义资源，避免控件绑定悄悄退化成空图标。"""
+
+        return tuple(sorted(name for name in set(names) if not self.exists(name)))
+
+    def available_names(self) -> tuple[str, ...]:
+        """枚举当前自有图标，供组件审计和自动化测试建立完整清单。"""
+
+        icon_dir = self.root / "assets" / "icons"
+        if not icon_dir.is_dir():
+            return ()
+        return tuple(sorted(path.stem for path in icon_dir.glob("*.svg")))

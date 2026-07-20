@@ -17,7 +17,9 @@ from PySide6.QtWidgets import (
 )
 
 from datumdock.i18n.catalog import LocaleService, tr
+from datumdock.resources import resource_root
 from datumdock.ui.components import DangerButton, GhostButton, PageHeader, PrimaryButton
+from datumdock.ui.icons import IconRegistry
 from datumdock.ui.prototype_pages import RouteId
 
 
@@ -40,6 +42,7 @@ class ManagedGovernancePage(QWidget):
         self.gateway = gateway
         self.dataset_id = dataset_id
         self.kind = kind
+        self.icons = IconRegistry(resource_root())
         self.row_ids: list[str] = []
         root = QVBoxLayout(self)
         root.setContentsMargins(24, 20, 24, 24)
@@ -47,6 +50,7 @@ class ManagedGovernancePage(QWidget):
         subtitle_key = "page.similarity.subtitle" if kind == "similarity" else "page.trash.subtitle"
         self.header = PageHeader(locale, title_key, subtitle_key)
         back = GhostButton(tr(locale, "nav.back"))
+        back.setIcon(self.icons.icon("back"))
         back.clicked.connect(
             lambda: self.route_requested.emit(f"{RouteId.ANNOTATION_WORKSPACE.value}:{dataset_id}")
         )
@@ -56,6 +60,13 @@ class ManagedGovernancePage(QWidget):
         self.primary = PrimaryButton()
         self.secondary = QPushButton()
         self.danger = DangerButton()
+        if kind == "similarity":
+            self.primary.setIcon(self.icons.icon("success"))
+            self.secondary.setIcon(self.icons.icon("archive"))
+        else:
+            self.primary.setIcon(self.icons.icon("restore"))
+            self.secondary.setIcon(self.icons.icon("delete_image"))
+            self.danger.setIcon(self.icons.icon("trash"))
         actions.addWidget(self.primary)
         actions.addWidget(self.secondary)
         actions.addStretch()

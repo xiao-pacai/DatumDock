@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QSize, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QColorDialog,
@@ -28,8 +28,10 @@ from PySide6.QtWidgets import (
 
 from datumdock.domain.models import Label, LabelStatus
 from datumdock.i18n.catalog import LocaleService, tr
+from datumdock.resources import resource_root
 from datumdock.services.managed_labels import ManagedLabelError
 from datumdock.ui.components import DangerButton, GhostButton, PageHeader, PrimaryButton, SearchBox
+from datumdock.ui.icons import IconRegistry
 from datumdock.ui.prototype_pages import RouteId
 
 
@@ -48,6 +50,7 @@ class ManagedLabelEditDialog(QDialog):
         self.locale = locale
         self.gateway = gateway
         self.dataset_id = dataset_id
+        self.icons = IconRegistry(resource_root())
         self.label = label
         self.saved_label_id: str | None = label.id if label else None
         self.setMinimumWidth(520)
@@ -173,11 +176,13 @@ class ManagedLabelPage(QWidget):
         self.locale = locale
         self.gateway = gateway
         self.dataset_id = dataset_id
+        self.icons = IconRegistry(resource_root())
         self.labels: tuple[Label, ...] = ()
         root = QVBoxLayout(self)
         root.setContentsMargins(24, 20, 24, 24)
         self.header = PageHeader(locale, "page.labels.title", "page.labels.subtitle")
         back = GhostButton(tr(locale, "nav.back"))
+        back.setIcon(self.icons.icon("back"))
         back.clicked.connect(
             lambda: self.route_requested.emit(f"{RouteId.ANNOTATION_WORKSPACE.value}:{dataset_id}")
         )
@@ -187,9 +192,13 @@ class ManagedLabelPage(QWidget):
         self.search = SearchBox()
         self.search.textChanged.connect(self.refresh)
         self.add_button = PrimaryButton(tr(locale, "label.add"))
+        self.add_button.setIcon(self.icons.icon("add"))
         self.edit_button = QPushButton(tr(locale, "label.edit"))
+        self.edit_button.setIcon(self.icons.icon("edit"))
         self.status_button = DangerButton(tr(locale, "label.archive"))
+        self.status_button.setIcon(self.icons.icon("archive"))
         self.inspect_button = GhostButton(tr(locale, "label.inspect"))
+        self.inspect_button.setIcon(self.icons.icon("search"))
         self.add_button.clicked.connect(self._add)
         self.edit_button.clicked.connect(self._edit)
         self.status_button.clicked.connect(self._toggle_status)
@@ -323,6 +332,7 @@ class ManagedLabelInspectionPage(QWidget):
         self.locale = locale
         self.gateway = gateway
         self.dataset_id = dataset_id
+        self.icons = IconRegistry(resource_root())
         self.sample_ids: list[str] = []
         self.offset = 0
         self.total = 0
@@ -331,6 +341,7 @@ class ManagedLabelInspectionPage(QWidget):
         root.setContentsMargins(24, 20, 24, 24)
         self.header = PageHeader(locale, "page.inspection.title", "page.inspection.subtitle")
         back = GhostButton(tr(locale, "nav.back"))
+        back.setIcon(self.icons.icon("back"))
         back.clicked.connect(lambda: self.route_requested.emit(RouteId.LABEL_MANAGER.value))
         self.header.add_action(back)
         root.addWidget(self.header)
@@ -352,8 +363,12 @@ class ManagedLabelInspectionPage(QWidget):
         self.table.cellDoubleClicked.connect(self._open_sample)
         root.addWidget(self.table, 1)
         pagination = QHBoxLayout()
-        self.previous_button = GhostButton("‹")
-        self.next_button = GhostButton("›")
+        self.previous_button = GhostButton()
+        self.previous_button.setIcon(self.icons.icon("chevron_left"))
+        self.previous_button.setIconSize(QSize(20, 20))
+        self.next_button = GhostButton()
+        self.next_button.setIcon(self.icons.icon("chevron_right"))
+        self.next_button.setIconSize(QSize(20, 20))
         self.page_label = QLabel()
         self.page_label.setObjectName("mutedText")
         self.previous_button.clicked.connect(self._previous_page)
