@@ -494,7 +494,8 @@ class DatasetPoolService:
         """组合差异哈希与平均色，避免纯色或低纹理图片产生大量误候选。"""
 
         grayscale = image.convert("L").resize((9, 8))
-        pixels = list(grayscale.getdata())
+        # Pillow 14 将移除 getdata；提前使用等价的新接口，避免测试掩盖依赖升级风险。
+        pixels = list(grayscale.get_flattened_data())
         bits = [
             "1" if pixels[row * 9 + column] > pixels[row * 9 + column + 1] else "0"
             for row in range(8)

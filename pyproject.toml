@@ -33,7 +33,7 @@ inference = [
     "onnxruntime>=1.20",
     "ultralytics>=8.3",
 ]
-dev = ["pre-commit", "pyinstaller", "pytest", "pytest-qt", "ruff"]
+dev = ["pre-commit", "pyinstaller", "pytest", "pytest-cov", "pytest-qt", "ruff"]
 
 [project.scripts]
 datumdock = "datumdock.app:main"
@@ -65,3 +65,15 @@ docstring-code-format = true
 testpaths = ["tests"]
 addopts = ["-ra"]
 pythonpath = ["src"]
+
+[tool.coverage.run]
+branch = true
+source = ["datumdock"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]

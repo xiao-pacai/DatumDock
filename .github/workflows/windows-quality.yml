@@ -1,0 +1,29 @@
+name: Windows quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python-311:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: 安装开发依赖
+        run: python -m pip install -e ".[dev]"
+      - name: Ruff 检查
+        run: python -m ruff check src tests scripts
+      - name: 格式检查
+        run: python -m ruff format --check src tests scripts
+      - name: 字节码编译
+        run: python -m compileall -q src
+      - name: 测试与分支覆盖率
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest --cov=datumdock --cov-branch --cov-report=term-missing
