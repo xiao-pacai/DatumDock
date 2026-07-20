@@ -34,6 +34,12 @@ from datumdock.domain.models import (
     new_id,
     utc_now,
 )
+from datumdock.services.annotations import (
+    AnnotationEditKind,
+    AnnotationEditOrigin,
+    AnnotationSaveRequest,
+    AnnotationService,
+)
 from datumdock.services.dataset_library import DatasetLibraryService
 from datumdock.services.image_pool import (
     DuplicateDecision,
@@ -43,11 +49,17 @@ from datumdock.services.image_pool import (
     ImagePoolError,
     PreparedImportItem,
 )
-from datumdock.services.labelme import LabelMeError, LabelMeRepository
+from datumdock.services.labelme import (
+    LabelMeError,
+    LabelMeRepository,
+    RectanglePointKind,
+    parse_rectangle_points,
+)
 from datumdock.services.managed_labels import LabelSetService, ManagedLabelError
 from datumdock.services.sample_repository import (
     DatasetSampleRepository,
     ManagedOperation,
+    SampleQuery,
     SampleRepositoryError,
 )
 
@@ -158,6 +170,8 @@ class PreparedInteropItem:
     external_labels: tuple[str, ...]
     compatibility_shape_count: int
     blocking_issues: tuple[InteropIssue, ...] = ()
+    editable_rectangle_count: int = 0
+    normalized_four_point_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -248,6 +262,39 @@ class XAnyExportReport:
     cancelled: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class ManagedRectangleRepairItem:
+    """一份受管 JSON 中可以安全规范化的 X-AnyLabeling 四点矩形。"""
+
+    sample_id: str
+    filename: str
+    annotation_sha256: str
+    document_version: int
+    convertible_count: int
+    readonly_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class ManagedRectangleRepairPreflight:
+    """修复确认绑定标签修订和每份 JSON 摘要，预检阶段绝不写入。"""
+
+    dataset_id: str
+    label_set_revision: int
+    items: tuple[ManagedRectangleRepairItem, ...]
+    issues: tuple[InteropIssue, ...]
+    scanned_count: int
+
+
+@dataclass(slots=True)
+class ManagedRectangleRepairReport:
+    """逐样本修复报告；失败样本保持原 JSON 或进入既有恢复诊断。"""
+
+    repaired_sample_ids: list[str] = field(default_factory=list)
+    normalized_rectangle_count: int = 0
+    failures: dict[str, str] = field(default_factory=dict)
+    cancelled: bool = False
+
+
 class XAnyLabelingInteropService:
     """只操作一个受管数据集，并将外部目录始终视为只读来源。"""
 
@@ -317,6 +364,8 @@ class XAnyLabelingInteropService:
             item_issues: list[InteropIssue] = []
             external_names: list[str] = []
             compatibility_count = 0
+            editable_rectangle_count = 0
+            normalized_four_point_count = 0
             annotation_fingerprint = None
             if annotation_path.is_file() and not annotation_path.is_symlink():
                 paired_json.add(annotation_path.resolve(strict=True))
@@ -339,6 +388,25 @@ class XAnyLabelingInteropService:
                             label_counts[key] = (previous[0], previous[1] + 1)
                         if shape.get("shape_type") != "rectangle":
                             compatibility_count += 1
+                            continue
+                        point_result = parse_rectangle_points(
+                            shape.get("points"),
+                            (prepared.width, prepared.height),
+                        )
+                        if point_result.editable:
+                            editable_rectangle_count += 1
+                            if point_result.kind == RectanglePointKind.FOUR_POINT_AXIS_ALIGNED:
+                                normalized_four_point_count += 1
+                        else:
+                            compatibility_count += 1
+                            issue = InteropIssue(
+                                InteropIssueSeverity.WARNING,
+                                "rectangle_preserved_readonly",
+                                point_result.reason,
+                                annotation_path.relative_to(root).as_posix(),
+                            )
+                            item_issues.append(issue)
+                            issues.append(issue)
                 except (OSError, ValueError, json.JSONDecodeError, InteropError) as error:
                     issue = InteropIssue(
                         InteropIssueSeverity.ERROR,
@@ -367,7 +435,13 @@ class XAnyLabelingInteropService:
                     annotation_fingerprint,
                     tuple(dict.fromkeys(external_names)),
                     compatibility_count,
-                    tuple(item_issues),
+                    tuple(
+                        issue
+                        for issue in item_issues
+                        if issue.severity == InteropIssueSeverity.ERROR
+                    ),
+                    editable_rectangle_count,
+                    normalized_four_point_count,
                 )
             )
         for json_path in json_paths:
@@ -567,6 +641,157 @@ class XAnyLabelingInteropService:
             except (OSError, ImagePoolError) as error:
                 report.failures["<cleanup>"] = str(error)
         self.library.synchronize_statistics(self.dataset_id)
+        return report
+
+    def preflight_managed_rectangle_repair(
+        self,
+        *,
+        progress: Callable[[int, int, str], None] | None = None,
+        cancelled: Callable[[], bool] | None = None,
+    ) -> ManagedRectangleRepairPreflight:
+        """只读扫描已经导入的 JSON，定位可证明为轴对齐的四点矩形。"""
+
+        label_set = self.library.open_dataset(self.dataset_id).label_set
+        total = self.samples.count_active()
+        offset = 0
+        scanned = 0
+        items: list[ManagedRectangleRepairItem] = []
+        issues: list[InteropIssue] = []
+        while offset < total:
+            if cancelled and cancelled():
+                break
+            page = self.samples.query(SampleQuery(self.dataset_id, offset=offset, limit=200))
+            if not page.items:
+                break
+            for sample in page.items:
+                if cancelled and cancelled():
+                    break
+                scanned += 1
+                if progress:
+                    progress(scanned, total, sample.filename)
+                if not sample.annotation_path:
+                    continue
+                try:
+                    path = self.samples.resolve_path(
+                        sample.annotation_path,
+                        "pool/annotations",
+                    )
+                    raw = path.read_bytes()
+                    payload = json.loads(raw.decode("utf-8"))
+                    if not isinstance(payload, dict):
+                        raise InteropError("标注 JSON 根节点必须是对象")
+                    convertible, readonly = _count_four_point_rectangles(
+                        payload,
+                        (sample.width, sample.height),
+                    )
+                    if convertible == 0:
+                        continue
+                    # 预检必须证明当前标签可解析，否则确认页只报告问题而不猜测映射。
+                    document = self.labelme.from_payload(
+                        payload,
+                        sample.id,
+                        label_set,
+                        sample.filename,
+                        (sample.width, sample.height),
+                    )
+                    items.append(
+                        ManagedRectangleRepairItem(
+                            sample.id,
+                            sample.filename,
+                            hashlib.sha256(raw).hexdigest(),
+                            document.document_version,
+                            convertible,
+                            readonly,
+                        )
+                    )
+                except (
+                    OSError,
+                    UnicodeError,
+                    json.JSONDecodeError,
+                    LabelMeError,
+                    InteropError,
+                ) as error:
+                    issues.append(
+                        InteropIssue(
+                            InteropIssueSeverity.ERROR,
+                            "managed_rectangle_repair_blocked",
+                            str(error),
+                            sample.filename,
+                        )
+                    )
+            offset += len(page.items)
+        return ManagedRectangleRepairPreflight(
+            self.dataset_id,
+            label_set.revision,
+            tuple(items),
+            tuple(issues),
+            scanned,
+        )
+
+    def repair_managed_rectangles(
+        self,
+        preflight: ManagedRectangleRepairPreflight,
+        *,
+        progress: Callable[[int, int, str], None] | None = None,
+        cancelled: Callable[[], bool] | None = None,
+    ) -> ManagedRectangleRepairReport:
+        """经用户确认后复用标注恢复事务，把四角表示规范化为两点表示。"""
+
+        if preflight.dataset_id != self.dataset_id:
+            raise InteropError("四点矩形修复预检不属于当前数据集")
+        label_set = self.library.open_dataset(self.dataset_id).label_set
+        if label_set.revision != preflight.label_set_revision:
+            raise InteropError("标签集已发生变化，请重新检查四点矩形")
+        report = ManagedRectangleRepairReport()
+        annotation_service = AnnotationService(self.library, self.dataset_id)
+        total = len(preflight.items)
+        for index, item in enumerate(preflight.items, start=1):
+            if cancelled and cancelled():
+                report.cancelled = True
+                break
+            if progress:
+                progress(index - 1, total, item.filename)
+            try:
+                sample = self.samples.get_sample(item.sample_id)
+                if sample is None or not sample.annotation_path:
+                    raise InteropError("待修复样本或标注路径已不存在")
+                path = self.samples.resolve_path(sample.annotation_path, "pool/annotations")
+                raw = path.read_bytes()
+                if hashlib.sha256(raw).hexdigest() != item.annotation_sha256:
+                    raise InteropError("标注 JSON 在确认前已变化，请重新检查")
+                payload = json.loads(raw.decode("utf-8"))
+                if not isinstance(payload, dict):
+                    raise InteropError("标注 JSON 根节点必须是对象")
+                document = self.labelme.from_payload(
+                    payload,
+                    sample.id,
+                    label_set,
+                    sample.filename,
+                    (sample.width, sample.height),
+                )
+                target_version = max(document.document_version, sample.annotation_version) + 1
+                candidate = document.model_copy(
+                    deep=True,
+                    update={"document_version": target_version},
+                )
+                annotation_service.save(
+                    AnnotationSaveRequest(
+                        self.dataset_id,
+                        sample.id,
+                        target_version,
+                        item.annotation_sha256,
+                        candidate,
+                        AnnotationEditOrigin.MAINTENANCE,
+                        AnnotationEditKind.COMPATIBILITY_REPAIR,
+                        sample.annotation_version,
+                    )
+                )
+                report.repaired_sample_ids.append(sample.id)
+                report.normalized_rectangle_count += item.convertible_count
+            except Exception as error:
+                report.failures[item.filename] = str(error)
+            if progress:
+                progress(index, total, item.filename)
         return report
 
     def _verify_import_preflight_sources(self, preflight: XAnyImportPreflight) -> None:
@@ -1179,6 +1404,31 @@ def _document_has_exportable_shapes(document: AnnotationDocument) -> bool:
     """仅在至少存在一个可编辑或兼容 shape 时生成 LabelMe JSON。"""
 
     return bool(document.rectangles or document.unsupported_shapes)
+
+
+def _count_four_point_rectangles(
+    payload: Mapping[str, Any],
+    image_size: tuple[int, int],
+) -> tuple[int, int]:
+    """返回可规范化和必须只读保留的四点 rectangle 数量。"""
+
+    shapes = payload.get("shapes", [])
+    if not isinstance(shapes, list):
+        raise InteropError("LabelMe shapes 必须是数组")
+    convertible = 0
+    readonly = 0
+    for shape in shapes:
+        if not isinstance(shape, dict) or shape.get("shape_type") != "rectangle":
+            continue
+        points = shape.get("points")
+        if not isinstance(points, list) or len(points) != 4:
+            continue
+        result = parse_rectangle_points(points, image_size)
+        if result.kind == RectanglePointKind.FOUR_POINT_AXIS_ALIGNED:
+            convertible += 1
+        else:
+            readonly += 1
+    return convertible, readonly
 
 
 def _validate_export_directory(

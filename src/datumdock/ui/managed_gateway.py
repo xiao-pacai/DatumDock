@@ -51,6 +51,7 @@ from datumdock.services.image_pool import (
 )
 from datumdock.services.library_repository import resolve_data_root
 from datumdock.services.managed_interop import (
+    ManagedRectangleRepairPreflight,
     XAnyExportPreflight,
     XAnyExportRequest,
     XAnyImportCommitRequest,
@@ -551,6 +552,63 @@ class ManagedDatasetGateway:
             )
 
         return self.tasks.start(dataset_id, "xany_export_commit", work)
+
+    def start_rectangle_repair_preflight(self, dataset_id: str) -> str:
+        """后台只读检查当前数据集已导入的 X-AnyLabeling 四点矩形。"""
+
+        interop = XAnyLabelingInteropService(self.service, dataset_id)
+
+        def work(context):
+            context.phase("xany_rectangle_repair_preflight")
+            return interop.preflight_managed_rectangle_repair(
+                progress=context.progress,
+                cancelled=context.cancelled,
+            )
+
+        return self.tasks.start(dataset_id, "xany_rectangle_repair_preflight", work)
+
+    def start_rectangle_repair_commit(
+        self,
+        dataset_id: str,
+        preflight_task_id: str,
+    ) -> str:
+        """确认后逐样本执行恢复型修复，保存失败状态会阻止并发维护写入。"""
+
+        preflight = self.tasks.result(preflight_task_id)
+        if not isinstance(preflight, ManagedRectangleRepairPreflight):
+            raise ImagePoolError("四点矩形修复预检不存在")
+        autosave = self._annotation_autosaves.get(dataset_id)
+        if autosave is not None and autosave.state in {AutosaveState.SAVING, AutosaveState.FAILED}:
+            raise ImagePoolError("当前数据集仍有保存中或保存失败的标注，请先处理")
+        blocking_tasks = [
+            item
+            for item in self.tasks.active_snapshots()
+            if item.dataset_id == dataset_id
+            and item.kind
+            in {
+                "image_import_commit",
+                "xany_import_commit",
+                "sample_rename",
+                "sample_delete",
+                "dataset_delete",
+            }
+        ]
+        if blocking_tasks:
+            raise ImagePoolError("当前数据集存在写入任务，请等待完成后再修复")
+        interop = XAnyLabelingInteropService(self.service, dataset_id)
+
+        def work(context):
+            context.phase("xany_rectangle_repair_commit")
+            report = interop.repair_managed_rectangles(
+                preflight,
+                progress=context.progress,
+                cancelled=context.cancelled,
+            )
+            for filename, message in report.failures.items():
+                context.add_error(f"{filename}: {message}")
+            return report
+
+        return self.tasks.start(dataset_id, "xany_rectangle_repair_commit", work)
 
     def task_snapshot(self, task_id: str) -> TaskSnapshot:
         return self.tasks.snapshot(task_id)

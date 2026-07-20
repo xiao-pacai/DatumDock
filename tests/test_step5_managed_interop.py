@@ -30,6 +30,7 @@ from datumdock.services.tasks import TaskState
 from datumdock.ui.application_shell import ApplicationShell
 from datumdock.ui.managed_gateway import ManagedDatasetGateway
 from datumdock.ui.managed_interop_dialogs import (
+    ManagedRectangleRepairDialog,
     ManagedXAnyExportDialog,
     ManagedXAnyImportDialog,
 )
@@ -172,6 +173,149 @@ def test_import_preserves_mixed_shapes_and_export_strips_private_fields(tmp_path
     assert "datumdock_" not in json.dumps(exported)
     assert exported["shapes"][0]["attributes"] == {"keep": True}
     assert (target / "labels.txt").read_text("utf-8").splitlines() == ["part", "outline"]
+
+
+def test_xany_v4_four_point_rectangle_imports_as_editable_and_indexed(tmp_path: Path) -> None:
+    """v4 beta 四点轴对齐矩形在预检、JSON 与 SQLite 中必须得到一致分类。"""
+
+    source = tmp_path / "xany-v4"
+    source.mkdir()
+    image = source / "sample.png"
+    Image.new("RGB", (80, 50), (90, 120, 150)).save(image)
+    payload = _payload(image.name)
+    payload["version"] = "4.0.0-beta.7"
+    payload["shapes"][1]["points"] = [[45, 35], [10, 35], [10, 8], [45, 8]]
+    annotation = source / "sample.json"
+    annotation.write_text(json.dumps(payload), encoding="utf-8")
+
+    library = DatasetLibraryService(tmp_path / "library")
+    dataset = library.create_dataset("XAny v4").dataset
+    service = XAnyLabelingInteropService(library, dataset.id)
+    preflight = service.preflight_import(XAnyImportPreflightRequest(dataset.id, source))
+    item = preflight.items[0]
+    assert item.editable_rectangle_count == 1
+    assert item.normalized_four_point_count == 1
+    assert item.compatibility_shape_count == 1
+
+    label = _new_label()
+    report = service.commit_import(
+        XAnyImportCommitRequest(
+            dataset.id,
+            preflight,
+            {},
+            (ExternalLabelResolution("part", label.id),),
+            (label,),
+        )
+    )
+    repository = DatasetSampleRepository(
+        library.dataset_repository.paths(dataset.id),
+        dataset.id,
+    )
+    sample = repository.get_sample(report.imported_sample_ids[0])
+    assert sample is not None
+    assert sample.annotation_count == 1
+    assert repository.label_usage_counts()[label.id] == (1, 1)
+
+
+def test_xany_v4_rotated_rectangle_is_reported_and_preserved_readonly(tmp_path: Path) -> None:
+    """旋转四点 rectangle 不可冒充轴对齐框，预检必须明确报告兼容保留。"""
+
+    source = tmp_path / "xany-v4-rotated"
+    source.mkdir()
+    image = source / "sample.png"
+    Image.new("RGB", (80, 50), (90, 120, 150)).save(image)
+    payload = _payload(image.name)
+    payload["shapes"] = [
+        {
+            "label": "part",
+            "points": [[20, 5], [45, 15], [35, 40], [10, 30]],
+            "shape_type": "rectangle",
+            "attributes": {"keep": True},
+        }
+    ]
+    (source / "sample.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    library = DatasetLibraryService(tmp_path / "library")
+    dataset = library.create_dataset("旋转框").dataset
+    service = XAnyLabelingInteropService(library, dataset.id)
+    preflight = service.preflight_import(XAnyImportPreflightRequest(dataset.id, source))
+
+    assert preflight.items[0].editable_rectangle_count == 0
+    assert preflight.items[0].compatibility_shape_count == 1
+    assert any(issue.code == "rectangle_preserved_readonly" for issue in preflight.issues)
+
+    label = _new_label()
+    report = service.commit_import(
+        XAnyImportCommitRequest(
+            dataset.id,
+            preflight,
+            {},
+            (ExternalLabelResolution("part", label.id),),
+            (label,),
+        )
+    )
+    assert len(report.imported_sample_ids) == 1
+    assert report.compatibility_shape_count == 1
+    repository = DatasetSampleRepository(
+        library.dataset_repository.paths(dataset.id),
+        dataset.id,
+    )
+    sample = repository.get_sample(report.imported_sample_ids[0])
+    assert sample is not None
+    assert sample.annotation_count == 0
+
+
+def test_existing_managed_four_point_rectangle_requires_preflight_then_repairs(
+    tmp_path: Path,
+) -> None:
+    """已有数据只在显式确认后改写，修复前预检保持 JSON 字节不变。"""
+
+    source = tmp_path / "external"
+    source.mkdir()
+    image = source / "sample.png"
+    Image.new("RGB", (80, 50), (90, 120, 150)).save(image)
+    (source / "sample.json").write_text(json.dumps(_payload(image.name)), encoding="utf-8")
+    library = DatasetLibraryService(tmp_path / "library")
+    dataset = library.create_dataset("已有四点框").dataset
+    service = XAnyLabelingInteropService(library, dataset.id)
+    import_preflight = service.preflight_import(XAnyImportPreflightRequest(dataset.id, source))
+    label = _new_label()
+    imported = service.commit_import(
+        XAnyImportCommitRequest(
+            dataset.id,
+            import_preflight,
+            {},
+            (ExternalLabelResolution("part", label.id),),
+            (label,),
+        )
+    )
+    repository = DatasetSampleRepository(
+        library.dataset_repository.paths(dataset.id),
+        dataset.id,
+    )
+    sample = repository.get_sample(imported.imported_sample_ids[0])
+    assert sample is not None
+    annotation_path = repository.resolve_path(sample.annotation_path, "pool/annotations")
+    payload = json.loads(annotation_path.read_text(encoding="utf-8"))
+    rectangle = next(shape for shape in payload["shapes"] if shape["shape_type"] == "rectangle")
+    rectangle["points"] = [[45, 35], [10, 35], [10, 8], [45, 8]]
+    annotation_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    before = annotation_path.read_bytes()
+
+    repair_preflight = service.preflight_managed_rectangle_repair()
+
+    assert annotation_path.read_bytes() == before
+    assert len(repair_preflight.items) == 1
+    assert repair_preflight.items[0].convertible_count == 1
+    report = service.repair_managed_rectangles(repair_preflight)
+    assert report.repaired_sample_ids == [sample.id]
+    assert report.normalized_rectangle_count == 1
+    repaired = json.loads(annotation_path.read_text(encoding="utf-8"))
+    repaired_rectangle = next(
+        shape for shape in repaired["shapes"] if shape["shape_type"] == "rectangle"
+    )
+    assert repaired_rectangle["points"] == [[10.0, 8.0], [45.0, 35.0]]
+    assert repository.get_sample(sample.id).annotation_count == 1
 
 
 def test_unknown_rectangle_is_read_only_preserved_and_roundtrips(tmp_path: Path) -> None:
@@ -468,6 +612,11 @@ def test_normal_shell_opens_real_xany_dialogs(qtbot, tmp_path: Path) -> None:
 
     window.open_dialog(f"xany_export:{dataset.id}")
     assert isinstance(window._active_dialogs[-1], ManagedXAnyExportDialog)
+    window._active_dialogs[-1].reject()
+    qtbot.waitUntil(lambda: not window._active_dialogs)
+
+    window.open_dialog(f"xany_repair:{dataset.id}")
+    assert isinstance(window._active_dialogs[-1], ManagedRectangleRepairDialog)
     window._active_dialogs[-1].reject()
     qtbot.waitUntil(lambda: not window._active_dialogs)
     window.close()

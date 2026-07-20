@@ -5,9 +5,12 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import math
 import os
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, ClassVar, Protocol
 from uuid import UUID
@@ -26,6 +29,113 @@ class LabelMeError(RuntimeError):
 
 class UnknownLabelReferenceError(LabelMeError):
     """可编辑矩形引用了当前数据集不存在的标签。"""
+
+
+class RectanglePointKind(StrEnum):
+    """外部 rectangle 的坐标表示，用于让预检和正式导入共享同一判断。"""
+
+    TWO_POINT = "two_point"
+    FOUR_POINT_AXIS_ALIGNED = "four_point_axis_aligned"
+    UNSUPPORTED = "unsupported"
+
+
+@dataclass(frozen=True, slots=True)
+class RectanglePointParseResult:
+    """可编辑矩形返回规范坐标；其余表示必须作为兼容负载保留。"""
+
+    kind: RectanglePointKind
+    coordinates: tuple[float, float, float, float] | None = None
+    reason: str = ""
+
+    @property
+    def editable(self) -> bool:
+        return self.coordinates is not None
+
+
+def parse_rectangle_points(
+    points: object,
+    image_size: tuple[int, int],
+) -> RectanglePointParseResult:
+    """识别 LabelMe 两点矩形和 X-AnyLabeling 4.x 的轴对齐四点矩形。"""
+
+    if not isinstance(points, list) or len(points) not in {2, 4}:
+        return RectanglePointParseResult(
+            RectanglePointKind.UNSUPPORTED,
+            reason="矩形必须使用两个对角点或四个轴对齐角点",
+        )
+    parsed: list[tuple[float, float]] = []
+    for point in points:
+        if not isinstance(point, list) or len(point) != 2:
+            return RectanglePointParseResult(
+                RectanglePointKind.UNSUPPORTED,
+                reason="矩形点必须是包含两个数值的数组",
+            )
+        x, y = point
+        if (
+            isinstance(x, bool)
+            or isinstance(y, bool)
+            or not isinstance(x, int | float)
+            or not isinstance(y, int | float)
+            or not math.isfinite(float(x))
+            or not math.isfinite(float(y))
+        ):
+            return RectanglePointParseResult(
+                RectanglePointKind.UNSUPPORTED,
+                reason="矩形点包含非有限或非数值坐标",
+            )
+        parsed.append((float(x), float(y)))
+
+    tolerance = max(1e-6, max(image_size, default=1) * 1e-9)
+    if len(parsed) == 2:
+        x1, x2 = sorted((parsed[0][0], parsed[1][0]))
+        y1, y2 = sorted((parsed[0][1], parsed[1][1]))
+        if x2 - x1 <= tolerance or y2 - y1 <= tolerance:
+            return RectanglePointParseResult(
+                RectanglePointKind.UNSUPPORTED,
+                reason="矩形面积为零",
+            )
+        return RectanglePointParseResult(
+            RectanglePointKind.TWO_POINT,
+            (x1, y1, x2, y2),
+        )
+
+    xs = _cluster_coordinates((point[0] for point in parsed), tolerance)
+    ys = _cluster_coordinates((point[1] for point in parsed), tolerance)
+    if len(xs) != 2 or len(ys) != 2:
+        return RectanglePointParseResult(
+            RectanglePointKind.UNSUPPORTED,
+            reason="四点矩形不是轴对齐四角表示",
+        )
+    x1, x2 = xs
+    y1, y2 = ys
+    expected = ((x1, y1), (x1, y2), (x2, y1), (x2, y2))
+    if not all(
+        any(
+            abs(expected_x - actual_x) <= tolerance and abs(expected_y - actual_y) <= tolerance
+            for actual_x, actual_y in parsed
+        )
+        for expected_x, expected_y in expected
+    ):
+        return RectanglePointParseResult(
+            RectanglePointKind.UNSUPPORTED,
+            reason="四点矩形缺少完整的轴对齐角点",
+        )
+    return RectanglePointParseResult(
+        RectanglePointKind.FOUR_POINT_AXIS_ALIGNED,
+        (x1, y1, x2, y2),
+    )
+
+
+def _cluster_coordinates(values: Iterable[float], tolerance: float) -> tuple[float, ...]:
+    """在极小的图片相关容差内合并同一条矩形边，避免浮点序列化噪声。"""
+
+    clusters: list[list[float]] = []
+    for value in sorted(float(item) for item in values):
+        if not clusters or abs(value - clusters[-1][-1]) > tolerance:
+            clusters.append([value])
+        else:
+            clusters[-1].append(value)
+    return tuple(sum(cluster) / len(cluster) for cluster in clusters)
 
 
 class AnnotationRepository(Protocol):
@@ -90,6 +200,12 @@ class LabelMeRepository:
     ) -> AnnotationDocument:
         """仅把已知标签的标准 rectangle 转为可编辑框，其余 shape 原样保留。"""
 
+        try:
+            width = int(payload.get("imageWidth") or fallback_size[0])
+            height = int(payload.get("imageHeight") or fallback_size[1])
+            document_version = int(payload.get("datumdock_document_version") or 0)
+        except (TypeError, ValueError) as error:
+            raise LabelMeError(f"LabelMe 图片尺寸或文档版本无效: {error}") from error
         by_name = {label.name.casefold(): label for label in label_set.labels}
         by_id = {label.id: label for label in label_set.labels}
         rectangles: list[RectangleShape] = []
@@ -118,15 +234,10 @@ class LabelMeRepository:
             )
             is_rectangle = shape.get("shape_type") == "rectangle"
             read_only_compat = bool(shape.get("datumdock_read_only_compat"))
-            valid_points = (
-                isinstance(points, list)
-                and len(points) == 2
-                and all(
-                    isinstance(point, list)
-                    and len(point) == 2
-                    and all(isinstance(value, int | float) for value in point)
-                    for point in points
-                )
+            point_result = (
+                parse_rectangle_points(points, (width, height))
+                if is_rectangle
+                else RectanglePointParseResult(RectanglePointKind.UNSUPPORTED)
             )
             if (
                 is_rectangle
@@ -137,15 +248,17 @@ class LabelMeRepository:
                 raise UnknownLabelReferenceError(
                     f"矩形引用了当前标签集中不存在的标签: {shape.get('label', '')}"
                 )
-            if is_rectangle and valid_points and label is not None:
+            if is_rectangle and point_result.editable and label is not None:
+                x1, y1, x2, y2 = point_result.coordinates or (0.0, 0.0, 0.0, 0.0)
+                shape.pop("datumdock_read_only_compat", None)
                 rectangles.append(
                     RectangleShape(
                         id=shape_id,
                         label_id=label.id,
-                        x1=float(points[0][0]),
-                        y1=float(points[0][1]),
-                        x2=float(points[1][0]),
-                        y2=float(points[1][1]),
+                        x1=x1,
+                        y1=y1,
+                        x2=x2,
+                        y2=y2,
                         source_model_id=shape.get("datumdock_model_id"),
                         confidence=shape.get("score"),
                         compatibility_payload=shape,
@@ -155,12 +268,6 @@ class LabelMeRepository:
                 if is_rectangle and label is None and preserve_unknown_rectangles:
                     shape["datumdock_read_only_compat"] = True
                 unsupported_shapes.append(shape)
-        try:
-            width = int(payload.get("imageWidth") or fallback_size[0])
-            height = int(payload.get("imageHeight") or fallback_size[1])
-            document_version = int(payload.get("datumdock_document_version") or 0)
-        except (TypeError, ValueError) as error:
-            raise LabelMeError(f"LabelMe 图片尺寸或文档版本无效: {error}") from error
         root_payload = {
             key: copy.deepcopy(value) for key, value in payload.items() if key not in self.ROOT_KEYS
         }

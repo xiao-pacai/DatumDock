@@ -32,7 +32,11 @@ from datumdock.services.annotations import (
     ReviewStateMachine,
 )
 from datumdock.services.dataset_library import DatasetLibraryService
-from datumdock.services.labelme import LabelMeRepository
+from datumdock.services.labelme import (
+    LabelMeRepository,
+    RectanglePointKind,
+    parse_rectangle_points,
+)
 from datumdock.services.managed_labels import LabelSetService
 from datumdock.services.sample_repository import (
     DatasetSampleRepository,
@@ -120,6 +124,54 @@ def test_labelme_preserves_mixed_shape_order_and_export_strips_private() -> None
     assert managed["shapes"][1]["datumdock_label_id"] == label.id
     assert "datumdock_shape_id" not in json.dumps(exported)
     assert "datumdock_label_id" not in json.dumps(exported)
+
+
+def test_xany_v4_axis_aligned_four_point_rectangle_is_editable() -> None:
+    """X-AnyLabeling 4.x 四角矩形规范化后必须进入可编辑框而不是静默只读。"""
+
+    label = Label(class_id=0, name="part", alias="零件", color="#4D8FBF")
+    label_set = LabelSet(labels=[label])
+    payload = {
+        "version": "4.0.0-beta.7",
+        "imagePath": "sample.png",
+        "imageWidth": 100,
+        "imageHeight": 60,
+        "flags": {},
+        "shapes": [
+            {
+                "label": "part",
+                "points": [[40, 32], [10, 32], [10, 12], [40, 12]],
+                "shape_type": "rectangle",
+                "attributes": {"keep": True},
+            }
+        ],
+    }
+
+    document = LabelMeRepository().from_payload(
+        payload,
+        new_id(),
+        label_set,
+        "sample.png",
+        (100, 60),
+    )
+
+    assert len(document.rectangles) == 1
+    assert document.unsupported_shapes == []
+    rectangle = document.rectangles[0]
+    assert (rectangle.x1, rectangle.y1, rectangle.x2, rectangle.y2) == (10, 12, 40, 32)
+    assert rectangle.compatibility_payload["attributes"] == {"keep": True}
+
+
+def test_rotated_or_degenerate_four_point_rectangle_stays_compatible() -> None:
+    """不能证明为轴对齐的四点矩形必须只读保留，避免错误改变几何含义。"""
+
+    rotated = parse_rectangle_points([[10, 5], [20, 10], [15, 20], [5, 15]], (100, 60))
+    repeated = parse_rectangle_points([[10, 5], [10, 5], [20, 20], [20, 20]], (100, 60))
+
+    assert rotated.kind == RectanglePointKind.UNSUPPORTED
+    assert repeated.kind == RectanglePointKind.UNSUPPORTED
+    assert rotated.coordinates is None
+    assert repeated.coordinates is None
 
 
 def test_atomic_save_updates_labelme_and_sqlite_then_reloads(tmp_path: Path) -> None:

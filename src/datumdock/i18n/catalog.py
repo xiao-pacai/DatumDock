@@ -115,8 +115,8 @@ CATALOGS: dict[str, dict[str, str]] = {
         "canvas.ready": "标注已就绪",
         "canvas.saving": "正在保存标注…",
         "canvas.recovering": "正在恢复标注…",
-        "canvas.save_failed": "自动保存失败，原文件未被覆盖；请查看诊断详情后重试。",
-        "canvas.save_failed_version_conflict": "保存失败：标注文档版本发生冲突，请查看详情后重试。",
+        "canvas.save_failed": "自动保存未完成。点击此处查看准确原因和处理方式。",
+        "canvas.save_failed_version_conflict": "保存未完成：标注文档版本发生冲突，请查看详情。",
         "canvas.save_failed_external_modification": (
             "保存失败：磁盘标注已被外部修改，原文件未被覆盖。"
         ),
@@ -126,6 +126,20 @@ CATALOGS: dict[str, dict[str, str]] = {
         "canvas.save_failed_sqlite": "保存失败：标注文件与索引未能一致提交，已进入安全恢复。",
         "canvas.save_failed_recovery_required": "保存失败：当前标注需要先完成恢复。",
         "canvas.save_failed_unknown": "保存失败：发生未分类错误，原始诊断已保留。",
+        "canvas.save_details": "标注保存诊断",
+        "canvas.reload_from_disk": "从磁盘重新加载",
+        "canvas.reload_confirm": "这会放弃当前尚未保存的内存修改。确定重新加载吗？",
+        "canvas.diagnostic_kind": "失败类型",
+        "canvas.diagnostic_request": "请求 ID",
+        "canvas.diagnostic_dataset": "数据集 ID",
+        "canvas.diagnostic_sample": "样本 ID",
+        "canvas.diagnostic_shape": "标注框 ID",
+        "canvas.diagnostic_edit": "编辑操作",
+        "canvas.diagnostic_versions": "文档版本",
+        "canvas.diagnostic_expected_sha": "预期磁盘摘要",
+        "canvas.diagnostic_current_sha": "当前磁盘摘要",
+        "canvas.diagnostic_label_revision": "标签集修订号",
+        "canvas.diagnostic_recovery": "需要恢复",
         "canvas.leave_failed_title": "标注尚未安全保存",
         "canvas.leave_failed_body": "请选择重试保存、放弃内存修改或取消离开。",
         "canvas.retry": "重试保存",
@@ -281,6 +295,10 @@ CATALOGS: dict[str, dict[str, str]] = {
         "dialog.xany.issue_image_prepare_failed": "图片准备失败：{detail}",
         "dialog.xany.issue_invalid_annotation": "标注 JSON 无效：{detail}",
         "dialog.xany.issue_sample_not_exportable": "样本无法导出：{detail}",
+        "dialog.xany.issue_rectangle_preserved_readonly": (
+            "四点矩形不能证明为轴对齐框，已只读保留：{detail}"
+        ),
+        "dialog.xany.issue_managed_rectangle_repair_blocked": "已有标注无法修复：{detail}",
         "dialog.xany.external_label": "外部标签",
         "dialog.xany.shape_count": "引用数",
         "dialog.xany.mapping": "导入方式",
@@ -324,6 +342,26 @@ CATALOGS: dict[str, dict[str, str]] = {
             "已导入 {imported} 张；缺少标注 {missing} 张；无效 JSON {invalid} 个。"
         ),
         "dialog.xany.export_complete": "X-AnyLabeling 交换目录已导出。",
+        "dialog.xany.repair_title": "检查并修复 X-AnyLabeling 四点矩形",
+        "dialog.xany.repair_notice": (
+            "预检只读取当前数据集。确认后仅把可证明为轴对齐的四点矩形规范化；"
+            "旋转或退化矩形保持只读，外部源目录不会被修改。"
+        ),
+        "dialog.xany.repair_scanning": "正在只读扫描受管标注……",
+        "dialog.xany.repair_file": "图片",
+        "dialog.xany.repair_convertible": "可修复框",
+        "dialog.xany.repair_readonly": "只读保留框",
+        "dialog.xany.repair_summary": (
+            "扫描完成：{images} 张图片包含 {rectangles} 个可修复矩形；另有 {issues} 个问题。"
+        ),
+        "dialog.xany.repair_action": "确认修复",
+        "dialog.xany.repair_confirm": (
+            "将使用可恢复事务规范化这些受管 JSON，并同步标注索引。是否继续？"
+        ),
+        "dialog.xany.repairing": "正在逐张修复并验证标注……",
+        "dialog.xany.repair_report": (
+            "已修复 {images} 张图片、{rectangles} 个矩形；失败 {failures} 张。"
+        ),
     },
     "en_US": {
         "app.title": "DatumDock",
@@ -443,8 +481,7 @@ CATALOGS: dict[str, dict[str, str]] = {
         "canvas.saving": "Saving annotation…",
         "canvas.recovering": "Recovering annotation…",
         "canvas.save_failed": (
-            "Automatic save failed. The original file was not overwritten; "
-            "review the diagnostic details and retry."
+            "Automatic save did not complete. Click for the exact cause and actions."
         ),
         "canvas.save_failed_version_conflict": (
             "Save failed: the annotation document version conflicts. Review details and retry."
@@ -468,6 +505,22 @@ CATALOGS: dict[str, dict[str, str]] = {
         "canvas.save_failed_unknown": (
             "Save failed because of an unclassified error. The original diagnostic was preserved."
         ),
+        "canvas.save_details": "Annotation Save Diagnostics",
+        "canvas.reload_from_disk": "Reload from Disk",
+        "canvas.reload_confirm": (
+            "This discards the current unsaved in-memory edits. Reload from disk?"
+        ),
+        "canvas.diagnostic_kind": "Failure kind",
+        "canvas.diagnostic_request": "Request ID",
+        "canvas.diagnostic_dataset": "Dataset ID",
+        "canvas.diagnostic_sample": "Sample ID",
+        "canvas.diagnostic_shape": "Shape ID",
+        "canvas.diagnostic_edit": "Edit operation",
+        "canvas.diagnostic_versions": "Document versions",
+        "canvas.diagnostic_expected_sha": "Expected disk digest",
+        "canvas.diagnostic_current_sha": "Current disk digest",
+        "canvas.diagnostic_label_revision": "Label-set revision",
+        "canvas.diagnostic_recovery": "Recovery required",
         "canvas.leave_failed_title": "Annotation is not safely saved",
         "canvas.leave_failed_body": (
             "Retry saving, discard the in-memory changes, or cancel leaving this image."
@@ -660,6 +713,13 @@ CATALOGS: dict[str, dict[str, str]] = {
         "dialog.xany.issue_image_prepare_failed": "Image preparation failed: {detail}",
         "dialog.xany.issue_invalid_annotation": "Invalid annotation JSON: {detail}",
         "dialog.xany.issue_sample_not_exportable": "The sample cannot be exported: {detail}",
+        "dialog.xany.issue_rectangle_preserved_readonly": (
+            "The four-point rectangle is not provably axis-aligned and was preserved read-only: "
+            "{detail}"
+        ),
+        "dialog.xany.issue_managed_rectangle_repair_blocked": (
+            "The managed annotation cannot be repaired: {detail}"
+        ),
         "dialog.xany.external_label": "External Label",
         "dialog.xany.shape_count": "Uses",
         "dialog.xany.mapping": "Import As",
@@ -711,6 +771,29 @@ CATALOGS: dict[str, dict[str, str]] = {
             "Imported {imported}; missing annotations {missing}; invalid JSON {invalid}."
         ),
         "dialog.xany.export_complete": "X-AnyLabeling exchange directory exported.",
+        "dialog.xany.repair_title": "Inspect and Repair X-AnyLabeling Rectangles",
+        "dialog.xany.repair_notice": (
+            "Preflight only reads this dataset. After confirmation, DatumDock normalizes only "
+            "provably axis-aligned four-point rectangles. Rotated or degenerate rectangles stay "
+            "read-only, and external source directories are never changed."
+        ),
+        "dialog.xany.repair_scanning": "Scanning managed annotations read-only…",
+        "dialog.xany.repair_file": "Image",
+        "dialog.xany.repair_convertible": "Repairable",
+        "dialog.xany.repair_readonly": "Read-only",
+        "dialog.xany.repair_summary": (
+            "Scan complete: {images} images contain {rectangles} repairable rectangles, "
+            "with {issues} additional issues."
+        ),
+        "dialog.xany.repair_action": "Repair",
+        "dialog.xany.repair_confirm": (
+            "Normalize these managed JSON files through recoverable transactions and update the "
+            "annotation index?"
+        ),
+        "dialog.xany.repairing": "Repairing and validating annotations one image at a time…",
+        "dialog.xany.repair_report": (
+            "Repaired {images} images and {rectangles} rectangles; {failures} images failed."
+        ),
     },
 }
 

@@ -8,7 +8,7 @@ import os
 import shutil
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -65,10 +65,11 @@ class AnnotationSaveFailureKind(StrEnum):
 
 
 class AnnotationEditOrigin(StrEnum):
-    """区分人工和模型写入，复核状态只能由该来源驱动。"""
+    """区分人工、模型和兼容维护写入，复核状态只能由该来源驱动。"""
 
     MANUAL = "manual"
     MODEL = "model"
+    MAINTENANCE = "maintenance"
 
 
 class AnnotationEditKind(StrEnum):
@@ -82,6 +83,7 @@ class AnnotationEditKind(StrEnum):
     UNDO = "undo"
     REDO = "redo"
     MODEL_WRITE = "model_write"
+    COMPATIBILITY_REPAIR = "compatibility_repair"
 
 
 class ReviewStateMachine:
@@ -95,6 +97,8 @@ class ReviewStateMachine:
         changed: bool,
     ) -> ReviewStatus | None:
         if not changed:
+            return current
+        if origin == AnnotationEditOrigin.MAINTENANCE:
             return current
         if origin == AnnotationEditOrigin.MODEL:
             return ReviewStatus.PENDING_REVIEW
@@ -113,6 +117,9 @@ class AnnotationSaveRequest:
     edit_origin: AnnotationEditOrigin = AnnotationEditOrigin.MANUAL
     edit_kind: AnnotationEditKind = AnnotationEditKind.CREATE
     base_document_version: int | None = None
+    request_id: str = field(default_factory=new_id)
+    shape_id: str | None = None
+    label_set_revision: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,6 +151,21 @@ class AnnotationSaveFailure:
 
     kind: AnnotationSaveFailureKind
     message: str
+    request_id: str = ""
+    dataset_id: str = ""
+    sample_id: str = ""
+    shape_id: str | None = None
+    edit_kind: str = ""
+    requested_version: int = 0
+    base_version: int | None = None
+    current_version: int | None = None
+    expected_disk_sha256: str = ""
+    current_disk_sha256: str = ""
+    label_set_revision: int = 0
+    recovery_required: bool = False
+    retryable: bool = False
+    exception_type: str = ""
+    exception_chain: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -337,6 +359,8 @@ class AnnotationService:
             label_set = self.library_service.open_dataset(self.dataset_id).label_set
         except DatasetLibraryServiceError as error:
             raise AnnotationServiceError(f"标签集读取失败: {error}") from error
+        if request.label_set_revision and request.label_set_revision != label_set.revision:
+            raise AnnotationConflictError("标签集修订已变化，请重新加载后再保存")
         warnings = self._validate_document(document, label_set, allow_archived=True)
         path = self._annotation_path(sample.filename, sample.annotation_path)
         current_digest = _safe_sha256(path)
@@ -782,6 +806,9 @@ class AnnotationAutosaveService:
             request.edit_origin,
             request.edit_kind,
             request.base_document_version,
+            request.request_id,
+            request.shape_id,
+            request.label_set_revision,
         )
         with self._lock:
             self._latest_request = immutable
@@ -805,8 +832,11 @@ class AnnotationAutosaveService:
 
         with self._lock:
             request = self._latest_request
+            failure = self._failure
         if request is None:
             raise AnnotationServiceError("没有可重试的标注版本")
+        if failure is not None and not failure.retryable:
+            raise AnnotationConflictError("该失败需要重新加载或修复数据，不能直接覆盖重试")
         self.service.recover_pending()
         loaded = self.service.load(request.sample_id)
         rebased = AnnotationSaveRequest(
@@ -818,6 +848,9 @@ class AnnotationAutosaveService:
             request.edit_origin,
             request.edit_kind,
             loaded.document.document_version if loaded.document else None,
+            request.request_id,
+            request.shape_id,
+            request.label_set_revision,
         )
         return self.submit(rebased)
 
@@ -836,7 +869,7 @@ class AnnotationAutosaveService:
                 if self._is_latest_request(request):
                     self._state = AutosaveState.FAILED
                     self._error = str(error)
-                    self._failure = _classify_save_failure(error)
+                    self._failure = _classify_save_failure(error, request, self.service)
                 return
             previous = self._saved_by_sample.get(request.sample_id, (-1, ""))
             if request.document_version >= previous[0]:
@@ -867,8 +900,20 @@ class AnnotationAutosaveService:
                 request.edit_origin,
                 request.edit_kind,
                 previous_version,
+                request.request_id,
+                request.shape_id,
+                request.label_set_revision,
             )
-        return self.service.save(request)
+        result = self.service.save(request)
+        # 必须在线程取出下一项之前登记检查点；仅依赖 Future 回调会留下极短竞争窗口。
+        with self._lock:
+            previous = self._saved_by_sample.get(request.sample_id, (-1, ""))
+            if request.document_version >= previous[0]:
+                self._saved_by_sample[request.sample_id] = (
+                    request.document_version,
+                    result.json_sha256,
+                )
+        return result
 
     def _is_latest_request(self, request: AnnotationSaveRequest) -> bool:
         """样本 ID 与版本都一致时，完成结果才可更新当前状态栏。"""
@@ -893,7 +938,11 @@ def review_status_after_edit(current: ReviewStatus | None) -> ReviewStatus:
     )
 
 
-def _classify_save_failure(error: Exception) -> AnnotationSaveFailure:
+def _classify_save_failure(
+    error: Exception,
+    request: AnnotationSaveRequest | None = None,
+    service: AnnotationService | None = None,
+) -> AnnotationSaveFailure:
     """沿异常链识别真实原因；无法证明时使用未知错误而不是权限提示。"""
 
     chain: list[BaseException] = []
@@ -919,7 +968,48 @@ def _classify_save_failure(error: Exception) -> AnnotationSaveFailure:
         kind = AnnotationSaveFailureKind.VALIDATION
     else:
         kind = AnnotationSaveFailureKind.UNKNOWN
-    return AnnotationSaveFailure(kind, text)
+    sample = None
+    current_digest = ""
+    if request is not None and service is not None:
+        try:
+            sample = service.samples.get_sample(request.sample_id)
+            if sample is not None and sample.annotation_path:
+                path = service.samples.resolve_path(
+                    sample.annotation_path,
+                    "pool/annotations",
+                )
+                current_digest = _safe_sha256(path)
+        except Exception:
+            # 诊断采集绝不能掩盖原始保存异常；测试替身也可能不提供完整 Repository。
+            current_digest = ""
+    retryable = kind in {
+        AnnotationSaveFailureKind.PERMISSION,
+        AnnotationSaveFailureKind.DISK_SPACE,
+        AnnotationSaveFailureKind.SQLITE,
+        AnnotationSaveFailureKind.RECOVERY_REQUIRED,
+        AnnotationSaveFailureKind.UNKNOWN,
+    }
+    return AnnotationSaveFailure(
+        kind,
+        text,
+        request_id=request.request_id if request else "",
+        dataset_id=request.dataset_id if request else "",
+        sample_id=request.sample_id if request else "",
+        shape_id=request.shape_id if request else None,
+        edit_kind=request.edit_kind.value if request else "",
+        requested_version=request.document_version if request else 0,
+        base_version=request.base_document_version if request else None,
+        current_version=sample.annotation_version if sample else None,
+        expected_disk_sha256=request.expected_disk_sha256 if request else "",
+        current_disk_sha256=current_digest,
+        label_set_revision=request.label_set_revision if request else 0,
+        recovery_required=bool(
+            sample and sample.annotation_state == AnnotationState.RECOVERY_REQUIRED
+        ),
+        retryable=retryable,
+        exception_type=error.__class__.__name__,
+        exception_chain=tuple(f"{item.__class__.__name__}: {item}" for item in chain),
+    )
 
 
 def _sha256(path: Path) -> str:

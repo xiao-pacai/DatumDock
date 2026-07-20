@@ -18,6 +18,7 @@ from datumdock.ui.dataset_deletion_dialog import ManagedDatasetDeletionDialog
 from datumdock.ui.managed_gateway import ManagedDatasetGateway
 from datumdock.ui.managed_governance_pages import ManagedGovernancePage
 from datumdock.ui.managed_interop_dialogs import (
+    ManagedRectangleRepairDialog,
     ManagedXAnyExportDialog,
     ManagedXAnyImportDialog,
 )
@@ -349,6 +350,7 @@ class ApplicationShell(QMainWindow):
             DialogId.IMAGE_IMPORT,
             DialogId.XANY_IMPORT,
             DialogId.XANY_EXPORT,
+            DialogId.XANY_REPAIR,
             DialogId.RENAME_SAMPLES,
             DialogId.DELETE_CURRENT,
             DialogId.DELETE_BATCH,
@@ -370,6 +372,9 @@ class ApplicationShell(QMainWindow):
             return
         if not self.gateway.preview_mode and identifier == DialogId.XANY_EXPORT:
             self._open_managed_xany_export(dataset_id)
+            return
+        if not self.gateway.preview_mode and identifier == DialogId.XANY_REPAIR:
+            self._open_managed_rectangle_repair(dataset_id)
             return
         if not self.gateway.preview_mode and identifier == DialogId.RENAME_SAMPLES:
             self._open_managed_rename(dataset_id)
@@ -517,6 +522,23 @@ class ApplicationShell(QMainWindow):
             dataset_id,
             parent=self,
         )
+        dialog.finished.connect(lambda: self._forget_dialog(dialog))
+        self._active_dialogs.append(dialog)
+        dialog.open()
+
+    def _open_managed_rectangle_repair(self, dataset_id: str) -> None:
+        """显式打开已有四点矩形检查，不在数据集打开时自动改写标注。"""
+
+        if not dataset_id or not isinstance(self.gateway, ManagedDatasetGateway):
+            self.show_message("toast.dataset_unavailable")
+            return
+        dialog = ManagedRectangleRepairDialog(
+            self.locale_service,
+            self.gateway,
+            dataset_id,
+            self,
+        )
+        dialog.repair_finished.connect(self._managed_import_finished)
         dialog.finished.connect(lambda: self._forget_dialog(dialog))
         self._active_dialogs.append(dialog)
         dialog.open()

@@ -29,6 +29,8 @@ from datumdock.services.managed_interop import (
     ExternalLabelDecision,
     InteropIssue,
     InteropIssueSeverity,
+    ManagedRectangleRepairPreflight,
+    ManagedRectangleRepairReport,
     XAnyExportRequest,
     XAnyExportScope,
     XAnyImportCommitRequest,
@@ -554,3 +556,176 @@ class ManagedXAnyExportDialog(QDialog):
 
     def retranslate_ui(self) -> None:
         self.setWindowTitle(tr(self.locale, "dialog.xany.export_title"))
+
+
+class ManagedRectangleRepairDialog(QDialog):
+    """显式检查并修复已导入的轴对齐四点矩形，预检阶段保持只读。"""
+
+    repair_finished = Signal(str)
+
+    def __init__(self, locale: LocaleService, gateway, dataset_id: str, parent=None) -> None:
+        super().__init__(parent)
+        self.locale = locale
+        self.gateway = gateway
+        self.dataset_id = dataset_id
+        self.task_id: str | None = None
+        self.preflight_task_id: str | None = None
+        self.phase = "preflight"
+        self.setModal(True)
+        self.resize(760, 560)
+        self._build_ui()
+        QTimer.singleShot(0, self._start_preflight)
+
+    def _build_ui(self) -> None:
+        root = QVBoxLayout(self)
+        root.setContentsMargins(24, 20, 24, 20)
+        self.title = QLabel()
+        self.title.setObjectName("pageTitle")
+        root.addWidget(self.title)
+        self.notice = QLabel()
+        self.notice.setWordWrap(True)
+        self.notice.setObjectName("previewBanner")
+        root.addWidget(self.notice)
+        self.table = QTableWidget(0, 3)
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(
+            1,
+            QHeaderView.ResizeMode.ResizeToContents,
+        )
+        self.table.horizontalHeader().setSectionResizeMode(
+            2,
+            QHeaderView.ResizeMode.ResizeToContents,
+        )
+        root.addWidget(self.table, 1)
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 0)
+        root.addWidget(self.progress)
+        self.status = QLabel()
+        self.status.setWordWrap(True)
+        self.status.setObjectName("mutedText")
+        root.addWidget(self.status)
+        buttons = QHBoxLayout()
+        self.cancel = GhostButton()
+        self.confirm = PrimaryButton()
+        self.confirm.setEnabled(False)
+        self.cancel.clicked.connect(self._cancel_or_close)
+        self.confirm.clicked.connect(self._confirm_or_close)
+        buttons.addWidget(self.cancel)
+        buttons.addStretch()
+        buttons.addWidget(self.confirm)
+        root.addLayout(buttons)
+        self.poll_timer = QTimer(self)
+        self.poll_timer.setInterval(80)
+        self.poll_timer.timeout.connect(self._poll)
+        self.retranslate_ui()
+
+    def _start_preflight(self) -> None:
+        try:
+            self.task_id = self.gateway.start_rectangle_repair_preflight(self.dataset_id)
+            self.preflight_task_id = self.task_id
+        except Exception as error:
+            self.status.setText(str(error))
+            return
+        self.phase = "preflight"
+        self.progress.setRange(0, 0)
+        self.status.setText(tr(self.locale, "dialog.xany.repair_scanning"))
+        self.poll_timer.start()
+
+    def _poll(self) -> None:
+        if self.task_id is None:
+            return
+        snapshot = self.gateway.task_snapshot(self.task_id)
+        if snapshot.total:
+            self.progress.setRange(0, snapshot.total)
+            self.progress.setValue(snapshot.completed)
+        if snapshot.state in {TaskState.QUEUED, TaskState.RUNNING}:
+            return
+        self.poll_timer.stop()
+        result = self.gateway.task_result(self.task_id)
+        if snapshot.state == TaskState.FAILED or result is None:
+            self.status.setText("\n".join(snapshot.errors) or tr(self.locale, "dialog.error.title"))
+            return
+        if isinstance(result, ManagedRectangleRepairPreflight):
+            self._show_preflight(result)
+        elif isinstance(result, ManagedRectangleRepairReport):
+            self._show_report(result)
+
+    def _show_preflight(self, result: ManagedRectangleRepairPreflight) -> None:
+        self.table.setRowCount(len(result.items))
+        for row, item in enumerate(result.items):
+            self.table.setItem(row, 0, QTableWidgetItem(item.filename))
+            self.table.setItem(row, 1, QTableWidgetItem(str(item.convertible_count)))
+            self.table.setItem(row, 2, QTableWidgetItem(str(item.readonly_count)))
+        self.phase = "review"
+        self.progress.setRange(0, max(1, result.scanned_count))
+        self.progress.setValue(result.scanned_count)
+        self.confirm.setEnabled(bool(result.items))
+        self.status.setText(
+            tr(self.locale, "dialog.xany.repair_summary").format(
+                images=len(result.items),
+                rectangles=sum(item.convertible_count for item in result.items),
+                issues=len(result.issues),
+            )
+        )
+
+    def _confirm_or_close(self) -> None:
+        if self.phase == "done":
+            self.accept()
+            return
+        if self.phase != "review" or self.preflight_task_id is None:
+            return
+        answer = QMessageBox.question(
+            self,
+            tr(self.locale, "dialog.xany.repair_title"),
+            tr(self.locale, "dialog.xany.repair_confirm"),
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            self.task_id = self.gateway.start_rectangle_repair_commit(
+                self.dataset_id,
+                self.preflight_task_id,
+            )
+        except Exception as error:
+            self.status.setText(str(error))
+            return
+        self.phase = "commit"
+        self.confirm.setEnabled(False)
+        self.status.setText(tr(self.locale, "dialog.xany.repairing"))
+        self.poll_timer.start()
+
+    def _show_report(self, result: ManagedRectangleRepairReport) -> None:
+        self.phase = "done"
+        self.confirm.setText(tr(self.locale, "action.close"))
+        self.confirm.setEnabled(True)
+        self.status.setText(
+            tr(self.locale, "dialog.xany.repair_report").format(
+                images=len(result.repaired_sample_ids),
+                rectangles=result.normalized_rectangle_count,
+                failures=len(result.failures),
+            )
+        )
+        self.repair_finished.emit(self.dataset_id)
+
+    def _cancel_or_close(self) -> None:
+        if self.task_id:
+            snapshot = self.gateway.task_snapshot(self.task_id)
+            if snapshot.state in {TaskState.QUEUED, TaskState.RUNNING}:
+                self.gateway.cancel_task(self.task_id)
+                return
+        self.reject()
+
+    def retranslate_ui(self) -> None:
+        self.setWindowTitle(tr(self.locale, "dialog.xany.repair_title"))
+        self.title.setText(tr(self.locale, "dialog.xany.repair_title"))
+        self.notice.setText(tr(self.locale, "dialog.xany.repair_notice"))
+        self.table.setHorizontalHeaderLabels(
+            [
+                tr(self.locale, "dialog.xany.repair_file"),
+                tr(self.locale, "dialog.xany.repair_convertible"),
+                tr(self.locale, "dialog.xany.repair_readonly"),
+            ]
+        )
+        self.cancel.setText(tr(self.locale, "action.cancel"))
+        if self.phase != "done":
+            self.confirm.setText(tr(self.locale, "dialog.xany.repair_action"))

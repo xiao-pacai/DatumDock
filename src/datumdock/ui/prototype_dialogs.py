@@ -65,6 +65,7 @@ class DialogId(StrEnum):
     YOLO_EXPORT = "yolo_export"
     XANY_IMPORT = "xany_import"
     XANY_EXPORT = "xany_export"
+    XANY_REPAIR = "xany_repair"
     XANY_EXCHANGE = "xany_exchange"
     BACKUP_EXPORT = "backup_export"
     BACKUP_IMPORT = "backup_import"
@@ -100,6 +101,7 @@ TITLE_KEYS = {
     DialogId.YOLO_EXPORT: "dialog.export.title",
     DialogId.XANY_IMPORT: "dialog.xany.import_title",
     DialogId.XANY_EXPORT: "dialog.xany.export_title",
+    DialogId.XANY_REPAIR: "dialog.xany.repair_title",
     DialogId.XANY_EXCHANGE: "dialog.xany.title",
     DialogId.BACKUP_EXPORT: "dialog.backup.title",
     DialogId.BACKUP_IMPORT: "dialog.backup.title",
