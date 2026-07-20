@@ -166,6 +166,27 @@ def test_dataset_deletion_cleanup_failure_is_not_reported_as_success(
     assert not service.dataset_repository.paths(created.dataset.id).root.exists()
 
 
+def test_failure_after_unregistration_becomes_pending_cleanup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """资料库登记已经移除后，即使后续清单刷新失败也不能建议用户再次删除。"""
+
+    service = DatasetLibraryService(tmp_path)
+    created = service.create_dataset("登记已移除")
+    deletion = DatasetDeletionService(service)
+    preflight = deletion.preflight(created.dataset.id)
+    original = service.remove_registration_for_deletion
+
+    def remove_then_fail(dataset_id: str, *, expected_library_sha256: str) -> None:
+        original(dataset_id, expected_library_sha256=expected_library_sha256)
+        raise OSError("manifest locked")
+
+    monkeypatch.setattr(service, "remove_registration_for_deletion", remove_then_fail)
+    report = deletion.delete(DatasetDeletionRequest(preflight, "登记已移除", True))
+    assert report.status == DatasetDeletionStatus.PENDING_CLEANUP
+    assert not service.is_registered(created.dataset.id)
+
+
 def test_preflight_with_runtime_blocker_cannot_be_committed(tmp_path: Path) -> None:
     """Gateway 提供的自动保存或后台任务阻塞也会绑定到预检。"""
 

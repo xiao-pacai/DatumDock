@@ -7,6 +7,7 @@ import ctypes
 import sys
 from dataclasses import dataclass
 
+from PySide6.QtCore import QRect
 from PySide6.QtGui import QCursor, QIcon
 from PySide6.QtWidgets import QApplication, QMainWindow
 
@@ -81,11 +82,16 @@ def show_application_window(application: QApplication, window: QMainWindow) -> N
 
     screen = application.screenAt(QCursor.pos()) or application.primaryScreen()
     if screen is not None:
-        available = screen.availableGeometry()
-        width = min(1440, available.width())
-        height = min(900, available.height())
-        left = available.left() + max(0, (available.width() - width) // 2)
-        top = available.top() + max(0, (available.height() - height) // 2)
-        window.setGeometry(left, top, width, height)
+        window.setGeometry(restored_window_geometry(screen.availableGeometry()))
     # 不先 show()，避免启动时短暂闪现普通窗口；用户仍可通过系统按钮还原。
     window.showMaximized()
+
+
+def restored_window_geometry(available: QRect) -> QRect:
+    """按单屏逻辑可用区域计算还原尺寸，兼容负坐标副屏和高 DPI。"""
+
+    width = min(1440, available.width())
+    height = min(900, available.height())
+    left = available.left() + max(0, (available.width() - width) // 2)
+    top = available.top() + max(0, (available.height() - height) // 2)
+    return QRect(left, top, width, height)

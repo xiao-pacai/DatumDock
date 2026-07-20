@@ -5,14 +5,21 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import pytest
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QPoint, Qt
+from PySide6.QtCore import QPoint, QRect, Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel, QMessageBox
 
-from datumdock.app import create_application, parse_launch_options, show_application_window
+from datumdock.app import (
+    create_application,
+    parse_launch_options,
+    restored_window_geometry,
+    show_application_window,
+)
 from datumdock.domain.models import ManagedDatasetConfiguration, NamingPolicy
 from datumdock.i18n.catalog import CATALOGS, LocaleService, tr
 from datumdock.resources import application_icon_path, resource_root
@@ -52,6 +59,21 @@ def test_startup_shows_native_window_maximized_without_forcing_fullscreen(qtbot)
     qtbot.waitUntil(lambda: not window.isMaximized(), timeout=2000)
     assert window.width() >= window.minimumWidth()
     assert window.height() >= window.minimumHeight()
+
+
+@pytest.mark.parametrize(
+    ("available", "expected"),
+    (
+        (QRect(0, 0, 1366, 728), QRect(0, 0, 1366, 728)),
+        (QRect(0, 0, 1440, 860), QRect(0, 0, 1440, 860)),
+        (QRect(0, 0, 1920, 1040), QRect(240, 70, 1440, 900)),
+        (QRect(-1920, 80, 1920, 1040), QRect(-1680, 150, 1440, 900)),
+    ),
+)
+def test_restored_geometry_stays_on_one_logical_screen(available: QRect, expected: QRect) -> None:
+    """分辨率、DPI 换算后的逻辑区域和负坐标副屏都不会跨屏。"""
+
+    assert restored_window_geometry(available) == expected
 
 
 def test_application_and_shell_use_dd_window_icon(qtbot) -> None:

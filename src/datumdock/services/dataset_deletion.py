@@ -243,6 +243,14 @@ class DatasetDeletionService:
                             os.replace(staged, source)
                     except OSError as rollback_error:
                         rollback_errors.append(str(rollback_error))
+            else:
+                # 登记一旦成功移除，启动恢复会依据该事实继续清理；此时不能误报为可重试删除。
+                return DatasetDeletionReport(
+                    preflight.dataset_id,
+                    DatasetDeletionStatus.PENDING_CLEANUP,
+                    operation_id,
+                    f"资料库登记已移除，但删除清理尚未完成: {error}",
+                )
             suffix = f"；恢复失败: {'；'.join(rollback_errors)}" if rollback_errors else ""
             raise DatasetDeletionError(f"永久删除提交失败: {error}{suffix}") from error
 
