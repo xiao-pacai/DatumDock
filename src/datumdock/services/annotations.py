@@ -20,6 +20,7 @@ from datumdock.domain.models import (
     LabelSet,
     ReviewStatus,
     new_id,
+    utc_now,
 )
 from datumdock.services.dataset_library import DatasetLibraryService, DatasetLibraryServiceError
 from datumdock.services.labelme import (
@@ -48,6 +49,19 @@ class AutosaveState(StrEnum):
     SAVED = "saved"
     FAILED = "failed"
     RECOVERING = "recovering"
+
+
+class AnnotationSaveFailureKind(StrEnum):
+    """用户提示按真实失败类型区分，不能把所有错误都归为磁盘权限。"""
+
+    VERSION_CONFLICT = "version_conflict"
+    EXTERNAL_MODIFICATION = "external_modification"
+    PERMISSION = "permission"
+    DISK_SPACE = "disk_space"
+    VALIDATION = "validation"
+    SQLITE = "sqlite"
+    RECOVERY_REQUIRED = "recovery_required"
+    UNKNOWN = "unknown"
 
 
 class AnnotationEditOrigin(StrEnum):
@@ -115,6 +129,24 @@ class AnnotationSaveResult:
 
 
 @dataclass(frozen=True, slots=True)
+class AnnotationSaveCheckpoint:
+    """加载时建立的磁盘与索引检查点，后续版本由串行队列自动衔接。"""
+
+    sample_id: str
+    document_version: int
+    disk_sha256: str
+    label_set_revision: int
+
+
+@dataclass(frozen=True, slots=True)
+class AnnotationSaveFailure:
+    """状态栏和诊断详情消费的结构化失败，不丢失原始异常文本。"""
+
+    kind: AnnotationSaveFailureKind
+    message: str
+
+
+@dataclass(frozen=True, slots=True)
 class AnnotationLoadResult:
     """加载结果显式区分可编辑、损坏与未知标签。"""
 
@@ -126,6 +158,7 @@ class AnnotationLoadResult:
     editable: bool
     annotation_state: AnnotationState
     review_status: ReviewStatus | None = None
+    checkpoint: AnnotationSaveCheckpoint | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,6 +218,12 @@ class AnnotationService:
                 sample.health.value == "ready",
                 AnnotationState.MISSING,
                 sample.review_status,
+                AnnotationSaveCheckpoint(
+                    sample.id,
+                    document.document_version,
+                    "",
+                    label_set.revision,
+                ),
             )
         try:
             digest = _sha256(path)
@@ -199,6 +238,37 @@ class AnnotationService:
             archived = {label.id for label in label_set.labels if label.status.value == "archived"}
             if any(rectangle.label_id in archived for rectangle in document.rectangles):
                 warnings = (*warnings, "标注包含已归档标签，可移动、删除或改派")
+            if (
+                sample.annotation_sha256 != digest
+                or sample.annotation_version != document.document_version
+                or sample.annotation_count != len(document.rectangles)
+            ):
+                try:
+                    self.samples.update_annotation_index(
+                        sample.id,
+                        annotation_path=sample.annotation_path,
+                        annotation_count=len(document.rectangles),
+                        annotation_state=AnnotationState.READY,
+                        annotation_version=document.document_version,
+                        annotation_sha256=digest,
+                        annotation_updated_at=utc_now().isoformat(),
+                        review_status=sample.review_status,
+                        shape_labels=tuple(
+                            (shape.id, shape.label_id) for shape in document.rectangles
+                        ),
+                    )
+                    warnings = (*warnings, "标注索引已按磁盘 JSON 事实完成对账")
+                except SampleRepositoryError as error:
+                    return AnnotationLoadResult(
+                        sample.id,
+                        document,
+                        label_set.model_copy(deep=True),
+                        (*warnings, f"标注索引对账失败: {error}"),
+                        digest,
+                        False,
+                        AnnotationState.RECOVERY_REQUIRED,
+                        sample.review_status,
+                    )
             return AnnotationLoadResult(
                 sample.id,
                 document,
@@ -208,6 +278,12 @@ class AnnotationService:
                 sample.health.value == "ready",
                 AnnotationState.READY,
                 sample.review_status,
+                AnnotationSaveCheckpoint(
+                    sample.id,
+                    document.document_version,
+                    digest,
+                    label_set.revision,
+                ),
             )
         except UnknownLabelReferenceError as error:
             self._mark_diagnostic(sample.id, AnnotationState.UNKNOWN_LABEL)
@@ -666,6 +742,7 @@ class AnnotationAutosaveService:
         self._saved_by_sample: dict[str, tuple[int, str]] = {}
         self._state = AutosaveState.IDLE
         self._error: str = ""
+        self._failure: AnnotationSaveFailure | None = None
 
     @property
     def state(self) -> AutosaveState:
@@ -676,6 +753,22 @@ class AnnotationAutosaveService:
     def error(self) -> str:
         with self._lock:
             return self._error
+
+    @property
+    def failure(self) -> AnnotationSaveFailure | None:
+        with self._lock:
+            return self._failure
+
+    def seed_checkpoint(self, checkpoint: AnnotationSaveCheckpoint) -> None:
+        """图片加载时登记事实检查点，防止首个改派依赖页面中的陈旧摘要。"""
+
+        with self._lock:
+            previous = self._saved_by_sample.get(checkpoint.sample_id, (-1, ""))
+            if checkpoint.document_version >= previous[0]:
+                self._saved_by_sample[checkpoint.sample_id] = (
+                    checkpoint.document_version,
+                    checkpoint.disk_sha256,
+                )
 
     def submit(self, request: AnnotationSaveRequest) -> Future[AnnotationSaveResult]:
         """排入最新快照；执行顺序与用户操作顺序完全一致。"""
@@ -694,6 +787,7 @@ class AnnotationAutosaveService:
             self._latest_request = immutable
             self._state = AutosaveState.SAVING
             self._error = ""
+            self._failure = None
             future = self._executor.submit(self._save_with_rebase, immutable)
             self._latest_future = future
         future.add_done_callback(lambda completed: self._finish(immutable, completed))
@@ -742,6 +836,7 @@ class AnnotationAutosaveService:
                 if self._is_latest_request(request):
                     self._state = AutosaveState.FAILED
                     self._error = str(error)
+                    self._failure = _classify_save_failure(error)
                 return
             previous = self._saved_by_sample.get(request.sample_id, (-1, ""))
             if request.document_version >= previous[0]:
@@ -752,6 +847,7 @@ class AnnotationAutosaveService:
             if self._is_latest_request(request):
                 self._state = AutosaveState.SAVED
                 self._error = ""
+                self._failure = None
 
     def _save_with_rebase(self, request: AnnotationSaveRequest) -> AnnotationSaveResult:
         """同一队列的后续版本以上一个成功摘要为并发前提。"""
@@ -795,6 +891,35 @@ def review_status_after_edit(current: ReviewStatus | None) -> ReviewStatus:
         )
         or ReviewStatus.COMPLETED
     )
+
+
+def _classify_save_failure(error: Exception) -> AnnotationSaveFailure:
+    """沿异常链识别真实原因；无法证明时使用未知错误而不是权限提示。"""
+
+    chain: list[BaseException] = []
+    current: BaseException | None = error
+    while current is not None and current not in chain:
+        chain.append(current)
+        current = current.__cause__ or current.__context__
+    text = "；".join(str(item) for item in chain if str(item)) or error.__class__.__name__
+    lowered = text.casefold()
+    if any(isinstance(item, PermissionError) for item in chain):
+        kind = AnnotationSaveFailureKind.PERMISSION
+    elif any(isinstance(item, OSError) and getattr(item, "errno", None) == 28 for item in chain):
+        kind = AnnotationSaveFailureKind.DISK_SPACE
+    elif "摘要" in text or "外部" in text or "sha" in lowered:
+        kind = AnnotationSaveFailureKind.EXTERNAL_MODIFICATION
+    elif "版本" in text or "version" in lowered:
+        kind = AnnotationSaveFailureKind.VERSION_CONFLICT
+    elif "sqlite" in lowered or "索引" in text:
+        kind = AnnotationSaveFailureKind.SQLITE
+    elif "恢复" in text:
+        kind = AnnotationSaveFailureKind.RECOVERY_REQUIRED
+    elif "验证" in text or "坐标" in text or "标签" in text:
+        kind = AnnotationSaveFailureKind.VALIDATION
+    else:
+        kind = AnnotationSaveFailureKind.UNKNOWN
+    return AnnotationSaveFailure(kind, text)
 
 
 def _sha256(path: Path) -> str:

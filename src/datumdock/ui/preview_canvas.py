@@ -9,6 +9,7 @@ from math import isfinite
 from PySide6.QtCore import QPointF, QRectF, QSizeF, Qt, Signal
 from PySide6.QtGui import (
     QColor,
+    QCursor,
     QFocusEvent,
     QFont,
     QKeyEvent,
@@ -907,6 +908,9 @@ class PreviewAnnotationCanvas(QWidget):
         """按当前指针和图片变换计算辅助线，避免平移后沿用旧坐标。"""
 
         point = self._hover_point
+        if point is None:
+            pointer = self.mapFromGlobal(QCursor.pos())
+            point = QPointF(pointer) if self.rect().contains(pointer) else None
         if point is None or self.image is None:
             return None
         visible = self._image_rect().intersected(QRectF(self.rect()))

@@ -65,6 +65,7 @@ from datumdock.services.managed_labels import (
     ManagedLabelError,
     ManagedLabelMigrationService,
 )
+from datumdock.services.recent_labels import RecentLabelTracker
 from datumdock.services.sample_governance import (
     RenamePlan,
     SampleGovernanceError,
@@ -109,6 +110,7 @@ class ManagedDatasetGateway:
         self._xany_import_preflights: dict[str, XAnyImportPreflight] = {}
         self._dataset_deletion_preflights: dict[str, DatasetDeletionPreflight] = {}
         self._annotation_autosaves: dict[str, AnnotationAutosaveService] = {}
+        self.recent_labels = RecentLabelTracker()
 
     @classmethod
     def from_default_root(cls) -> ManagedDatasetGateway:
@@ -267,18 +269,22 @@ class ManagedDatasetGateway:
             raise ManagedLabelError("标签训练名迁移尚未安全恢复，请先查看数据集诊断")
         service = AnnotationService(self.service, dataset_id)
         service.recover_pending()
-        return service.load(sample_id)
+        result = service.load(sample_id)
+        if result.checkpoint is not None:
+            self._annotation_autosave(dataset_id).seed_checkpoint(result.checkpoint)
+        return result
 
     def queue_annotation_save(self, request: AnnotationSaveRequest):
         """把不可变文档快照排入数据集级串行自动保存队列。"""
 
-        autosave = self._annotation_autosaves.get(request.dataset_id)
+        return self._annotation_autosave(request.dataset_id).submit(request)
+
+    def _annotation_autosave(self, dataset_id: str) -> AnnotationAutosaveService:
+        autosave = self._annotation_autosaves.get(dataset_id)
         if autosave is None:
-            autosave = AnnotationAutosaveService(
-                AnnotationService(self.service, request.dataset_id)
-            )
-            self._annotation_autosaves[request.dataset_id] = autosave
-        return autosave.submit(request)
+            autosave = AnnotationAutosaveService(AnnotationService(self.service, dataset_id))
+            self._annotation_autosaves[dataset_id] = autosave
+        return autosave
 
     def retry_annotation_save(self, dataset_id: str):
         autosave = self._annotation_autosaves.get(dataset_id)
@@ -289,6 +295,21 @@ class ManagedDatasetGateway:
     def annotation_save_state(self, dataset_id: str) -> tuple[AutosaveState, str]:
         autosave = self._annotation_autosaves.get(dataset_id)
         return (autosave.state, autosave.error) if autosave else (AutosaveState.IDLE, "")
+
+    def annotation_save_failure(self, dataset_id: str):
+        autosave = self._annotation_autosaves.get(dataset_id)
+        return autosave.failure if autosave else None
+
+    def remember_recent_label(self, dataset_id: str, label_id: str) -> None:
+        active_ids = {label.id for label in self.list_labels(dataset_id, include_archived=False)}
+        if label_id not in active_ids:
+            self.recent_labels.clear(dataset_id)
+            raise ManagedLabelError("最近使用标签已归档、删除或不属于当前数据集")
+        self.recent_labels.remember(dataset_id, label_id)
+
+    def recent_label(self, dataset_id: str) -> tuple[bool, str | None]:
+        active_ids = {label.id for label in self.list_labels(dataset_id, include_archived=False)}
+        return self.recent_labels.resolve(dataset_id, active_ids)
 
     def wait_annotation_save(self, dataset_id: str):
         autosave = self._annotation_autosaves.get(dataset_id)

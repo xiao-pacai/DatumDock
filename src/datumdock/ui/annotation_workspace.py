@@ -142,6 +142,7 @@ class AnnotationWorkspace(QWidget):
         self._annotation_document: AnnotationDocument | None = None
         self._annotation_disk_sha256 = ""
         self._save_future = None
+        self._pending_recent_labels: dict[int, str] = {}
         self._pending_navigation_target: WorkspaceNavigationTarget | None = None
         self._build_ui()
         self.action_bindings = ActionBindingManager(self.action_registry, self)
@@ -937,6 +938,7 @@ class AnnotationWorkspace(QWidget):
         ):
             self.message_requested.emit("toast.image_load_failed")
             return
+        self._apply_recent_label()
         self._set_review_combo(annotation_load.review_status)
         self._rebuild_annotations()
         self._update_status_bar()
@@ -1267,7 +1269,12 @@ class AnnotationWorkspace(QWidget):
             },
         )
         self._annotation_document = updated
-        self._queue_annotation_save(updated, AnnotationEditKind(kind))
+        edit_kind = AnnotationEditKind(kind)
+        self._queue_annotation_save(
+            updated,
+            edit_kind,
+            recent_label_id=self._recent_label_for_edit(previous, updated, edit_kind),
+        )
 
     def _on_canvas_tool_changed(self, tool: str) -> None:
         if tool in self.tool_buttons:
@@ -1277,6 +1284,8 @@ class AnnotationWorkspace(QWidget):
         self,
         document: AnnotationDocument,
         edit_kind: AnnotationEditKind,
+        *,
+        recent_label_id: str | None = None,
     ) -> None:
         """通过 Gateway 排入不可变快照，页面不直接执行磁盘 I/O。"""
 
@@ -1293,6 +1302,8 @@ class AnnotationWorkspace(QWidget):
             document.document_version - 1,
         )
         self._save_future = self.gateway.queue_annotation_save(request)
+        if recent_label_id is not None:
+            self._pending_recent_labels[document.document_version] = recent_label_id
         self.save_label.setText(tr(self.locale, "canvas.saving"))
         self.save_poll_timer.start()
 
@@ -1309,9 +1320,15 @@ class AnnotationWorkspace(QWidget):
         except Exception:
             self.save_label.setText(tr(self.locale, "canvas.save_failed"))
             self.save_label.setStyleSheet(f"color:{THEME.tokens.danger}; font-weight:600;")
-            self.message_requested.emit("canvas.save_failed")
+            failure = self.gateway.annotation_save_failure(self.snapshot.dataset.id)
+            if failure is not None:
+                self.save_label.setToolTip(failure.message)
+                self.message_requested.emit(f"canvas.save_failed_{failure.kind.value}")
+            else:
+                self.message_requested.emit("canvas.save_failed_unknown")
             return
         self._annotation_disk_sha256 = result.json_sha256
+        self._consume_recent_label(result.saved_version)
         self._set_review_combo(result.review_status)
         self.save_label.setText("●  " + tr(self.locale, "canvas.autosaved"))
         self.save_label.setStyleSheet(f"color:{THEME.tokens.success}; font-weight:600;")
@@ -1338,6 +1355,67 @@ class AnnotationWorkspace(QWidget):
     def _on_label_combo_changed(self, index: int) -> None:
         label_id = self.label_combo.itemData(index) if index >= 0 else None
         self.canvas.set_current_label(label_id)
+
+    def _recent_label_for_edit(
+        self,
+        previous: AnnotationDocument,
+        updated: AnnotationDocument,
+        kind: AnnotationEditKind,
+    ) -> str | None:
+        """只有创建或改派的真实内容变化才产生最近标签候选。"""
+
+        before = {shape.id: shape for shape in previous.rectangles}
+        if kind == AnnotationEditKind.CREATE:
+            created = [shape for shape in updated.rectangles if shape.id not in before]
+            return created[-1].label_id if created else None
+        if kind == AnnotationEditKind.REASSIGN:
+            changed = [
+                shape
+                for shape in updated.rectangles
+                if shape.id in before and before[shape.id].label_id != shape.label_id
+            ]
+            return changed[-1].label_id if changed else None
+        return None
+
+    def _consume_recent_label(self, saved_version: int) -> None:
+        """保存成功后才发布最近标签，并让下一框立即跟随该标签。"""
+
+        candidates = [
+            (version, label_id)
+            for version, label_id in self._pending_recent_labels.items()
+            if version <= saved_version
+        ]
+        if not candidates:
+            return
+        _version, label_id = max(candidates)
+        for version, _candidate in candidates:
+            self._pending_recent_labels.pop(version, None)
+        try:
+            self.gateway.remember_recent_label(self.snapshot.dataset.id, label_id)
+        except Exception:
+            self.message_requested.emit("toast.recent_label_unavailable")
+            self._apply_recent_label()
+            return
+        self._select_label(label_id)
+
+    def _apply_recent_label(self) -> None:
+        """切图保持数据集会话记录；失效记录清空且不回退首个标签。"""
+
+        if not self.managed_mode:
+            return
+        had_entry, label_id = self.gateway.recent_label(self.snapshot.dataset.id)
+        if label_id is not None:
+            self._select_label(label_id)
+        elif had_entry:
+            self.label_combo.setCurrentIndex(-1)
+            self.canvas.set_current_label(None)
+            self.message_requested.emit("toast.recent_label_unavailable")
+
+    def _select_label(self, label_id: str) -> None:
+        index = self.label_combo.findData(label_id)
+        if index >= 0:
+            self.label_combo.setCurrentIndex(index)
+            self.canvas.set_current_label(label_id)
 
     def _search_active_labels(self, text: str) -> None:
         """正式模式把训练名、别名、描述和同义词搜索交给标签服务。"""
@@ -1374,6 +1452,8 @@ class AnnotationWorkspace(QWidget):
         )
         if current is None or self._annotation_document is None or self.current_image_id is None:
             return
+        opened_version = self._annotation_document.document_version
+        opened_label_id = current.label_id
         dialog = QuickLabelSelectorDialog(
             self.locale,
             self.gateway,
@@ -1395,6 +1475,18 @@ class AnnotationWorkspace(QWidget):
             self.canvas.labels = {label.id: label for label in self.snapshot.labels}
             self.retranslate_ui()
         if accepted and dialog.selected_label_id and dialog.selected_label_id != current.label_id:
+            live = next(
+                (item for item in self.canvas.annotations if item.id == shape_id),
+                None,
+            )
+            if (
+                self._annotation_document is None
+                or self._annotation_document.document_version != opened_version
+                or live is None
+                or live.label_id != opened_label_id
+            ):
+                self.message_requested.emit("toast.annotation_reassign_conflict")
+                return
             self.canvas.select_shape(shape_id)
             self.canvas.change_selected_label(dialog.selected_label_id)
 

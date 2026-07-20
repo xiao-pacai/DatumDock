@@ -115,7 +115,17 @@ CATALOGS: dict[str, dict[str, str]] = {
         "canvas.ready": "标注已就绪",
         "canvas.saving": "正在保存标注…",
         "canvas.recovering": "正在恢复标注…",
-        "canvas.save_failed": "自动保存失败，原文件未被覆盖；请检查磁盘权限后重试。",
+        "canvas.save_failed": "自动保存失败，原文件未被覆盖；请查看诊断详情后重试。",
+        "canvas.save_failed_version_conflict": "保存失败：标注文档版本发生冲突，请查看详情后重试。",
+        "canvas.save_failed_external_modification": (
+            "保存失败：磁盘标注已被外部修改，原文件未被覆盖。"
+        ),
+        "canvas.save_failed_permission": "保存失败：系统拒绝写入，请检查文件权限后重试。",
+        "canvas.save_failed_disk_space": "保存失败：磁盘可用空间不足。",
+        "canvas.save_failed_validation": "保存失败：标注或标签校验未通过。",
+        "canvas.save_failed_sqlite": "保存失败：标注文件与索引未能一致提交，已进入安全恢复。",
+        "canvas.save_failed_recovery_required": "保存失败：当前标注需要先完成恢复。",
+        "canvas.save_failed_unknown": "保存失败：发生未分类错误，原始诊断已保留。",
         "canvas.leave_failed_title": "标注尚未安全保存",
         "canvas.leave_failed_body": "请选择重试保存、放弃内存修改或取消离开。",
         "canvas.retry": "重试保存",
@@ -130,6 +140,12 @@ CATALOGS: dict[str, dict[str, str]] = {
         "label.archived_hint": "已归档",
         "annotation.delete_selected": "删除所选框",
         "toast.label_saved": "标签已保存",
+        "toast.recent_label_unavailable": (
+            "最近使用的标签已归档、删除或不属于当前数据集，请重新选择。"
+        ),
+        "toast.annotation_reassign_conflict": (
+            "标注在标签窗口打开期间发生变化，请重新打开后再修改。"
+        ),
         "toast.annotation_warning": "当前标注包含需要检查的兼容或质量提示",
         "toast.review_requires_box": "标记为已完成前，至少需要一个有效矩形框",
         "toast.negative_requires_empty": "只有零矩形图片才能标记为已完成（无目标）",
@@ -428,7 +444,29 @@ CATALOGS: dict[str, dict[str, str]] = {
         "canvas.recovering": "Recovering annotation…",
         "canvas.save_failed": (
             "Automatic save failed. The original file was not overwritten; "
-            "check permissions and retry."
+            "review the diagnostic details and retry."
+        ),
+        "canvas.save_failed_version_conflict": (
+            "Save failed: the annotation document version conflicts. Review details and retry."
+        ),
+        "canvas.save_failed_external_modification": (
+            "Save failed: the annotation on disk changed externally; "
+            "the source was not overwritten."
+        ),
+        "canvas.save_failed_permission": (
+            "Save failed: the system denied the write. Check file permissions and retry."
+        ),
+        "canvas.save_failed_disk_space": "Save failed: the disk does not have enough free space.",
+        "canvas.save_failed_validation": "Save failed: annotation or label validation failed.",
+        "canvas.save_failed_sqlite": (
+            "Save failed: the annotation and index could not commit consistently; "
+            "safe recovery is active."
+        ),
+        "canvas.save_failed_recovery_required": (
+            "Save failed: recover the current annotation before editing again."
+        ),
+        "canvas.save_failed_unknown": (
+            "Save failed because of an unclassified error. The original diagnostic was preserved."
         ),
         "canvas.leave_failed_title": "Annotation is not safely saved",
         "canvas.leave_failed_body": (
@@ -446,6 +484,13 @@ CATALOGS: dict[str, dict[str, str]] = {
         "label.archived_hint": "Archived",
         "annotation.delete_selected": "Delete Selected Box",
         "toast.label_saved": "Label saved",
+        "toast.recent_label_unavailable": (
+            "The recent label was archived, deleted, or belongs to another dataset. "
+            "Choose a label again."
+        ),
+        "toast.annotation_reassign_conflict": (
+            "The annotation changed while the label window was open. Reopen it before editing."
+        ),
         "toast.annotation_warning": (
             "This annotation contains compatibility or quality warnings that need review"
         ),
