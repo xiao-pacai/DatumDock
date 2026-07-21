@@ -55,6 +55,7 @@ class AnnotationSaveFailureKind(StrEnum):
     """用户提示按真实失败类型区分，不能把所有错误都归为磁盘权限。"""
 
     VERSION_CONFLICT = "version_conflict"
+    LABEL_REVISION_CONFLICT = "label_revision_conflict"
     EXTERNAL_MODIFICATION = "external_modification"
     PERMISSION = "permission"
     DISK_SPACE = "disk_space"
@@ -956,6 +957,8 @@ def _classify_save_failure(
         kind = AnnotationSaveFailureKind.PERMISSION
     elif any(isinstance(item, OSError) and getattr(item, "errno", None) == 28 for item in chain):
         kind = AnnotationSaveFailureKind.DISK_SPACE
+    elif "标签集修订" in text or "label set revision" in lowered:
+        kind = AnnotationSaveFailureKind.LABEL_REVISION_CONFLICT
     elif "摘要" in text or "外部" in text or "sha" in lowered:
         kind = AnnotationSaveFailureKind.EXTERNAL_MODIFICATION
     elif "版本" in text or "version" in lowered:

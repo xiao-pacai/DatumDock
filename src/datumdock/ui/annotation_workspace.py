@@ -142,7 +142,7 @@ class AnnotationWorkspace(QWidget):
         self._annotation_load: AnnotationLoadResult | None = None
         self._annotation_document: AnnotationDocument | None = None
         self._annotation_disk_sha256 = ""
-        self._annotation_label_set_revision = 0
+        self._annotation_label_set_revision = snapshot.label_set_revision
         self._save_future = None
         self._pending_recent_labels: dict[int, str] = {}
         self._pending_navigation_target: WorkspaceNavigationTarget | None = None
@@ -782,6 +782,7 @@ class AnnotationWorkspace(QWidget):
 
         if self.sample_model is None:
             return
+        self._refresh_managed_label_context()
         self.sample_model.refresh()
         self.image_stack.setCurrentIndex(0 if self.sample_model.rowCount() else 1)
         target_row = self.sample_model.row_for_id(sample_id or "")
@@ -1611,11 +1612,9 @@ class AnnotationWorkspace(QWidget):
             lambda: self.message_requested.emit("toast.settings_save_failed")
         )
         accepted = dialog.exec() == QDialog.DialogCode.Accepted
-        updated_snapshot = self.gateway.workspace_snapshot(self.snapshot.dataset.id)
-        if updated_snapshot is not None:
-            self.snapshot = updated_snapshot
-            self.canvas.labels = {label.id: label for label in self.snapshot.labels}
-            self.retranslate_ui()
+        if not self._refresh_managed_label_context():
+            self.message_requested.emit("toast.dataset_unavailable")
+            return
         if accepted and dialog.selected_label_id and dialog.selected_label_id != current.label_id:
             live = next(
                 (item for item in self.canvas.annotations if item.id == shape_id),
@@ -1631,6 +1630,21 @@ class AnnotationWorkspace(QWidget):
                 return
             self.canvas.select_shape(shape_id)
             self.canvas.change_selected_label(dialog.selected_label_id)
+
+    def _refresh_managed_label_context(self) -> bool:
+        """原子刷新标签展示与修订号，避免新标签使用旧并发检查点保存。"""
+
+        if not self.managed_mode:
+            return True
+        updated_snapshot = self.gateway.workspace_snapshot(self.snapshot.dataset.id)
+        if updated_snapshot is None:
+            return False
+        self.snapshot = updated_snapshot
+        self._annotation_label_set_revision = updated_snapshot.label_set_revision
+        self.canvas.labels = {label.id: label for label in self.snapshot.labels}
+        self.retranslate_ui()
+        self._apply_recent_label()
+        return True
 
     def _on_review_status_changed(self, index: int) -> None:
         if (

@@ -69,7 +69,7 @@ def test_current_capability_documents_share_stabilization_facts() -> None:
     visual = (ROOT / "docs" / "VISUAL_DESIGN.md").read_text(encoding="utf-8")
     build = (ROOT / "docs" / "BUILD_WINDOWS.md").read_text(encoding="utf-8")
 
-    assert "248 项" in readme and "248 项" in audit
+    assert "250 项" in readme and "250 项" in audit
     assert "42 个 DatumDock 自有 SVG" in visual
     assert "安装包" in build and "未完成" in build
     assert "AI、模型、YOLO 与备份仍明确提示后续接入" in readme

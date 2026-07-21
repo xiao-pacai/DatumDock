@@ -16,6 +16,7 @@ from datumdock.domain.models import AnnotationDocument, ReviewStatus, new_id
 from datumdock.i18n.catalog import LocaleService
 from datumdock.services.annotations import (
     AnnotationAutosaveService,
+    AnnotationConflictError,
     AnnotationEditKind,
     AnnotationSaveFailureKind,
     AnnotationSaveRequest,
@@ -195,6 +196,94 @@ def test_imported_rectangle_double_click_reassigns_and_next_box_uses_recent_labe
     gateway.close()
 
 
+def test_quick_created_label_refreshes_revision_before_reassignment(
+    qtbot,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """快速新建标签后，外层改派必须携带同一标签快照的新修订号。"""
+
+    library = DatasetLibraryService(tmp_path / "library")
+    dataset = library.create_dataset("快速标签修订").dataset
+    initial_set = LabelSetService(library).add_label(
+        dataset.id,
+        class_id=0,
+        name="test1",
+        alias="测试一",
+    )
+    first = initial_set.labels[-1]
+    source = tmp_path / "external"
+    source.mkdir()
+    image = source / "sample.png"
+    Image.new("RGB", (320, 180), (110, 140, 170)).save(image)
+    (source / "sample.json").write_text(
+        json.dumps(
+            {
+                "version": "5.5.0",
+                "flags": {},
+                "shapes": [
+                    {
+                        "label": first.name,
+                        "points": [[30, 25], [150, 120]],
+                        "shape_type": "rectangle",
+                    }
+                ],
+                "imagePath": image.name,
+                "imageData": None,
+                "imageHeight": 180,
+                "imageWidth": 320,
+            }
+        ),
+        encoding="utf-8",
+    )
+    interop = XAnyLabelingInteropService(library, dataset.id)
+    preflight = interop.preflight_import(XAnyImportPreflightRequest(dataset.id, source))
+    imported = interop.commit_import(XAnyImportCommitRequest(dataset.id, preflight, {}))
+    sample_id = imported.imported_sample_ids[0]
+
+    gateway = ManagedDatasetGateway(library)
+    window = ApplicationShell(LocaleService(), gateway)
+    qtbot.addWidget(window)
+    window.resize(1440, 900)
+    window.show()
+    window.navigate(f"annotation_workspace:{dataset.id}")
+    workspace = window.navigation.pages[RouteId.ANNOTATION_WORKSPACE]
+    assert isinstance(workspace, AnnotationWorkspace)
+    qtbot.waitUntil(lambda: len(workspace.canvas.annotations) == 1, timeout=5000)
+    initial_revision = workspace._annotation_label_set_revision
+    initial_version = workspace._annotation_document.document_version
+    created_label = None
+
+    def create_and_choose(dialog: QuickLabelSelectorDialog) -> QDialog.DialogCode:
+        nonlocal created_label
+        updated = gateway.add_label(
+            dataset.id,
+            class_id=1,
+            name="test2",
+            alias="测试二",
+        )
+        created_label = updated.labels[-1]
+        dialog.selected_label_id = created_label.id
+        return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(QuickLabelSelectorDialog, "exec", create_and_choose)
+    workspace._request_shape_reassignment(workspace.canvas.annotations[0].id)
+
+    assert created_label is not None
+    assert workspace._annotation_label_set_revision == initial_revision + 1
+    qtbot.waitUntil(
+        lambda: workspace._annotation_document.document_version == initial_version + 1,
+        timeout=3000,
+    )
+    _wait_annotation_saved(qtbot, gateway, dataset.id, "快速新建标签改派保存")
+    loaded = gateway.load_annotation(dataset.id, sample_id)
+    assert loaded.document is not None
+    assert loaded.document.rectangles[0].label_id == created_label.id
+    assert loaded.checkpoint is not None
+    assert loaded.checkpoint.label_set_revision == initial_revision + 1
+    gateway.close()
+
+
 def test_recent_label_tracker_is_dataset_scoped_and_invalidates_without_fallback() -> None:
     """会话记录不跨数据集，标签失效后明确返回空值。"""
 
@@ -244,4 +333,39 @@ def test_autosave_classifies_permission_failure_without_guessing_other_causes() 
     assert failure.edit_kind == AnnotationEditKind.REASSIGN.value
     assert failure.retryable is True
     assert failure.exception_chain == ("PermissionError: access denied",)
+    autosave.close()
+
+
+def test_autosave_classifies_stale_label_revision_separately() -> None:
+    """标签并发修订不是字段校验错误，诊断必须提示刷新标签上下文。"""
+
+    class StaleLabelService:
+        def save(self, _request):
+            raise AnnotationConflictError("标签集修订已变化，请重新加载后再保存")
+
+    sample_id = new_id()
+    autosave = AnnotationAutosaveService(StaleLabelService())
+    request = AnnotationSaveRequest(
+        new_id(),
+        sample_id,
+        1,
+        "",
+        AnnotationDocument(
+            sample_id=sample_id,
+            image_filename="sample.png",
+            image_width=10,
+            image_height=10,
+            document_version=1,
+        ),
+        edit_kind=AnnotationEditKind.REASSIGN,
+        label_set_revision=3,
+    )
+    future = autosave.submit(request)
+    with pytest.raises(AnnotationConflictError):
+        future.result(timeout=3)
+    failure = autosave.failure
+    assert failure is not None
+    assert failure.kind == AnnotationSaveFailureKind.LABEL_REVISION_CONFLICT
+    assert failure.retryable is False
+    assert failure.label_set_revision == 3
     autosave.close()

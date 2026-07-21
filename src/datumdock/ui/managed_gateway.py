@@ -166,6 +166,7 @@ class ManagedDatasetGateway:
             annotations_by_image={},
             models=(),
             available_datasets=available,
+            label_set_revision=bundle.label_set.revision,
         )
 
     def query_samples(

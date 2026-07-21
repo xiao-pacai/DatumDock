@@ -129,6 +129,7 @@ class WorkspaceSnapshot:
     annotations_by_image: dict[str, tuple[AnnotationItemViewData, ...]]
     models: tuple[ModelViewData, ...]
     available_datasets: tuple[DatasetCardViewData, ...] = ()
+    label_set_revision: int = 0
 
 
 @dataclass(frozen=True, slots=True)

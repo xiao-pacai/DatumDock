@@ -117,6 +117,9 @@ CATALOGS: dict[str, dict[str, str]] = {
         "canvas.recovering": "正在恢复标注…",
         "canvas.save_failed": "自动保存未完成。点击此处查看准确原因和处理方式。",
         "canvas.save_failed_version_conflict": "保存未完成：标注文档版本发生冲突，请查看详情。",
+        "canvas.save_failed_label_revision_conflict": (
+            "保存未完成：标签集已发生变化，请刷新标签后重试。"
+        ),
         "canvas.save_failed_external_modification": (
             "保存失败：磁盘标注已被外部修改，原文件未被覆盖。"
         ),
@@ -486,6 +489,9 @@ CATALOGS: dict[str, dict[str, str]] = {
         ),
         "canvas.save_failed_version_conflict": (
             "Save failed: the annotation document version conflicts. Review details and retry."
+        ),
+        "canvas.save_failed_label_revision_conflict": (
+            "Save failed: the label set changed. Refresh labels and try again."
         ),
         "canvas.save_failed_external_modification": (
             "Save failed: the annotation on disk changed externally; "
