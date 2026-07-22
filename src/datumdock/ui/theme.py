@@ -34,6 +34,10 @@ class ThemeTokens:
     info: str = "#4E9CCB"
     annotation_border_alpha: int = 235
     annotation_fill_alpha: int = 38
+    annotation_hover_border_alpha: int = 255
+    annotation_hover_fill_alpha: int = 58
+    annotation_selected_fill_alpha: int = 52
+    annotation_selected_hover_fill_alpha: int = 76
     canvas_crosshair_light: str = "#FFFFFF"
     canvas_crosshair_dark: str = "#253047"
     canvas_crosshair_underlay_alpha: int = 185
@@ -46,6 +50,7 @@ class ThemeTokens:
     canvas_snap_marker_size: int = 6
     canvas_snap_tick_length: int = 18
     annotation_line_width: int = 2
+    annotation_hover_line_width: int = 3
     annotation_selected_line_width: int = 3
     annotation_handle_size: int = 8
 
@@ -157,8 +162,18 @@ class ThemeService:
             padding: 9px; font-weight: 650;
         }}
         QTableWidget::item, QListWidget::item, QTreeWidget::item {{ padding: 7px; }}
+        QTableWidget::item:hover, QListWidget::item:hover, QTreeWidget::item:hover,
+        QComboBox QAbstractItemView::item:hover {{
+            color: {t.text_primary}; background: {t.surface_hover};
+            border: 1px solid {t.focus_ring}; border-radius: 6px;
+        }}
         QTableWidget::item:selected, QListWidget::item:selected, QTreeWidget::item:selected {{
             color: {t.text_primary}; background: {t.brand_soft};
+            border-left: 3px solid {t.brand_primary};
+        }}
+        QComboBox QAbstractItemView::item:selected {{
+            color: {t.text_primary}; background: {t.brand_soft};
+            border-left: 3px solid {t.brand_primary};
         }}
         QTabWidget::pane {{
             border: 1px solid {t.border}; border-radius: 10px; background: {t.surface};

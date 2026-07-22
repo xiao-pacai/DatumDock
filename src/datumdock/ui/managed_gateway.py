@@ -16,6 +16,7 @@ from datumdock.domain.models import (
     SimilarityStatus,
     utc_now,
 )
+from datumdock.services.annotation_debug import AnnotationDebugLog, short_digest
 from datumdock.services.annotations import (
     AnnotationAutosaveService,
     AnnotationLoadResult,
@@ -104,6 +105,7 @@ class ManagedDatasetGateway:
 
     def __init__(self, service: DatasetLibraryService) -> None:
         self.service = service
+        self.annotation_debug = AnnotationDebugLog(service.root)
         self.settings_repository = AppSettingsRepository(service.root)
         self.settings = self.settings_repository.load()
         self.tasks = BackgroundTaskService()
@@ -266,27 +268,104 @@ class ManagedDatasetGateway:
     def load_annotation(self, dataset_id: str, sample_id: str) -> AnnotationLoadResult:
         """按需加载当前图片标注，损坏 JSON 由结果显式标记为只读。"""
 
-        recovery = ManagedLabelMigrationService(self.service).recover_pending(dataset_id)
-        if recovery.failed_sample_ids:
-            raise ManagedLabelError("标签训练名迁移尚未安全恢复，请先查看数据集诊断")
-        service = AnnotationService(self.service, dataset_id)
-        service.recover_pending()
-        result = service.load(sample_id)
-        if result.checkpoint is not None:
-            self._annotation_autosave(dataset_id).seed_checkpoint(result.checkpoint)
+        self.record_annotation_debug(
+            "Gateway 开始加载标注",
+            dataset_id=dataset_id,
+            sample_id=sample_id,
+        )
+        try:
+            autosave = self._annotation_autosaves.get(dataset_id)
+            if autosave is not None and autosave.state == AutosaveState.SAVING:
+                self.record_annotation_debug(
+                    "Gateway 等待在途标注保存后再加载",
+                    dataset_id=dataset_id,
+                    sample_id=sample_id,
+                )
+                # 缩略图和画布读取都在后台线程执行；等待同一数据集的短事务
+                # 完成，可避免把尚未清理的恢复清单误判成崩溃现场。
+                autosave.wait_latest()
+            recovery = ManagedLabelMigrationService(self.service).recover_pending(dataset_id)
+            if recovery.failed_sample_ids:
+                raise ManagedLabelError("标签训练名迁移尚未安全恢复，请先查看数据集诊断")
+            service = AnnotationService(
+                self.service,
+                dataset_id,
+                debug_log=self.annotation_debug,
+            )
+            annotation_recovery = service.recover_pending()
+            result = service.load(sample_id)
+            if result.checkpoint is not None:
+                self._annotation_autosave(dataset_id).seed_checkpoint(result.checkpoint)
+        except Exception as error:
+            self.record_annotation_debug(
+                "Gateway 加载标注异常",
+                dataset_id=dataset_id,
+                sample_id=sample_id,
+                exception_type=error.__class__.__name__,
+                error=str(error),
+            )
+            raise
+        self.record_annotation_debug(
+            "Gateway 标注加载完成",
+            dataset_id=dataset_id,
+            sample_id=sample_id,
+            document_version=(
+                result.document.document_version if result.document is not None else None
+            ),
+            disk_sha=short_digest(result.disk_sha256),
+            label_revision=(
+                result.checkpoint.label_set_revision if result.checkpoint is not None else None
+            ),
+            annotation_state=result.annotation_state,
+            review_status=result.review_status,
+            editable=result.editable,
+            shape_count=(len(result.document.rectangles) if result.document is not None else None),
+            recovery_examined=annotation_recovery.examined,
+            recovery_failed=annotation_recovery.failed_sample_ids,
+        )
         return result
 
     def queue_annotation_save(self, request: AnnotationSaveRequest):
         """把不可变文档快照排入数据集级串行自动保存队列。"""
 
+        self.record_annotation_debug(
+            "Gateway 转交自动保存请求",
+            dataset_id=request.dataset_id,
+            sample_id=request.sample_id,
+            request_id=request.request_id,
+            document_version=request.document_version,
+            base_version=request.base_document_version,
+            expected_sha=short_digest(request.expected_disk_sha256),
+            label_revision=request.label_set_revision,
+            edit_kind=request.edit_kind,
+            shape_count=len(request.document.rectangles),
+        )
         return self._annotation_autosave(request.dataset_id).submit(request)
 
     def _annotation_autosave(self, dataset_id: str) -> AnnotationAutosaveService:
         autosave = self._annotation_autosaves.get(dataset_id)
         if autosave is None:
-            autosave = AnnotationAutosaveService(AnnotationService(self.service, dataset_id))
+            autosave = AnnotationAutosaveService(
+                AnnotationService(
+                    self.service,
+                    dataset_id,
+                    debug_log=self.annotation_debug,
+                ),
+                self.annotation_debug,
+            )
             self._annotation_autosaves[dataset_id] = autosave
         return autosave
+
+    @property
+    def annotation_debug_log_path(self) -> Path:
+        """返回当前临时诊断日志位置，调用本身不会创建文件。"""
+
+        return self.annotation_debug.path
+
+    def record_annotation_debug(self, event: str, **fields: object) -> None:
+        """供正式工作台追加时序事件；预览网关没有该写入边界。"""
+
+        self.annotation_debug.record(event, **fields)
 
     def retry_annotation_save(self, dataset_id: str):
         autosave = self._annotation_autosaves.get(dataset_id)
@@ -693,6 +772,7 @@ class ManagedDatasetGateway:
             autosave.close()
         self._annotation_autosaves.clear()
         self.tasks.shutdown(wait=True)
+        self.annotation_debug.close()
 
     def dispatch(self, command: UiCommand) -> UiCommandResult:
         """执行步骤二允许的元数据操作，其余入口明确返回未接入。"""

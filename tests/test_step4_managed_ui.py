@@ -9,11 +9,11 @@ import pytest
 from PIL import Image
 from PySide6.QtCore import QPoint, QPointF, Qt
 from PySide6.QtGui import QWheelEvent
-from PySide6.QtWidgets import QApplication, QDialog
+from PySide6.QtWidgets import QApplication, QDialog, QStyle
 
 from datumdock.domain.models import AnnotationState, ReviewStatus
 from datumdock.i18n.catalog import LocaleService
-from datumdock.services.annotations import AutosaveState
+from datumdock.services.annotations import AnnotationEditKind, AutosaveState
 from datumdock.services.dataset_library import DatasetLibraryService
 from datumdock.services.managed_labels import LabelSetService
 from datumdock.services.sample_repository import DatasetSampleRepository
@@ -25,7 +25,8 @@ from datumdock.ui.managed_label_pages import ManagedLabelInspectionPage, Managed
 from datumdock.ui.preview_canvas import CanvasTool
 from datumdock.ui.prototype_models import CommandStatus, UiCommand
 from datumdock.ui.prototype_pages import RouteId
-from datumdock.ui.quick_label_dialog import QuickLabelSelectorDialog
+from datumdock.ui.quick_label_dialog import QuickLabelSelectorDialog, _quick_label_card_style
+from datumdock.ui.theme import THEME
 
 
 def _wait_task(gateway: ManagedDatasetGateway, task_id: str, timeout: float = 10.0):
@@ -132,6 +133,102 @@ def test_real_canvas_draws_moves_undoes_and_autosaves(qtbot, tmp_path: Path) -> 
     assert reopened.document is not None
     assert reopened.document.rectangles[0].id == original.id
     restarted.close()
+
+
+def test_switching_sample_locks_stale_canvas_and_rejects_cross_sample_save(
+    qtbot,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """目标图片加载完成前，上一张画布不能与新 sample ID 拼成保存请求。"""
+
+    library = DatasetLibraryService(tmp_path / "library")
+    dataset = library.create_dataset("切图竞态").dataset
+    labels = LabelSetService(library).add_label(
+        dataset.id,
+        class_id=0,
+        name="first_label",
+        alias="第一标签",
+    )
+    first_label = labels.labels[-1]
+    labels = LabelSetService(library).add_label(
+        dataset.id,
+        class_id=1,
+        name="second_label",
+        alias="第二标签",
+    )
+    second_label = labels.labels[-1]
+    gateway = ManagedDatasetGateway(library)
+    for index, color in enumerate(((80, 110, 140), (140, 110, 80)), start=1):
+        source = tmp_path / f"sample-{index}.png"
+        Image.new("RGB", (320, 180), color).save(source)
+        _import_image(gateway, dataset.id, source)
+
+    window = ApplicationShell(LocaleService(), gateway)
+    qtbot.addWidget(window)
+    window.resize(1440, 900)
+    window.show()
+    window.navigate(f"annotation_workspace:{dataset.id}")
+    workspace = window.navigation.pages[RouteId.ANNOTATION_WORKSPACE]
+    assert isinstance(workspace, AnnotationWorkspace)
+    qtbot.waitUntil(lambda: not workspace.canvas.managed_pixmap.isNull(), timeout=5000)
+
+    workspace.canvas.set_current_label(first_label.id)
+    _draw_rectangle(qtbot, workspace)
+    qtbot.waitUntil(
+        lambda: gateway.annotation_save_state(dataset.id)[0] == AutosaveState.SAVED,
+        timeout=5000,
+    )
+    first_id = workspace.current_image_id
+    assert first_id is not None
+
+    second_index = workspace.sample_model.index(1)
+    second_sample = workspace.sample_model.sample_at(1)
+    assert second_sample is not None
+    workspace.image_list.setCurrentIndex(second_index)
+    qtbot.waitUntil(
+        lambda: (
+            workspace._annotation_document is not None
+            and workspace._annotation_document.sample_id == second_sample.id
+        ),
+        timeout=5000,
+    )
+    second_id = workspace.current_image_id
+    assert second_id is not None and second_id != first_id
+    workspace.canvas.set_current_label(first_label.id)
+    _draw_rectangle(qtbot, workspace)
+    qtbot.waitUntil(
+        lambda: gateway.annotation_save_state(dataset.id)[0] == AutosaveState.SAVED,
+        timeout=5000,
+    )
+    stale_document = workspace._annotation_document.model_copy(deep=True)
+    assert stale_document.sample_id == second_id
+
+    # 暂停目标图片的后台返回，稳定复现用户日志中的窗口：导航 ID 已切换，
+    # 但旧实现仍允许上一张画布继续改派并用错误 sample ID 入队。
+    monkeypatch.setattr(workspace, "_start_managed_image_load", lambda _sample: None)
+    first_index = workspace.sample_model.index(0)
+    workspace.image_list.setCurrentIndex(first_index)
+    assert workspace.current_image_id == first_id
+    assert workspace.canvas.managed_read_only is True
+    assert workspace._annotation_document is None
+
+    def reject_cross_sample_queue(_request):
+        raise AssertionError("加载期间不应把上一张标注文档排入目标样本保存队列")
+
+    monkeypatch.setattr(gateway, "queue_annotation_save", reject_cross_sample_queue)
+    workspace.canvas.change_selected_label(second_label.id)
+    workspace._queue_annotation_save(
+        stale_document.model_copy(
+            deep=True,
+            update={"document_version": stale_document.document_version + 1},
+        ),
+        AnnotationEditKind.REASSIGN,
+    )
+    assert "工作台拒绝跨样本自动保存请求" in gateway.annotation_debug_log_path.read_text(
+        encoding="utf-8"
+    )
+    gateway.close()
 
 
 def test_two_click_rectangle_zero_area_retry_and_high_zoom_navigation(
@@ -541,3 +638,100 @@ def test_managed_label_and_inspection_pages_use_real_sqlite(qtbot, tmp_path: Pat
     inspection.refresh()
     assert inspection.table.rowCount() == 1
     assert inspection.table.item(0, 1).text() == "1"
+
+
+def test_managed_label_table_inline_edit_is_saved_immediately(qtbot, tmp_path: Path) -> None:
+    """标签表格提交别名后必须立即写入标签集，而不是只改变单元格文字。"""
+
+    _library, gateway, _window, _workspace, dataset_id, _sample_id, label = _workspace_with_label(
+        qtbot, tmp_path
+    )
+    page = ManagedLabelPage(LocaleService(), gateway, dataset_id)
+    qtbot.addWidget(page)
+    page.show()
+    initial_revision = gateway.get_label_set(dataset_id).revision
+
+    page.table.item(0, 2).setText("新版金属零件")
+
+    persisted = gateway.get_label_set(dataset_id)
+    updated = persisted.get_label(label.id)
+    assert updated.alias == "新版金属零件"
+    assert persisted.revision == initial_revision + 1
+    restored = LabelSetService(DatasetLibraryService(tmp_path / "library")).repository.load(
+        dataset_id
+    )
+    assert restored.get_label(label.id).alias == "新版金属零件"
+
+
+def test_canvas_refreshes_label_revision_before_ordinary_manual_save(qtbot, tmp_path: Path) -> None:
+    """标签集被其他页面修改后，普通画框也必须刷新修订并立即保存为已完成。"""
+
+    library, gateway, _window, workspace, dataset_id, sample_id, _label = _workspace_with_label(
+        qtbot, tmp_path
+    )
+    stale_revision = workspace._annotation_label_set_revision
+    updated = LabelSetService(library).add_label(
+        dataset_id,
+        class_id=1,
+        name="new_part",
+        alias="新零件",
+    )
+    assert updated.revision > stale_revision
+
+    _draw_rectangle(qtbot, workspace)
+
+    qtbot.waitUntil(
+        lambda: gateway.annotation_save_state(dataset_id)[0] == AutosaveState.SAVED,
+        timeout=5000,
+    )
+    loaded = gateway.load_annotation(dataset_id, sample_id)
+    assert workspace._annotation_label_set_revision == updated.revision
+    assert loaded.document is not None
+    assert len(loaded.document.rectangles) == 1
+    assert loaded.review_status == ReviewStatus.COMPLETED
+
+
+def test_label_hover_style_is_subtle_and_has_no_domain_side_effects(qtbot, tmp_path: Path) -> None:
+    """标签卡片和画布矩形悬停需有反馈，但不得写入任何领域数据。"""
+
+    _library, gateway, _window, workspace, dataset_id, sample_id, _label = _workspace_with_label(
+        qtbot, tmp_path
+    )
+    _draw_rectangle(qtbot, workspace)
+    qtbot.waitUntil(
+        lambda: gateway.annotation_save_state(dataset_id)[0] == AutosaveState.SAVED,
+        timeout=5000,
+    )
+    before = gateway.get_label_set(dataset_id)
+    before_annotation = gateway.load_annotation(dataset_id, sample_id)
+    before_history = len(workspace.canvas._undo)
+    committed: list[str] = []
+    workspace.canvas.edit_committed.connect(committed.append)
+    normal = _quick_label_card_style(QStyle.StateFlag.State_Enabled)
+    hovered = _quick_label_card_style(
+        QStyle.StateFlag.State_Enabled | QStyle.StateFlag.State_MouseOver
+    )
+    selected = _quick_label_card_style(
+        QStyle.StateFlag.State_Enabled | QStyle.StateFlag.State_Selected
+    )
+
+    assert normal[0].name().upper() == THEME.tokens.surface.upper()
+    assert hovered[0].name().upper() == THEME.tokens.surface_hover.upper()
+    assert selected[0].name().upper() == THEME.tokens.brand_soft.upper()
+    assert hovered[0] != selected[0]
+    assert selected[2] > hovered[2]
+    assert workspace.annotation_list.hasMouseTracking()
+    assert "QListWidget::item:hover" in THEME.stylesheet()
+    shape = workspace.canvas.annotations[0]
+    shape_center = workspace.canvas._annotation_rect(shape).center().toPoint()
+    workspace.canvas.selected_id = None
+    qtbot.mouseMove(workspace.canvas, shape_center)
+    assert workspace.canvas._hovered_annotation_id() == shape.id
+    assert THEME.tokens.annotation_hover_fill_alpha > THEME.tokens.annotation_fill_alpha
+    assert committed == []
+    assert len(workspace.canvas._undo) == before_history
+    after = gateway.get_label_set(dataset_id)
+    after_annotation = gateway.load_annotation(dataset_id, sample_id)
+    assert after.model_dump(mode="json") == before.model_dump(mode="json")
+    assert after_annotation.document == before_annotation.document
+    assert after_annotation.review_status == before_annotation.review_status

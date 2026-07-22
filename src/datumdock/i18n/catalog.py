@@ -143,6 +143,7 @@ CATALOGS: dict[str, dict[str, str]] = {
         "canvas.diagnostic_current_sha": "当前磁盘摘要",
         "canvas.diagnostic_label_revision": "标签集修订号",
         "canvas.diagnostic_recovery": "需要恢复",
+        "canvas.diagnostic_log": "临时调试日志",
         "canvas.leave_failed_title": "标注尚未安全保存",
         "canvas.leave_failed_body": "请选择重试保存、放弃内存修改或取消离开。",
         "canvas.retry": "重试保存",
@@ -528,6 +529,7 @@ CATALOGS: dict[str, dict[str, str]] = {
         "canvas.diagnostic_current_sha": "Current disk digest",
         "canvas.diagnostic_label_revision": "Label-set revision",
         "canvas.diagnostic_recovery": "Recovery required",
+        "canvas.diagnostic_log": "Temporary debug log",
         "canvas.leave_failed_title": "Annotation is not safely saved",
         "canvas.leave_failed_body": (
             "Retry saving, discard the in-memory changes, or cancel leaving this image."

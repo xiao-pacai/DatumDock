@@ -129,6 +129,7 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 - `dataset.json` 是恢复摘要的事实来源。标签文件、SQLite 或固定目录损坏时仍可使用有效元数据展示真实诊断卡片；元数据也损坏时使用 UUID 派生占位名称。
 - 扫描只查看 `datasets/` 的直接子项。非 UUID 名称、普通文件和符号链接进入 `LibraryRecoveryReport`，不得跟随、删除或移动。
 - `label-set.json` 是单个受管数据集的标签事实来源。标签记录建议为 `{id, class_id, name, alias, description, synonyms, color, status}`；`id`、`class_id` 与 `name` 要受到变更保护。
+- 标签定义采用提交即保存：新增、编辑、归档、恢复和安全显示字段修改在字段校验通过后，通过 `LabelSetService` 构造完整新快照，由 Repository 执行临时文件写入、刷新、原子替换和回读校验；成功后修订号递增并以同一次 Gateway 快照刷新工作台。UI 不维护需要靠离开页面才能落盘的第二份标签事实。
 - 标签集同时生成两类签名：`training_signature` 覆盖稳定标签 ID、类别 ID、英文训练名与状态，用于判断能否安全复制、移动或合并数据；`display_signature` 覆盖别名、描述、同义词和颜色，用于展示差异。签名与版本记录在数据集元数据中。
 - `color` 是数据集标签定义的一部分。`LabelColorService` 使用预定义的可访问调色板及色差校验生成候选色；活动标签颜色不得重复，归档标签颜色可复用。
 - 全局应用设置保存 `ui_locale`（初始值 `zh_CN`）、`shortcut_overrides`、默认数据划分比例和回收站少量样本阈值，不保存在数据集元数据中；翻译资源随应用安装包提供，例如 `i18n/datumdock_zh_CN.qm` 与 `i18n/datumdock_en_US.qm`。
@@ -146,6 +147,9 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 - 有效人工编辑来源必须由命令边界明确标记，至少包含创建、移动、缩放、删除、换标签和实际改变文档的撤销/重做；选择、视图变换、搜索、筛选和取消对话框不得伪造编辑来源。
 - `AnnotationAutosaveService` 在同一次 JSON/SQLite 协调保存中提交人工编辑和 `completed`，不能先改状态后写框。任一阶段失败时内存待处理状态与持久化状态仍为 `pending_review`，重试使用最新完整快照。
 - 一个完整用户操作只能生成一个历史节点、一个文档版本和一个保存请求。双击标签改派必须清理点击过程中建立的移动/缩放快照并吞掉对应释放事件；无几何变化的释放不得制造第二次保存。
+- 快速标签窗口返回后只允许通过局部标签刷新同步候选、颜色和标签集修订号；该路径不得调用会重建样本模型的整页重译。改派提交以弹窗打开时的 `sample_id + shape_id + document_version` 为检查点，并再次核对当前导航样本、已加载画布和标注文档三者一致，防止列表重置造成跨图改派或修改丢失。
+- 所有有效人工标注命令在命令提交点立即构造不可变保存快照，不使用延迟切图、页面销毁或应用退出作为正常保存触发器。创建、移动、缩放、删除、改派及实际改变文档的撤销/重做进入同一串行队列；连续拖动只在释放时提交一次。
+- `pending_review` 只能由来源为 `MODEL` 且实际改变标注的命令写入。来源为 `MANUAL` 的有效标注命令把目标状态固定为 `completed`，并与 JSON 摘要、版本、框数和反向标签索引在同一个恢复型保存中提交；任一阶段失败时不允许内容或状态单边成功。
 - `review.mark_completed` 用于检查后无需编辑的图片，通过 Gateway/Service 在一个事务中更新状态和摘要；按钮与可配置快捷键共用该 `action_id`。写盘失败不得让 UI 先显示完成。
 - 零框且明确确认的图片也使用 `completed`，通过框数为零识别负样本，不保留 `completed_negative` 枚举。
 - v2→v3 迁移规则：`unreviewed` 转为空值，`pending_review` 保持，`completed` 与 `completed_negative` 合并为 `completed`，`issue` 为避免误判完成而转为 `pending_review` 并记录迁移诊断。
@@ -162,6 +166,9 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 - 数据集样本索引需维护 `label_id → sample_id` 的可查询关联及每样本的标签框计数，以支持标签检查集合而无需每次扫描全部 JSON 文件。
 - 从工作台返回主页或切换数据集是状态边界：立即自动保存任务必须先完成；写入失败时保留待处理状态并阻止静默切换。随后刷新目标数据集标签集、样本索引和筛选条件，并清空尚未执行的临时导出请求。
 - `WorkspaceSnapshot` 同时携带标签视图和 `label_set_revision`。快速新建、标签治理或导入改变标签集后，工作台必须以一次 Gateway 快照替换两者，再构造 `AnnotationSaveRequest`；不允许页面分别读取后拼接可能不一致的标签与修订号。
+- `AnnotationDebugLog` 是普通模式下的临时诊断边界，写入应用资料库根目录的 `logs/annotation-debug.log`，不进入任一数据集目录，也不是标注、索引、备份或恢复的事实来源。它采用 2 MiB 有界轮转，只记录请求 ID、版本、摘要前缀、标签修订和提交阶段；日志异常必须被隔离，不能改变 `AnnotationService` 的保存或回滚结论。预览 Gateway 不构造或调用该记录器。
+- 工作台同时维护导航目标、加载中样本和已加载画布样本。标注命令只在导航目标、已加载样本、画布图片及 `AnnotationDocument.sample_id` 四者一致时成立；异步切图开始后旧画布立即只读，加载结果被当前 generation 接受后才原子替换图片、文档、磁盘摘要和标签修订。
+- `ManagedDatasetGateway.load_annotation()` 在同一数据集存在在途自动保存时先等待该短事务完成，再运行 `recover_pending()` 和读取。恢复扫描不得与活动 JSON/SQLite 提交并发，否则可能把未清理的活动清单误判为进程中断。
 - 导出属于一次不可修改原池的临时操作。`ExportRequest` 只存在于当前导出流程，完成或取消后不写入数据集元数据；默认复制文件，硬链接或符号链接可作为后续可选优化。
 - 划分器在固定种子下先稳定排序样本 ID，再伪随机打乱，以保证结果可复现。
 - MVP 的确定性划分器以完全重复图片和已确认近似图片组为不可拆分单元，在保持组完整的前提下尽量接近用户比例；更精细的类别分层优化属于后续增强，但不得以拆分关联图片为代价。
@@ -225,6 +232,8 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 - 仅改变中文别名、描述、同义词、颜色等显示字段时，不改写每张标注 JSON；显示层从当前数据集标签集实时解析即可。
 - 内部 `label_id` 永远不变；LabelMe 的 `shape.label` 与数据集英文训练名保持同步，YOLO 导出则始终从当前标签集读取 `class_id`。
 - 保存服务继续校验请求中的标签集修订。真实并发变化使用 `label_revision_conflict` 阻止覆盖；它不属于磁盘权限、普通字段验证或 JSON 摘要冲突。
+
+标签保存与矩形保存是两个互不伪装成功的事务边界。快速新建标签先原子保存新的 `label-set.json` 并刷新修订号；用户确认矩形改派后，再以新修订号立即提交标注快照。标签已经保存而外层改派失败时，新标签继续保留，矩形保持待处理并提供重试；标签保存失败时禁止继续提交引用该标签的矩形。
 
 ## 11. 自动标注模型导入与运行
 
@@ -314,4 +323,4 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 
 ## English Summary
 
-The architecture implements safeguarded whole-dataset deletion through a gateway-only service, impact preflight, revision-bound confirmation, same-volume staging, atomic library updates, and deterministic recovery. It also requires visible actions to resolve semantic icons through IconRegistry rather than direct paths, emoji, or page-local caches. Installer shortcuts reuse the DD application asset but are not created by source launches.
+The architecture uses two explicit immediate-persistence boundaries: atomic label-set snapshots for valid label-definition submissions, and recoverable LabelMe/SQLite autosaves for effective rectangle edits. Manual edits commit completed review state with annotation content, while pending review is reserved for model-originated changes. Whole-dataset deletion remains protected by impact preflight, revision-bound confirmation, same-volume staging, and deterministic recovery.

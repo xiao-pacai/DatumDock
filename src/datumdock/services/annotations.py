@@ -22,6 +22,7 @@ from datumdock.domain.models import (
     new_id,
     utc_now,
 )
+from datumdock.services.annotation_debug import AnnotationDebugLog, short_digest
 from datumdock.services.dataset_library import DatasetLibraryService, DatasetLibraryServiceError
 from datumdock.services.labelme import (
     AnnotationRepository,
@@ -203,12 +204,15 @@ class AnnotationService:
         library_service: DatasetLibraryService,
         dataset_id: str,
         annotation_repository: AnnotationRepository | None = None,
+        *,
+        debug_log: AnnotationDebugLog | None = None,
     ) -> None:
         self.library_service = library_service
         self.dataset_id = dataset_id
         self.paths = library_service.dataset_repository.paths(dataset_id)
         self.samples = DatasetSampleRepository(self.paths, dataset_id)
         self.repository = annotation_repository or LabelMeRepository()
+        self.debug_log = debug_log
         self.recovery_directory = (
             library_service.root / "recovery" / "annotation-operations" / dataset_id
         )
@@ -336,6 +340,17 @@ class AnnotationService:
     def save(self, request: AnnotationSaveRequest) -> AnnotationSaveResult:
         """先发布验证过的 JSON，再以恢复标记保护 SQLite 摘要提交。"""
 
+        self._debug(
+            "标注服务开始保存",
+            request_id=request.request_id,
+            sample_id=request.sample_id,
+            requested_version=request.document_version,
+            base_version=request.base_document_version,
+            expected_sha=short_digest(request.expected_disk_sha256),
+            label_revision=request.label_set_revision,
+            edit_kind=request.edit_kind,
+            shape_count=len(request.document.rectangles),
+        )
         if request.dataset_id != self.dataset_id:
             raise AnnotationServiceError("保存请求不属于当前数据集")
         sample = self.samples.get_sample(request.sample_id)
@@ -365,6 +380,16 @@ class AnnotationService:
         warnings = self._validate_document(document, label_set, allow_archived=True)
         path = self._annotation_path(sample.filename, sample.annotation_path)
         current_digest = _safe_sha256(path)
+        self._debug(
+            "标注保存前提核对",
+            request_id=request.request_id,
+            sample_id=sample.id,
+            sqlite_version=sample.annotation_version,
+            current_sha=short_digest(current_digest),
+            expected_sha=short_digest(request.expected_disk_sha256),
+            label_revision=label_set.revision,
+            annotation_state=sample.annotation_state,
+        )
         if current_digest != request.expected_disk_sha256:
             raise AnnotationConflictError("标注文件已被其他操作修改，请重新加载后再保存")
         existing_document: AnnotationDocument | None = None
@@ -440,13 +465,33 @@ class AnnotationService:
         }
         try:
             self._prepare_operation_directory(operation_directory)
+            self._debug(
+                "标注恢复操作已准备",
+                request_id=request.request_id,
+                sample_id=sample.id,
+                operation_id=operation_id,
+            )
             if path.exists():
                 _copy_file_durable(path, original)
             self._write_marker(manifest, marker_payload)
             digest = self.repository.save(candidate, document, label_set)
+            self._debug(
+                "标注候选文件已验证",
+                request_id=request.request_id,
+                sample_id=sample.id,
+                operation_id=operation_id,
+                candidate_sha=short_digest(digest),
+            )
             marker_payload.update(phase="candidate_ready", json_sha256=digest)
             self._write_marker(manifest, marker_payload)
             _replace_file_from_bytes(candidate, path)
+            self._debug(
+                "标注 JSON 已发布",
+                request_id=request.request_id,
+                sample_id=sample.id,
+                operation_id=operation_id,
+                json_sha=short_digest(digest),
+            )
             marker_payload.update(phase="json_committed", json_sha256=digest)
             self._write_marker(manifest, marker_payload)
             self.samples.update_annotation_index(
@@ -464,7 +509,23 @@ class AnnotationService:
             )
             marker_payload.update(phase="committed")
             self._write_marker(manifest, marker_payload)
+            self._debug(
+                "标注 SQLite 已提交",
+                request_id=request.request_id,
+                sample_id=sample.id,
+                operation_id=operation_id,
+                saved_version=request.document_version,
+                review_status=review_status,
+                shape_count=len(document.rectangles),
+            )
             self._remove_operation_directory(operation_directory)
+            self._debug(
+                "标注服务保存完成",
+                request_id=request.request_id,
+                sample_id=sample.id,
+                saved_version=request.document_version,
+                json_sha=short_digest(digest),
+            )
             return AnnotationSaveResult(
                 sample.id,
                 request.document_version,
@@ -475,6 +536,15 @@ class AnnotationService:
                 review_status,
             )
         except (LabelMeError, SampleRepositoryError, OSError) as error:
+            self._debug(
+                "标注服务保存异常",
+                request_id=request.request_id,
+                sample_id=sample.id,
+                operation_id=operation_id,
+                phase=marker_payload.get("phase"),
+                exception_type=error.__class__.__name__,
+                error=str(error),
+            )
             if marker_payload.get("phase") == "json_committed":
                 try:
                     if bool(marker_payload["original_existed"]):
@@ -484,6 +554,12 @@ class AnnotationService:
                         _fsync_directory(path.parent)
                     marker_payload.update(phase="rolled_back", error=str(error))
                     self._write_marker(manifest, marker_payload)
+                    self._debug(
+                        "标注 JSON 已回滚",
+                        request_id=request.request_id,
+                        sample_id=sample.id,
+                        operation_id=operation_id,
+                    )
                 except OSError as rollback_error:
                     marker_payload.update(
                         phase="recovery_required",
@@ -492,6 +568,14 @@ class AnnotationService:
                     )
                     self._write_marker(manifest, marker_payload)
                     self._mark_diagnostic(sample.id, AnnotationState.RECOVERY_REQUIRED)
+                    self._debug(
+                        "标注回滚失败需要恢复",
+                        request_id=request.request_id,
+                        sample_id=sample.id,
+                        operation_id=operation_id,
+                        exception_type=rollback_error.__class__.__name__,
+                        error=str(rollback_error),
+                    )
                     raise AnnotationServiceError(
                         f"标注保存失败且原文件恢复失败: {rollback_error}"
                     ) from error
@@ -709,6 +793,12 @@ class AnnotationService:
         except SampleRepositoryError as error:
             raise AnnotationServiceError(f"标注异常状态写入失败: {error}") from error
 
+    def _debug(self, event: str, **fields: object) -> None:
+        """将服务阶段写入旁路日志；日志不可用时保存流程仍照常执行。"""
+
+        if self.debug_log is not None:
+            self.debug_log.record(event, dataset_id=self.dataset_id, **fields)
+
 
 class AnnotationHistory:
     """保存当前图片至多 100 个用户操作节点。"""
@@ -756,8 +846,13 @@ class AnnotationHistory:
 class AnnotationAutosaveService:
     """使用单线程串行保存不可变文档版本，旧结果不会覆盖新状态。"""
 
-    def __init__(self, service: AnnotationService) -> None:
+    def __init__(
+        self,
+        service: AnnotationService,
+        debug_log: AnnotationDebugLog | None = None,
+    ) -> None:
         self.service = service
+        self.debug_log = debug_log
         self._executor = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="datumdock-annotation"
         )
@@ -794,6 +889,13 @@ class AnnotationAutosaveService:
                     checkpoint.document_version,
                     checkpoint.disk_sha256,
                 )
+        self._debug(
+            "自动保存登记加载检查点",
+            sample_id=checkpoint.sample_id,
+            document_version=checkpoint.document_version,
+            disk_sha=short_digest(checkpoint.disk_sha256),
+            label_revision=checkpoint.label_set_revision,
+        )
 
     def submit(self, request: AnnotationSaveRequest) -> Future[AnnotationSaveResult]:
         """排入最新快照；执行顺序与用户操作顺序完全一致。"""
@@ -818,6 +920,17 @@ class AnnotationAutosaveService:
             self._failure = None
             future = self._executor.submit(self._save_with_rebase, immutable)
             self._latest_future = future
+        self._debug(
+            "自动保存请求已入队",
+            request_id=immutable.request_id,
+            sample_id=immutable.sample_id,
+            requested_version=immutable.document_version,
+            base_version=immutable.base_document_version,
+            expected_sha=short_digest(immutable.expected_disk_sha256),
+            label_revision=immutable.label_set_revision,
+            edit_kind=immutable.edit_kind,
+            shape_count=len(immutable.document.rectangles),
+        )
         future.add_done_callback(lambda completed: self._finish(immutable, completed))
         return future
 
@@ -853,6 +966,14 @@ class AnnotationAutosaveService:
             request.shape_id,
             request.label_set_revision,
         )
+        self._debug(
+            "自动保存重试最新快照",
+            request_id=request.request_id,
+            sample_id=request.sample_id,
+            requested_version=request.document_version,
+            disk_version=loaded.document.document_version if loaded.document else None,
+            disk_sha=short_digest(loaded.disk_sha256),
+        )
         return self.submit(rebased)
 
     def close(self) -> None:
@@ -871,6 +992,19 @@ class AnnotationAutosaveService:
                     self._state = AutosaveState.FAILED
                     self._error = str(error)
                     self._failure = _classify_save_failure(error, request, self.service)
+                    failure = self._failure
+                    self._debug(
+                        "自动保存请求失败",
+                        request_id=request.request_id,
+                        sample_id=request.sample_id,
+                        requested_version=request.document_version,
+                        failure_kind=failure.kind,
+                        current_version=failure.current_version,
+                        current_sha=short_digest(failure.current_disk_sha256),
+                        exception_type=failure.exception_type,
+                        exception_chain=failure.exception_chain,
+                        recovery_required=failure.recovery_required,
+                    )
                 return
             previous = self._saved_by_sample.get(request.sample_id, (-1, ""))
             if request.document_version >= previous[0]:
@@ -882,6 +1016,15 @@ class AnnotationAutosaveService:
                 self._state = AutosaveState.SAVED
                 self._error = ""
                 self._failure = None
+            self._debug(
+                "自动保存请求完成",
+                request_id=request.request_id,
+                sample_id=request.sample_id,
+                saved_version=result.saved_version,
+                json_sha=short_digest(result.json_sha256),
+                review_status=result.review_status,
+                is_latest=self._is_latest_request(request),
+            )
 
     def _save_with_rebase(self, request: AnnotationSaveRequest) -> AnnotationSaveResult:
         """同一队列的后续版本以上一个成功摘要为并发前提。"""
@@ -891,6 +1034,15 @@ class AnnotationAutosaveService:
                 request.sample_id,
                 (-1, ""),
             )
+        self._debug(
+            "自动保存准备重建检查点",
+            request_id=request.request_id,
+            sample_id=request.sample_id,
+            requested_version=request.document_version,
+            requested_base=request.base_document_version,
+            cached_version=previous_version,
+            cached_sha=short_digest(previous_digest),
+        )
         if previous_version >= 0 and request.document_version > previous_version:
             request = AnnotationSaveRequest(
                 request.dataset_id,
@@ -915,6 +1067,12 @@ class AnnotationAutosaveService:
                     result.json_sha256,
                 )
         return result
+
+    def _debug(self, event: str, **fields: object) -> None:
+        """记录串行队列时序，旁路失败不会改变队列状态。"""
+
+        if self.debug_log is not None:
+            self.debug_log.record(event, dataset_id=self.service.dataset_id, **fields)
 
     def _is_latest_request(self, request: AnnotationSaveRequest) -> bool:
         """样本 ID 与版本都一致时，完成结果才可更新当前状态栏。"""

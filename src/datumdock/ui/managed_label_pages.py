@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from PySide6.QtCore import QSize, Signal
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QColorDialog,
     QComboBox,
     QDialog,
@@ -178,6 +179,7 @@ class ManagedLabelPage(QWidget):
         self.dataset_id = dataset_id
         self.icons = IconRegistry(resource_root())
         self.labels: tuple[Label, ...] = ()
+        self._refreshing_table = False
         root = QVBoxLayout(self)
         root.setContentsMargins(24, 20, 24, 24)
         self.header = PageHeader(locale, "page.labels.title", "page.labels.subtitle")
@@ -215,12 +217,18 @@ class ManagedLabelPage(QWidget):
         self.table.setColumnCount(7)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.table.setEditTriggers(
+            QAbstractItemView.EditTrigger.DoubleClicked
+            | QAbstractItemView.EditTrigger.EditKeyPressed
+            | QAbstractItemView.EditTrigger.SelectedClicked
+        )
+        self.table.setMouseTracking(True)
         self.table.verticalHeader().setVisible(False)
         header = self.table.horizontalHeader()
         for column in (0, 1, 2, 4, 5, 6):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        self.table.cellDoubleClicked.connect(lambda _row, _column: self._edit())
+        self.table.itemChanged.connect(self._save_inline_edit)
         root.addWidget(self.table, 1)
         self.retranslate_ui()
         self.refresh()
@@ -230,31 +238,101 @@ class ManagedLabelPage(QWidget):
         return self.labels[row] if 0 <= row < len(self.labels) else None
 
     def refresh(self) -> None:
+        selected = self.selected_label()
+        selected_id = selected.id if selected is not None else None
         self.labels = self.gateway.list_labels(
             self.dataset_id,
             self.search.text(),
             include_archived=True,
         )
         usages = {usage.label_id: usage for usage in self.gateway.label_usages(self.dataset_id)}
-        self.table.setRowCount(len(self.labels))
-        for row, label in enumerate(self.labels):
-            usage = usages.get(label.id)
-            values = (
-                str(label.class_id),
-                label.name,
-                label.alias,
-                label.description,
-                str(usage.image_count if usage else 0),
-                label.color,
-                tr(self.locale, f"label.status.{label.status.value}"),
+        self._refreshing_table = True
+        self.table.blockSignals(True)
+        try:
+            self.table.setRowCount(len(self.labels))
+            selected_row = 0
+            for row, label in enumerate(self.labels):
+                usage = usages.get(label.id)
+                values = (
+                    str(label.class_id),
+                    label.name,
+                    label.alias,
+                    label.description,
+                    str(usage.image_count if usage else 0),
+                    label.color,
+                    tr(self.locale, f"label.status.{label.status.value}"),
+                )
+                for column, value in enumerate(values):
+                    item = QTableWidgetItem(value)
+                    item.setData(Qt.ItemDataRole.UserRole, label.id)
+                    if column in {4, 6}:
+                        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                    if column == 5:
+                        item.setBackground(QColor(label.color))
+                    self.table.setItem(row, column, item)
+                if label.id == selected_id:
+                    selected_row = row
+            if self.labels:
+                self.table.selectRow(selected_row)
+        finally:
+            self.table.blockSignals(False)
+            self._refreshing_table = False
+
+    def _save_inline_edit(self, item: QTableWidgetItem) -> None:
+        """单元格提交即写入标签集，失败时从磁盘事实恢复整行。"""
+
+        if self._refreshing_table or item.column() not in {0, 1, 2, 3, 5}:
+            return
+        label_id = str(item.data(Qt.ItemDataRole.UserRole) or "")
+        try:
+            label_set = self.gateway.get_label_set(self.dataset_id)
+            current = label_set.get_label(label_id)
+            row = item.row()
+            class_id = int(self.table.item(row, 0).text().strip())
+            name = self.table.item(row, 1).text().strip()
+            alias = self.table.item(row, 2).text().strip()
+            description = self.table.item(row, 3).text()
+            color = self.table.item(row, 5).text().strip()
+            if name != current.name or class_id != current.class_id:
+                preview = self.gateway.preview_label_change(
+                    self.dataset_id,
+                    current.id,
+                    name=name,
+                    class_id=class_id,
+                )
+                answer = QMessageBox.question(
+                    self,
+                    tr(self.locale, "label.migration.title"),
+                    tr(self.locale, "label.migration.confirm").format(
+                        images=preview.affected_images,
+                        shapes=preview.affected_shapes,
+                    ),
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if answer != QMessageBox.StandardButton.Yes:
+                    self.refresh()
+                    return
+                label_set = self.gateway.apply_label_change(preview).label_set
+            display_changed = (
+                alias != current.alias
+                or description.strip() != current.description
+                or color.casefold() != current.color.casefold()
             )
-            for column, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                if column == 5:
-                    item.setBackground(QColor(label.color))
-                self.table.setItem(row, column, item)
-        if self.labels:
-            self.table.selectRow(0)
+            if display_changed:
+                self.gateway.update_label_display(
+                    self.dataset_id,
+                    current.id,
+                    alias=alias,
+                    description=description,
+                    synonyms=tuple(current.synonyms),
+                    color=color,
+                    expected_revision=label_set.revision,
+                )
+            self.refresh()
+        except (ManagedLabelError, KeyError, TypeError, ValueError) as error:
+            QMessageBox.warning(self, tr(self.locale, "page.labels.title"), str(error))
+            self.refresh()
 
     def retranslate_ui(self) -> None:
         self.header.retranslate_ui()

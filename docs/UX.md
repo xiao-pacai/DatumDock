@@ -291,11 +291,14 @@
 - 小窗允许用户拖动边缘或四角自由调整大小，并设置保证搜索框、至少一个完整标签卡片和底部操作可用的最小尺寸；不得放大到当前可用屏幕区域之外。本轮暂不决定是否跨会话记忆窗口尺寸。
 - 标签卡片使用响应式流式网格：窗口变宽时同一行显示更多标签，变窄时自动减少列数并换行；标签卡片不得因缩窄而重叠或裁切。内容超过可视高度时只滚动中部标签区，顶部搜索和底部按钮保持可见，不提供横向滚动条。
 - 每个标签卡片至少显示颜色、中文别名和英文训练名；空间充足时增加简短描述，空间不足时通过 tooltip 或详情区显示完整描述。当前标签和准备选择的标签都必须有勾选、边框或文字状态，不能只靠颜色区分。
+- 鼠标移入画布矩形、标签卡片、候选项、右侧当前标注行或标签管理表格行时，使用轻微填充增强、浅蓝背景、细品牌边框或轻微阴影提供即时但克制的反馈；移出后恢复，不改变卡片尺寸、矩形坐标或文字位置。
+- hover、键盘焦点和已选中状态必须能同时区分。已选中状态使用更明确的背景、勾选或左侧指示条，优先级高于 hover；键盘焦点使用清晰焦点环，保证不用鼠标也能知道当前候选。
+- 归档、只读或禁用标签降低视觉强调并使用对应指针/说明，不显示虚假可点击 hover。悬停与焦点只改变界面绘制，不修改标注、不更新最近标签，也不产生自动保存、历史或复核变化。
 - 搜索应在输入时即时过滤，覆盖中文别名、英文训练名、同义词和描述；无结果时显示“没有匹配标签”和“新建标签”入口。`Ctrl+F` 可聚焦搜索框，方向键可移动候选，`Enter` 选择/确认，`Esc` 取消并关闭。
 - 点击“新建标签”可在该小窗内展开快速创建表单，或打开其上的轻量二级窗；字段、唯一性和颜色冲突规则必须与完整标签管理页一致，不能创建临时字符串标签。创建成功的新标签立即出现在候选区并成为准备选择项。
 - 用户点击“确认”后才把准备选择的标签应用到当前矩形，并形成一个历史节点和一次自动保存；点击“取消”、关闭窗口或按 `Esc` 时，当前矩形保持原标签不变。
 - 成功创建矩形或确认标签改派后更新当前数据集的最近使用标签。打开/搜索/浏览后取消、零面积框、失败保存和只读 shape 不更新；切换数据集时分别恢复各自的会话状态，不能把另一数据集的标签带入。
-- “新建标签成功后再取消更改标签”时，新建的数据集标签是否保留，仍需在统一实施前最终确认；实现前必须在弹窗文案和事务边界中明确这一点。
+- “新建标签成功后再取消更改标签”时，新建的数据集标签继续保留；标签定义保存与矩形改派是两个独立事务，取消外层窗口只取消尚未确认的改派。
 - 若标签被归档，已有标注仍能正确显示；新建标注默认不再提供该标签。
 - 用户编辑英文训练名或类别 ID 时，弹出迁移确认对话框：显示旧值、新值、当前数据集内受影响的样本数和标注数；确认前不写入任何数据。
 - 迁移进行中显示总进度、当前文件和失败信息；完成后刷新标签表、画布、筛选结果和当前标注文案。
@@ -338,9 +341,13 @@
 
 ## 12. 自动保存与待处理状态
 
-- 标注创建、移动、缩放、删除、标签修改、撤销和重做后立即触发原子自动保存；状态栏显示“正在保存”与“已保存”。
+- 标签定义和图片标注都采用“有效变更提交即保存”。标签管理中的新增、编辑、归档、恢复和安全显示字段修改，在合法表单提交后立即原子保存；矩形创建、移动、缩放、删除、标签替换以及实际改变文档的撤销/重做，在操作结束后立即提交一个不可变自动保存快照。正常保存不依赖切图、离开页面、关闭窗口或手动按 `Ctrl+S`。
+- 拖动过程中只更新画布预览，鼠标释放时提交一次；搜索、选中、悬停、打开后取消标签窗口、零面积矩形或没有实际变化的释放不保存。状态栏从请求入队起显示“正在保存”，仅在文件与 SQLite 真实提交并回读验证后显示“已保存”。
+- “待复核”只允许由模型自动标注写入。纯人工创建的标注在首次保存成功后显示“已完成”；待复核图片发生新增、移动、缩放、删除、撤销/重做或标签替换等有效人工修改时，标注与“已完成”在同一次保存中提交。
 - 自动保存失败时，当前文档进入待处理状态；切换图片或关闭窗口时，提供“重试保存 / 放弃内存修改 / 取消”三个选择。
 - 保存失败状态栏必须可以点击打开详情，显示失败类型、请求 ID、数据集/样本/shape、编辑类型、版本、摘要、标签修订、异常链和恢复状态。只有真实 `PermissionError` 才能显示权限原因；版本冲突和外部修改不得提供危险的直接覆盖重试。
+- 实机连续切图保存问题定位期间，保存详情同时显示临时日志的绝对路径。普通模式日志只记录版本、摘要前缀、请求代号和提交阶段，不记录图片内容；预览模式不得创建日志。日志开关是临时诊断措施，不作为长期用户功能或保存成功条件。
+- 用户选择另一张图片后，上一张图片的画布立即结束编辑并进入轻量加载状态；新图片与标注文档尚未同时就绪前，矩形、改派、删除、撤销和重做均不可触发。加载完成后一次性恢复画布与右侧标注列表，不能让用户在视觉残留上产生跨样本编辑。
 - 快速标签窗口中新建标签后，外层候选列表与标签集修订号必须同步刷新，用户可直接确认改派，无需关闭并重新打开数据集。若其他窗口恰好并发修改标签集，则显示“标签集已发生变化”，要求刷新标签，而不是提示检查磁盘权限。
 - `Ctrl+S` 始终可用于立即重试保存；成功后状态栏显示“已保存”，失败信息必须保留到用户处理。
 
@@ -368,4 +375,6 @@
 
 ## English Summary
 
-The UX now distinguishes existing icon assets from complete UI integration. The DD application icon and part of the navigation/tool icon set are connected, while home navigation, top workbench actions, dataset cards, and some dialogs still require semantic IconRegistry bindings, accessible tooltips, and DPI visual verification. Desktop and Start-menu icons remain installer-stage deliverables.
+The UX treats every valid label-related submission as an immediate save boundary. Label cards, candidates, annotation rows, and label-table rows also provide subtle hover feedback, while selected and keyboard-focused states remain stronger and accessible. Hover changes only presentation and never updates data, recent labels, history, autosave, or review state.
+
+The real-machine log identified a cross-sample race during asynchronous switching. A stale canvas is now read-only until the target image and annotation are accepted together, and a bounded temporary log remains available for confirmation. Logging never determines save success and remains disabled in preview mode.

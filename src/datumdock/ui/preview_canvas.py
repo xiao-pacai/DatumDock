@@ -220,6 +220,14 @@ class PreviewAnnotationCanvas(QWidget):
         self._refresh_cursor(reset=True)
         self.update()
 
+    def begin_managed_load(self) -> None:
+        """清除上一张受管图片并锁定交互，直到新图片与标注一起加载完成。"""
+
+        self.clear_preview()
+        self.managed_read_only = True
+        self._refresh_cursor(reset=True)
+        self.update()
+
     def load_managed_image(
         self,
         image: ImageItemViewData,
@@ -454,8 +462,14 @@ class PreviewAnnotationCanvas(QWidget):
             )
         )
         painter.drawRect(image_rect)
+        hovered_id = self._hovered_annotation_id()
         for annotation in self.annotations:
-            self._paint_annotation(painter, annotation, annotation.id == self.selected_id)
+            self._paint_annotation(
+                painter,
+                annotation,
+                annotation.id == self.selected_id,
+                annotation.id == hovered_id,
+            )
         if self._temporary is not None:
             draft_fill = QColor(THEME.tokens.brand_primary)
             draft_fill.setAlpha(THEME.tokens.annotation_fill_alpha)
@@ -792,8 +806,9 @@ class PreviewAnnotationCanvas(QWidget):
         painter: QPainter,
         annotation: AnnotationItemViewData,
         selected: bool,
+        hovered: bool,
     ) -> None:
-        """绘制标签色矩形、名称浮层、置信度和选中控制柄。"""
+        """绘制标签框；悬停只增强视觉，不修改任何标注状态。"""
 
         label = self.labels.get(annotation.label_id)
         if label is None:
@@ -801,15 +816,29 @@ class PreviewAnnotationCanvas(QWidget):
         rect = self._annotation_rect(annotation)
         color = QColor(label.color)
         fill = QColor(color)
-        fill.setAlpha(THEME.tokens.annotation_fill_alpha)
+        if selected and hovered:
+            fill_alpha = THEME.tokens.annotation_selected_hover_fill_alpha
+        elif hovered:
+            fill_alpha = THEME.tokens.annotation_hover_fill_alpha
+        elif selected:
+            fill_alpha = THEME.tokens.annotation_selected_fill_alpha
+        else:
+            fill_alpha = THEME.tokens.annotation_fill_alpha
+        fill.setAlpha(fill_alpha)
         border = QColor(color)
-        border.setAlpha(THEME.tokens.annotation_border_alpha)
+        border.setAlpha(
+            THEME.tokens.annotation_hover_border_alpha
+            if hovered
+            else THEME.tokens.annotation_border_alpha
+        )
         painter.setBrush(fill)
         painter.setPen(
             QPen(
                 border,
                 THEME.tokens.annotation_selected_line_width
                 if selected
+                else THEME.tokens.annotation_hover_line_width
+                if hovered
                 else THEME.tokens.annotation_line_width,
             )
         )
@@ -1014,6 +1043,18 @@ class PreviewAnnotationCanvas(QWidget):
             if self._annotation_rect(item).adjusted(-4, -4, 4, 4).contains(point):
                 return item
         return None
+
+    def _hovered_annotation_id(self) -> str | None:
+        """返回指针下可见矩形；查询过程没有领域数据副作用。"""
+
+        if self._hover_point is None or self.image is None:
+            return None
+        if self._middle_panning or self._left_panning:
+            return None
+        if not self._image_rect().contains(self._hover_point):
+            return None
+        hovered = self._shape_at(self._hover_point)
+        return hovered.id if hovered is not None else None
 
     def _handle_points(self, rect: QRectF) -> dict[str, QPointF]:
         return {

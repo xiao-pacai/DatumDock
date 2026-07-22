@@ -196,6 +196,101 @@ def test_imported_rectangle_double_click_reassigns_and_next_box_uses_recent_labe
     gateway.close()
 
 
+def test_reassigning_second_sample_keeps_selection_and_saves_that_sample(
+    qtbot,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """刷新标签快照不能重置图片列表，更不能把第二张的改派丢弃。"""
+
+    library = DatasetLibraryService(tmp_path / "library")
+    dataset = library.create_dataset("第二张改派").dataset
+    labels = LabelSetService(library).add_label(
+        dataset.id, class_id=0, name="test1", alias="测试一"
+    )
+    first_label = labels.labels[-1]
+    labels = LabelSetService(library).add_label(
+        dataset.id, class_id=1, name="test2", alias="测试二"
+    )
+    second_label = labels.labels[-1]
+    source = tmp_path / "external"
+    source.mkdir()
+    for index, color in enumerate(((90, 120, 150), (150, 120, 90)), start=1):
+        image = source / f"image_{index:06d}.png"
+        Image.new("RGB", (320, 180), color).save(image)
+        (source / f"image_{index:06d}.json").write_text(
+            json.dumps(
+                {
+                    "version": "5.5.0",
+                    "flags": {},
+                    "shapes": [
+                        {
+                            "label": first_label.name,
+                            "points": [[30, 25], [150, 120]],
+                            "shape_type": "rectangle",
+                        }
+                    ],
+                    "imagePath": image.name,
+                    "imageData": None,
+                    "imageHeight": 180,
+                    "imageWidth": 320,
+                }
+            ),
+            encoding="utf-8",
+        )
+    interop = XAnyLabelingInteropService(library, dataset.id)
+    preflight = interop.preflight_import(XAnyImportPreflightRequest(dataset.id, source))
+    imported = interop.commit_import(XAnyImportCommitRequest(dataset.id, preflight, {}))
+    assert len(imported.imported_sample_ids) == 2
+
+    gateway = ManagedDatasetGateway(library)
+    window = ApplicationShell(LocaleService(), gateway)
+    qtbot.addWidget(window)
+    window.resize(1440, 900)
+    window.show()
+    window.navigate(f"annotation_workspace:{dataset.id}")
+    workspace = window.navigation.pages[RouteId.ANNOTATION_WORKSPACE]
+    assert isinstance(workspace, AnnotationWorkspace)
+    qtbot.waitUntil(lambda: workspace.sample_model is not None, timeout=5000)
+    assert workspace.sample_model is not None
+    second_sample = workspace.sample_model.sample_at(1)
+    assert second_sample is not None
+    workspace.image_list.setCurrentIndex(workspace.sample_model.index(1))
+    qtbot.waitUntil(
+        lambda: (
+            workspace._annotation_document is not None
+            and workspace._annotation_document.sample_id == second_sample.id
+            and len(workspace.canvas.annotations) == 1
+        ),
+        timeout=5000,
+    )
+
+    def choose_second_label(dialog: QuickLabelSelectorDialog) -> QDialog.DialogCode:
+        dialog.selected_label_id = second_label.id
+        return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(QuickLabelSelectorDialog, "exec", choose_second_label)
+    queued_requests = []
+    original_queue = gateway.queue_annotation_save
+
+    def record_save(request):
+        queued_requests.append(request)
+        return original_queue(request)
+
+    monkeypatch.setattr(gateway, "queue_annotation_save", record_save)
+    workspace._request_shape_reassignment(workspace.canvas.annotations[0].id)
+
+    assert workspace.current_image_id == second_sample.id
+    assert workspace.image_list.currentIndex().row() == 1
+    qtbot.waitUntil(lambda: len(queued_requests) == 1, timeout=3000)
+    _wait_annotation_saved(qtbot, gateway, dataset.id, "第二张标签改派保存")
+    reopened = gateway.load_annotation(dataset.id, second_sample.id)
+    assert reopened.document is not None
+    assert reopened.document.rectangles[0].label_id == second_label.id
+    assert len(queued_requests) == 1
+    gateway.close()
+
+
 def test_quick_created_label_refreshes_revision_before_reassignment(
     qtbot,
     monkeypatch: pytest.MonkeyPatch,

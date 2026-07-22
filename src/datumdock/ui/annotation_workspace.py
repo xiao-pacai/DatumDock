@@ -100,7 +100,16 @@ class _ImageLoadJob(QRunnable):
                 self.sample_id,
                 (asset, annotation),
             )
-        except Exception:
+        except Exception as error:
+            if hasattr(self.gateway, "record_annotation_debug"):
+                self.gateway.record_annotation_debug(
+                    "工作台后台图片加载异常",
+                    dataset_id=self.dataset_id,
+                    sample_id=self.sample_id,
+                    generation=self.generation,
+                    exception_type=error.__class__.__name__,
+                    error=str(error),
+                )
             self.signals.failed.emit(self.generation, self.sample_id)
 
 
@@ -139,12 +148,14 @@ class AnnotationWorkspace(QWidget):
         self._image_generation = 0
         self._image_jobs: set[_ImageLoadJob] = set()
         self._managed_sample: DatasetSample | None = None
+        self._loading_sample_id: str | None = None
+        self._loaded_sample_id: str | None = None
         self._annotation_load: AnnotationLoadResult | None = None
         self._annotation_document: AnnotationDocument | None = None
         self._annotation_disk_sha256 = ""
         self._annotation_label_set_revision = snapshot.label_set_revision
         self._save_future = None
-        self._pending_recent_labels: dict[int, str] = {}
+        self._pending_recent_labels: dict[tuple[str, int], str] = {}
         self._pending_navigation_target: WorkspaceNavigationTarget | None = None
         self._build_ui()
         self.action_bindings = ActionBindingManager(self.action_registry, self)
@@ -398,6 +409,7 @@ class AnnotationWorkspace(QWidget):
         layout.addWidget(self._panel_heading(self.annotation_title, self.annotation_collapse))
         self.annotation_list = QListWidget()
         self.annotation_list.setAlternatingRowColors(True)
+        self.annotation_list.setMouseTracking(True)
         self.annotation_list.currentItemChanged.connect(self._on_annotation_selected)
         self.annotation_list.itemDoubleClicked.connect(self._on_annotation_double_clicked)
         layout.addWidget(self.annotation_list, 1)
@@ -591,6 +603,7 @@ class AnnotationWorkspace(QWidget):
             tr(self.locale, "workspace.empty_canvas_body"),
         )
         current_status = self.status_combo.currentData()
+        self.status_combo.blockSignals(True)
         self.status_combo.clear()
         self.status_combo.addItem(tr(self.locale, "workspace.all_status"), None)
         statuses = (
@@ -605,6 +618,7 @@ class AnnotationWorkspace(QWidget):
             if self.status_combo.itemData(index) == current_status:
                 self.status_combo.setCurrentIndex(index)
                 break
+        self.status_combo.blockSignals(False)
         current_sort = self.sort_combo.currentData()
         self.sort_combo.blockSignals(True)
         self.sort_combo.clear()
@@ -620,35 +634,7 @@ class AnnotationWorkspace(QWidget):
                 self.sort_combo.setCurrentIndex(index)
                 break
         self.sort_combo.blockSignals(False)
-        current_label = self.label_combo.currentData()
-        self.label_combo.blockSignals(True)
-        self.label_combo.clear()
-        for label in self.snapshot.labels:
-            if not label.archived:
-                self.label_combo.addItem(f"{label.alias} · {label.name}", label.id)
-                self.label_combo.setItemData(
-                    self.label_combo.count() - 1,
-                    label.description,
-                    Qt.ItemDataRole.ToolTipRole,
-                )
-        for index in range(self.label_combo.count()):
-            if self.label_combo.itemData(index) == current_label:
-                self.label_combo.setCurrentIndex(index)
-                break
-        self.label_combo.setPlaceholderText(tr(self.locale, "canvas.label"))
-        self.label_combo.blockSignals(False)
-        self.canvas.set_current_label(self.label_combo.currentData())
-        current_filter = self.label_filter_combo.currentData()
-        self.label_filter_combo.blockSignals(True)
-        self.label_filter_combo.clear()
-        self.label_filter_combo.addItem(tr(self.locale, "label.filter_all"), None)
-        for label in self.snapshot.labels:
-            self.label_filter_combo.addItem(f"{label.alias} · {label.name}", label.id)
-        for index in range(self.label_filter_combo.count()):
-            if self.label_filter_combo.itemData(index) == current_filter:
-                self.label_filter_combo.setCurrentIndex(index)
-                break
-        self.label_filter_combo.blockSignals(False)
+        self._refresh_label_controls()
         current_annotation_filter = self.annotation_filter_combo.currentData()
         self.annotation_filter_combo.blockSignals(True)
         self.annotation_filter_combo.clear()
@@ -743,6 +729,45 @@ class AnnotationWorkspace(QWidget):
         self._rebuild_images()
         self._update_status_bar()
 
+    def _refresh_label_controls(self) -> None:
+        """只刷新标签相关控件，不触发样本查询、翻页或导航。"""
+
+        current_label = self.label_combo.currentData()
+        self.label_combo.blockSignals(True)
+        self.label_combo.clear()
+        for label in self.snapshot.labels:
+            if not label.archived:
+                self.label_combo.addItem(f"{label.alias} · {label.name}", label.id)
+                self.label_combo.setItemData(
+                    self.label_combo.count() - 1,
+                    label.description,
+                    Qt.ItemDataRole.ToolTipRole,
+                )
+        for index in range(self.label_combo.count()):
+            if self.label_combo.itemData(index) == current_label:
+                self.label_combo.setCurrentIndex(index)
+                break
+        self.label_combo.setPlaceholderText(tr(self.locale, "canvas.label"))
+        self.label_combo.blockSignals(False)
+        self.canvas.set_current_label(self.label_combo.currentData())
+
+        current_filter = self.label_filter_combo.currentData()
+        self.label_filter_combo.blockSignals(True)
+        self.label_filter_combo.clear()
+        self.label_filter_combo.addItem(tr(self.locale, "label.filter_all"), None)
+        for label in self.snapshot.labels:
+            self.label_filter_combo.addItem(f"{label.alias} · {label.name}", label.id)
+        for index in range(self.label_filter_combo.count()):
+            if self.label_filter_combo.itemData(index) == current_filter:
+                self.label_filter_combo.setCurrentIndex(index)
+                break
+        self.label_filter_combo.blockSignals(False)
+
+        has_active_labels = any(not label.archived for label in self.snapshot.labels)
+        self.tool_buttons["rectangle"].setEnabled(has_active_labels)
+        if not has_active_labels:
+            self.tool_buttons["rectangle"].setToolTip(tr(self.locale, "canvas.no_label"))
+
     def _initialize_managed_browser(self) -> None:
         """普通模式装配分页模型，并启用真实矩形标注工具。"""
 
@@ -790,10 +815,26 @@ class AnnotationWorkspace(QWidget):
             target_row = 0
         if target_row >= 0:
             index = self.sample_model.index(target_row)
-            self.image_list.setCurrentIndex(index)
+            sample = self.sample_model.sample_at(target_row)
+            if (
+                sample is not None
+                and sample.id == self.current_image_id
+                and self.image_list.currentIndex() == index
+            ):
+                # 模型刷新后索引位置可能未变化，此时 Qt 不会再发 currentChanged；
+                # 仍需用新 SQLite 行刷新复核状态和列表摘要。
+                self._managed_sample = sample
+                self._set_review_combo(sample.review_status)
+                self._update_status_bar()
+            else:
+                self.image_list.setCurrentIndex(index)
         elif not self.sample_model.rowCount():
             self._managed_sample = None
             self.current_image_id = None
+            self._loading_sample_id = None
+            self._loaded_sample_id = None
+            self._annotation_load = None
+            self._annotation_document = None
             self.canvas.clear_preview()
             self._update_status_bar()
 
@@ -915,24 +956,86 @@ class AnnotationWorkspace(QWidget):
         sample = self.sample_model.sample_at(current.row())
         if sample is None:
             return
+        self._record_annotation_debug(
+            "工作台请求切换图片",
+            previous_sample_id=self.current_image_id,
+            target_sample_id=sample.id,
+            current_row=current.row(),
+            previous_row=previous.row(),
+            loaded_sample_id=self._loaded_sample_id,
+            loading_sample_id=self._loading_sample_id,
+        )
+        if sample.id == self.current_image_id:
+            # 列表模型刷新可替换同一 UUID 的行对象；即使不重启图片 I/O，
+            # 也必须采用新的复核状态、框数和健康摘要。
+            self._managed_sample = sample
+            if self._loading_sample_id == sample.id:
+                self._set_review_combo(sample.review_status)
+                self._update_status_bar()
+                self._record_annotation_debug(
+                    "工作台忽略重复的在途图片选择",
+                    sample_id=sample.id,
+                    generation=self._image_generation,
+                )
+                return
+            if self._loaded_sample_id == sample.id and self._managed_canvas_identity_is_current():
+                self._set_review_combo(sample.review_status)
+                self._update_status_bar()
+                self._record_annotation_debug(
+                    "工作台复用已经加载的当前图片",
+                    sample_id=sample.id,
+                    generation=self._image_generation,
+                )
+                return
         if (
             previous.isValid()
-            and self.current_image_id is not None
-            and sample.id != self.current_image_id
+            and self._loaded_sample_id is not None
+            and sample.id != self._loaded_sample_id
             and not self.prepare_to_leave()
         ):
+            self._record_annotation_debug(
+                "工作台切图被保存保护阻止",
+                previous_sample_id=self.current_image_id,
+                target_sample_id=sample.id,
+            )
             self.image_list.setCurrentIndex(previous)
             return
         self._managed_sample = sample
         self.current_image_id = sample.id
         if hasattr(self, "delete_action"):
             self.delete_action.setEnabled(True)
+        self._begin_managed_image_load(sample)
         self._start_managed_image_load(sample)
         self._rebuild_annotations()
         self._update_status_bar()
 
+    def _begin_managed_image_load(self, sample: DatasetSample) -> None:
+        """先撤销旧画布的编辑资格，再启动目标样本的异步读取。"""
+
+        self._loading_sample_id = sample.id
+        self._loaded_sample_id = None
+        self._annotation_load = None
+        self._annotation_document = None
+        self._annotation_disk_sha256 = ""
+        self._annotation_label_set_revision = self.snapshot.label_set_revision
+        self.selected_shape_id = None
+        self.canvas.begin_managed_load()
+        self._record_annotation_debug(
+            "工作台锁定画布等待图片加载",
+            sample_id=sample.id,
+            generation=self._image_generation + 1,
+        )
+
     def _start_managed_image_load(self, sample: DatasetSample) -> None:
         self._image_generation += 1
+        self._record_annotation_debug(
+            "工作台启动图片加载",
+            sample_id=sample.id,
+            generation=self._image_generation,
+            sqlite_version=sample.annotation_version,
+            annotation_state=sample.annotation_state,
+            review_status=sample.review_status,
+        )
         job = _ImageLoadJob(
             self.gateway,
             self.snapshot.dataset.id,
@@ -949,10 +1052,28 @@ class AnnotationWorkspace(QWidget):
         QThreadPool.globalInstance().start(job)
 
     def _managed_image_ready(self, generation: int, sample_id: str, payload) -> None:
-        if generation != self._image_generation or sample_id != self.current_image_id:
+        if (
+            generation != self._image_generation
+            or sample_id != self.current_image_id
+            or sample_id != self._loading_sample_id
+        ):
+            self._record_annotation_debug(
+                "工作台丢弃迟到图片结果",
+                sample_id=sample_id,
+                result_generation=generation,
+                current_generation=self._image_generation,
+                current_sample_id=self.current_image_id,
+                loading_sample_id=self._loading_sample_id,
+            )
             return
         sample = self._managed_sample
-        if sample is None:
+        if sample is None or sample.id != sample_id:
+            self._record_annotation_debug(
+                "工作台图片结果缺少当前样本",
+                sample_id=sample_id,
+                generation=generation,
+                managed_sample_id=(sample.id if sample is not None else None),
+            )
             return
         asset, annotation_load = payload
         incoming_document = annotation_load.document
@@ -964,23 +1085,28 @@ class AnnotationWorkspace(QWidget):
         ):
             # 较早启动的同图加载可能在人工编辑后才返回；低版本结果绝不能
             # 覆盖已经排入自动保存队列的较新内存文档。
+            self._record_annotation_debug(
+                "工作台丢弃低版本标注结果",
+                sample_id=sample_id,
+                generation=generation,
+                memory_version=self._annotation_document.document_version,
+                loaded_version=incoming_document.document_version,
+            )
             return
-        self._annotation_load = annotation_load
-        self._annotation_document = (
+        candidate_document = (
             annotation_load.document.model_copy(deep=True)
             if annotation_load.document is not None
             else None
         )
-        self._annotation_disk_sha256 = annotation_load.disk_sha256
-        self._annotation_label_set_revision = (
+        candidate_label_revision = (
             annotation_load.checkpoint.label_set_revision
             if annotation_load.checkpoint is not None
             else 0
         )
         view = self._managed_view_data(sample)
         annotations = (
-            tuple(self._annotation_view(item) for item in self._annotation_document.rectangles)
-            if self._annotation_document is not None
+            tuple(self._annotation_view(item) for item in candidate_document.rectangles)
+            if candidate_document is not None
             else ()
         )
         if not self.canvas.load_managed_image(
@@ -990,8 +1116,33 @@ class AnnotationWorkspace(QWidget):
             annotations,
             editable=annotation_load.editable,
         ):
+            self.canvas.managed_read_only = True
+            self._loading_sample_id = None
+            self._loaded_sample_id = None
+            self._annotation_load = None
+            self._annotation_document = None
             self.message_requested.emit("toast.image_load_failed")
             return
+        self._annotation_load = annotation_load
+        self._annotation_document = candidate_document
+        self._annotation_disk_sha256 = annotation_load.disk_sha256
+        self._annotation_label_set_revision = candidate_label_revision
+        self._loaded_sample_id = sample_id
+        self._loading_sample_id = None
+        self._record_annotation_debug(
+            "工作台接受图片与标注结果",
+            sample_id=sample_id,
+            generation=generation,
+            document_version=(
+                self._annotation_document.document_version
+                if self._annotation_document is not None
+                else None
+            ),
+            disk_sha=self._annotation_disk_sha256[:16],
+            label_revision=self._annotation_label_set_revision,
+            editable=annotation_load.editable,
+            diagnostics=annotation_load.diagnostics,
+        )
         self._apply_recent_label()
         self._set_review_combo(annotation_load.review_status)
         self._rebuild_annotations()
@@ -1016,9 +1167,29 @@ class AnnotationWorkspace(QWidget):
             self._pending_navigation_target = None
 
     def _managed_image_failed(self, generation: int, sample_id: str) -> None:
-        if generation != self._image_generation or sample_id != self.current_image_id:
+        if (
+            generation != self._image_generation
+            or sample_id != self.current_image_id
+            or sample_id != self._loading_sample_id
+        ):
+            self._record_annotation_debug(
+                "工作台忽略迟到加载失败",
+                sample_id=sample_id,
+                result_generation=generation,
+                current_generation=self._image_generation,
+                current_sample_id=self.current_image_id,
+                loading_sample_id=self._loading_sample_id,
+            )
             return
+        self._record_annotation_debug(
+            "工作台当前图片加载失败",
+            sample_id=sample_id,
+            generation=generation,
+        )
         self.canvas.clear_preview()
+        self.canvas.managed_read_only = True
+        self._loading_sample_id = None
+        self._loaded_sample_id = None
         self._annotation_load = None
         self._annotation_document = None
         self._annotation_label_set_revision = 0
@@ -1279,10 +1450,25 @@ class AnnotationWorkspace(QWidget):
                 break
 
     def _on_canvas_changed(self, kind: str) -> None:
-        self._rebuild_annotations()
-        if not self.managed_mode or self._annotation_document is None:
+        if not self.managed_mode:
+            self._rebuild_annotations()
             self.message_requested.emit("workspace.saved")
             return
+        if not self._managed_canvas_identity_is_current():
+            self._record_annotation_debug(
+                "工作台阻止加载期间的旧画布编辑",
+                edit_kind=kind,
+                target_sample_id=self.current_image_id,
+                loaded_sample_id=self._loaded_sample_id,
+                document_sample_id=(
+                    self._annotation_document.sample_id
+                    if self._annotation_document is not None
+                    else None
+                ),
+                canvas_sample_id=(self.canvas.image.id if self.canvas.image is not None else None),
+            )
+            return
+        self._rebuild_annotations()
         # 人工编辑发生后，此前启动的同图读取都只能算旧请求；即使它们稍后
         # 完成，也不能把内存标注和保存基准回退到编辑前版本。
         self._image_generation += 1
@@ -1349,9 +1535,32 @@ class AnnotationWorkspace(QWidget):
 
         if not self.managed_mode or self.current_image_id is None:
             return
+        if not self._managed_canvas_identity_is_current(document):
+            self._record_annotation_debug(
+                "工作台拒绝跨样本自动保存请求",
+                edit_kind=edit_kind,
+                target_sample_id=self.current_image_id,
+                loaded_sample_id=self._loaded_sample_id,
+                document_sample_id=document.sample_id,
+                canvas_sample_id=(self.canvas.image.id if self.canvas.image is not None else None),
+                document_version=document.document_version,
+            )
+            return
+        # 标签页、快速新建或互操作可能在当前图片打开期间递增标签集修订号。
+        # 每次有效编辑都在入队前同步一次轻量修订检查，避免内容正确却因旧修订号失败。
+        revision_refresh = "unchanged"
+        try:
+            latest_label_set = self.gateway.get_label_set(self.snapshot.dataset.id)
+            if latest_label_set.revision != self._annotation_label_set_revision:
+                revision_refresh = (
+                    "refreshed" if self._refresh_managed_label_context() else "refresh_failed"
+                )
+        except Exception as error:
+            # 仍把请求交给保存服务生成结构化诊断，不能在页面层静默吞掉这次编辑。
+            revision_refresh = f"error:{error.__class__.__name__}:{error}"
         request = AnnotationSaveRequest(
             self.snapshot.dataset.id,
-            self.current_image_id,
+            document.sample_id,
             document.document_version,
             self._annotation_disk_sha256,
             document.model_copy(deep=True),
@@ -1361,9 +1570,23 @@ class AnnotationWorkspace(QWidget):
             shape_id=self.selected_shape_id,
             label_set_revision=self._annotation_label_set_revision,
         )
+        self._record_annotation_debug(
+            "工作台构造自动保存请求",
+            sample_id=document.sample_id,
+            request_id=request.request_id,
+            edit_kind=edit_kind,
+            document_version=document.document_version,
+            base_version=request.base_document_version,
+            disk_sha=self._annotation_disk_sha256[:16],
+            label_revision=self._annotation_label_set_revision,
+            label_revision_refresh=revision_refresh,
+            shape_count=len(document.rectangles),
+        )
         self._save_future = self.gateway.queue_annotation_save(request)
         if recent_label_id is not None:
-            self._pending_recent_labels[document.document_version] = recent_label_id
+            self._pending_recent_labels[(document.sample_id, document.document_version)] = (
+                recent_label_id
+            )
         self.save_label.setText(tr(self.locale, "canvas.saving"))
         self.save_label.setEnabled(False)
         self.save_poll_timer.start()
@@ -1385,12 +1608,44 @@ class AnnotationWorkspace(QWidget):
             failure = self.gateway.annotation_save_failure(self.snapshot.dataset.id)
             if failure is not None:
                 self.save_label.setToolTip(failure.message)
+                self._record_annotation_debug(
+                    "工作台收到自动保存失败",
+                    sample_id=failure.sample_id,
+                    request_id=failure.request_id,
+                    failure_kind=failure.kind,
+                    requested_version=failure.requested_version,
+                    current_version=failure.current_version,
+                )
                 self.message_requested.emit(f"canvas.save_failed_{failure.kind.value}")
             else:
                 self.message_requested.emit("canvas.save_failed_unknown")
             return
+        self._consume_recent_label(result.sample_id, result.saved_version)
+        if not (
+            result.sample_id == self.current_image_id
+            and result.sample_id == self._loaded_sample_id
+            and self._annotation_document is not None
+            and self._annotation_document.sample_id == result.sample_id
+        ):
+            self._record_annotation_debug(
+                "工作台忽略非当前样本的保存完成回调",
+                sample_id=result.sample_id,
+                target_sample_id=self.current_image_id,
+                loaded_sample_id=self._loaded_sample_id,
+                saved_version=result.saved_version,
+            )
+            self.save_label.setText("●  " + tr(self.locale, "canvas.autosaved"))
+            self.save_label.setStyleSheet(f"color:{THEME.tokens.success}; font-weight:600;")
+            self.save_label.setEnabled(False)
+            return
         self._annotation_disk_sha256 = result.json_sha256
-        self._consume_recent_label(result.saved_version)
+        self._record_annotation_debug(
+            "工作台确认自动保存完成",
+            sample_id=result.sample_id,
+            saved_version=result.saved_version,
+            json_sha=result.json_sha256[:16],
+            review_status=result.review_status,
+        )
         self._set_review_combo(result.review_status)
         self.save_label.setText("●  " + tr(self.locale, "canvas.autosaved"))
         self.save_label.setStyleSheet(f"color:{THEME.tokens.success}; font-weight:600;")
@@ -1459,6 +1714,7 @@ class AnnotationWorkspace(QWidget):
                     # Gateway 重新读取磁盘事实；普通预览仍沿用内存加载。
                     self._annotation_document = None
                     self._annotation_load = None
+                    self._begin_managed_image_load(self._managed_sample)
                     self._start_managed_image_load(self._managed_sample)
                 else:
                     self._load_current_image()
@@ -1493,6 +1749,9 @@ class AnnotationWorkspace(QWidget):
             (f"{tr(self.locale, 'canvas.diagnostic_recovery')}: {failure.recovery_required}"),
             *failure.exception_chain,
         ]
+        debug_path = getattr(self.gateway, "annotation_debug_log_path", None)
+        if debug_path is not None:
+            details.append(f"{tr(self.locale, 'canvas.diagnostic_log')}: {debug_path}")
         return "\n".join(details)
 
     def _on_label_combo_changed(self, index: int) -> None:
@@ -1520,19 +1779,19 @@ class AnnotationWorkspace(QWidget):
             return changed[-1].label_id if changed else None
         return None
 
-    def _consume_recent_label(self, saved_version: int) -> None:
+    def _consume_recent_label(self, sample_id: str, saved_version: int) -> None:
         """保存成功后才发布最近标签，并让下一框立即跟随该标签。"""
 
         candidates = [
             (version, label_id)
-            for version, label_id in self._pending_recent_labels.items()
-            if version <= saved_version
+            for (candidate_sample_id, version), label_id in self._pending_recent_labels.items()
+            if candidate_sample_id == sample_id and version <= saved_version
         ]
         if not candidates:
             return
         _version, label_id = max(candidates)
         for version, _candidate in candidates:
-            self._pending_recent_labels.pop(version, None)
+            self._pending_recent_labels.pop((sample_id, version), None)
         try:
             self.gateway.remember_recent_label(self.snapshot.dataset.id, label_id)
         except Exception:
@@ -1586,7 +1845,7 @@ class AnnotationWorkspace(QWidget):
             self.label_combo.showPopup()
 
     def _request_shape_reassignment(self, shape_id: str) -> None:
-        if not self.managed_mode:
+        if not self.managed_mode or not self._managed_canvas_identity_is_current():
             return
         self.canvas.select_shape(shape_id)
         current = next(
@@ -1595,8 +1854,16 @@ class AnnotationWorkspace(QWidget):
         )
         if current is None or self._annotation_document is None or self.current_image_id is None:
             return
+        opened_sample_id = self.current_image_id
         opened_version = self._annotation_document.document_version
         opened_label_id = current.label_id
+        self._record_annotation_debug(
+            "工作台打开快速标签窗口",
+            sample_id=opened_sample_id,
+            shape_id=shape_id,
+            document_version=opened_version,
+            label_set_revision=self._annotation_label_set_revision,
+        )
         dialog = QuickLabelSelectorDialog(
             self.locale,
             self.gateway,
@@ -1612,9 +1879,25 @@ class AnnotationWorkspace(QWidget):
             lambda: self.message_requested.emit("toast.settings_save_failed")
         )
         accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        self._record_annotation_debug(
+            "工作台关闭快速标签窗口",
+            sample_id=opened_sample_id,
+            shape_id=shape_id,
+            accepted=accepted,
+            selected_label_id=dialog.selected_label_id,
+            current_sample_id=self.current_image_id,
+        )
         if not self._refresh_managed_label_context():
             self.message_requested.emit("toast.dataset_unavailable")
             return
+        self._record_annotation_debug(
+            "工作台完成快速标签上下文刷新",
+            sample_id=opened_sample_id,
+            current_sample_id=self.current_image_id,
+            loaded_sample_id=self._loaded_sample_id,
+            current_row=self.image_list.currentIndex().row(),
+            label_set_revision=self._annotation_label_set_revision,
+        )
         if accepted and dialog.selected_label_id and dialog.selected_label_id != current.label_id:
             live = next(
                 (item for item in self.canvas.annotations if item.id == shape_id),
@@ -1622,17 +1905,51 @@ class AnnotationWorkspace(QWidget):
             )
             if (
                 self._annotation_document is None
+                or self.current_image_id != opened_sample_id
+                or self._loaded_sample_id != opened_sample_id
+                or self._annotation_document.sample_id != opened_sample_id
                 or self._annotation_document.document_version != opened_version
                 or live is None
                 or live.label_id != opened_label_id
             ):
+                self._record_annotation_debug(
+                    "工作台拒绝跨图片标签改派",
+                    sample_id=opened_sample_id,
+                    current_sample_id=self.current_image_id,
+                    loaded_sample_id=self._loaded_sample_id,
+                    shape_id=shape_id,
+                    opened_version=opened_version,
+                    current_version=(
+                        self._annotation_document.document_version
+                        if self._annotation_document is not None
+                        else None
+                    ),
+                )
                 self.message_requested.emit("toast.annotation_reassign_conflict")
                 return
             self.canvas.select_shape(shape_id)
             self.canvas.change_selected_label(dialog.selected_label_id)
 
+    def _managed_canvas_identity_is_current(
+        self,
+        document: AnnotationDocument | None = None,
+    ) -> bool:
+        """导航目标、已加载画布和标注文档必须属于同一个稳定样本。"""
+
+        if not self.managed_mode:
+            return False
+        active_document = document if document is not None else self._annotation_document
+        canvas_sample_id = self.canvas.image.id if self.canvas.image is not None else None
+        return bool(
+            self.current_image_id
+            and self.current_image_id == self._loaded_sample_id
+            and self.current_image_id == canvas_sample_id
+            and active_document is not None
+            and active_document.sample_id == self.current_image_id
+        )
+
     def _refresh_managed_label_context(self) -> bool:
-        """原子刷新标签展示与修订号，避免新标签使用旧并发检查点保存。"""
+        """原子刷新标签展示与修订号，但绝不重置当前图片列表。"""
 
         if not self.managed_mode:
             return True
@@ -1642,7 +1959,8 @@ class AnnotationWorkspace(QWidget):
         self.snapshot = updated_snapshot
         self._annotation_label_set_revision = updated_snapshot.label_set_revision
         self.canvas.labels = {label.id: label for label in self.snapshot.labels}
-        self.retranslate_ui()
+        self._refresh_label_controls()
+        self._rebuild_annotations()
         self._apply_recent_label()
         return True
 
@@ -1679,6 +1997,12 @@ class AnnotationWorkspace(QWidget):
         if not self.managed_mode:
             return True
         state, _error = self.gateway.annotation_save_state(self.snapshot.dataset.id)
+        if self.current_image_id is not None:
+            self._record_annotation_debug(
+                "工作台执行离开保护",
+                sample_id=self.current_image_id,
+                autosave_state=state,
+            )
         if state == AutosaveState.SAVING:
             try:
                 self.gateway.wait_annotation_save(self.snapshot.dataset.id)
@@ -1714,6 +2038,16 @@ class AnnotationWorkspace(QWidget):
         if clicked is cancel:
             return False
         return False
+
+    def _record_annotation_debug(self, event: str, **fields: object) -> None:
+        """普通模式记录临时调试事件；预览模式始终保持零写盘。"""
+
+        if self.managed_mode and hasattr(self.gateway, "record_annotation_debug"):
+            self.gateway.record_annotation_debug(
+                event,
+                dataset_id=self.snapshot.dataset.id,
+                **fields,
+            )
 
     def _set_zoom(self, zoom: int) -> None:
         self.zoom_label.setText(tr(self.locale, "workspace.zoom").format(zoom=zoom))

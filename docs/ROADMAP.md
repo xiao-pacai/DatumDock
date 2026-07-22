@@ -84,6 +84,9 @@
 - [x] 实现图片级未复核、待审核、已完成、已完成（无目标）和有问题状态及转换规则。
 - [x] 实现立即自动保存、写入失败待处理状态和重试/放弃/取消保护提示。
 - [x] 修复标签集热更新后的保存冲突：工作台快照同时携带标签与修订号，快速新建或导入标签后立即刷新两者；真实并发修订单独诊断。
+- [x] 完成标签相关即时保存规则：标签定义新增/编辑/归档/恢复在合法提交后立即原子保存；矩形新增、调整、删除、撤销/重做和标签替换在有效操作结束后立即提交一次不可变自动保存快照，不等待切图或离开页面。
+- [x] 将“待复核”限定为模型自动标注来源；任何有效人工标注修改都在同一次恢复型保存中把图片更新为已完成，保存失败时内容与状态都保持待处理。
+- [x] 完成标签悬停视觉规则：画布矩形、快速标签卡片、候选列表、右侧标注项和标签表格行使用轻微填充/浅蓝高亮与细边框反馈；选中态更明确、键盘焦点等价可见，且 hover 不产生任何数据副作用。
 
 ## 阶段 3.1：标注画布交互统一整改（已完成）
 
@@ -231,9 +234,15 @@
   - 原问题：离屏 Qt 平台枚举到的系统字体数量为 0，首轮截图文字显示为方框；该结果未被计作视觉通过。
   - 恢复结果：移除离屏平台覆盖后使用同一临时资料库脚本重新生成中文/英文 × 三种分辨率的导入预检、标签映射、导出预检和导出结果截图，文字恢复可读；共 24 张，保存于 Git 忽略的 `build/ui-review/step5-xany/`。
 - [x] 步骤五 Python 3.11 与资料库隔离复验完成。
-  - 验证结果：Ruff、格式、`compileall` 和完整 pytest 已有通过基线；2026-07-21 标签修订同步整改后测试清单扩充为 250 项，完整结果为 `249 passed、1 skipped`。Pillow 弃用警告已经清零；普通模式与预览模式继续使用隔离入口。
+  - 验证结果：Ruff、格式、`compileall` 和完整 pytest 已有通过基线；2026-07-23 加入跨样本切图竞态、加载期只读保护、连续三张图片保存和第二行标签改派选择保持回归后，测试清单扩充为 257 项，完整结果为 `256 passed、1 skipped`。Pillow 弃用警告已经清零；普通模式与预览模式继续使用隔离入口。
   - 稳定化补充：双击改派后旧同图加载迟到会回退内存文档版本的竞态已经关闭；确定性回归验证旧版本不能覆盖，且下一框保存与重启后的两个矩形都沿用最近标签。
   - 隔离结果：普通模式只在绝对临时根目录生成 2 个资料库文件；预览模式生成 0 个文件。真实 `%LOCALAPPDATA%\DatumDock` 前后均为 707 个文件，树哈希均为 `A42D4762FF14EDD1AE633B619B3AD83D72F1167D426EEA5FE5A63E591023DF5B`。
+
+- [-] 用户实机第三张及后续图片“标注尚未安全保存”及第二张改派后跳回第一张的问题已完成代码修复，等待同一资料库复验。
+  - 根因证据：日志中的失败请求以目标样本 `53e95a47…` 入队，却携带上一张样本的版本 `3 → 4`、摘要 `65597e9a…` 和 5 个框；目标样本磁盘事实为版本 `14`、摘要 `2fc1863b…`，因此服务正确返回 `version_conflict` 且未覆盖 JSON。
+  - 修复：切图开始立即锁定旧画布，分别维护导航/加载中/已加载样本；编辑与保存要求四重样本身份一致；后台读取等待同一数据集在途保存结束后再恢复和读取。
+  - 当前验证：确定性回归暂停目标图片返回，证明旧画布不可编辑、跨样本文档不能入队；另有第二张图片改派回归证明标签快照局部刷新不改变当前行，并且只保存第二张一次。连续三样本及复核状态回归通过。
+  - 恢复条件：用户在原数据集连续编辑至少五张图片无失败后，将临时日志默认开关恢复为关闭。日志继续保持 2 MiB × 4 文件上限且不记录图片内容。
 
 - [x] A0.8 与步骤五本地交付已恢复远端同步。
   - 原阻塞：2026-07-20 对 A0.8 提交执行三次 HTTPS 推送时发生 `github.com:443` 无法连接或连接重置，因此按策略停止重试并保留本地历史。
@@ -263,4 +272,4 @@
 
 ## English Summary
 
-Whole-dataset deletion, X-AnyLabeling label import corrections, recent-label tracking, and maximized startup are implemented. The remaining icon slice must bind the existing DD and SVG assets across all core pages and dialogs, remove character substitutes, and verify bilingual/DPI states. Desktop, Start-menu, executable, and uninstaller icons remain part of packaging.
+Whole-dataset deletion, recent-label tracking, immediate label persistence, and subtle label-hover feedback are recorded as completed. Selected and keyboard-focused label states remain stronger than hover, and hover has no persistence, history, or review-state side effects. Pending review is model-only; successful manual edits commit completed status in the same recoverable save.

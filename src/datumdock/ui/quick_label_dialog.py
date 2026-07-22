@@ -6,6 +6,7 @@ from PySide6.QtCore import (
     QAbstractListModel,
     QEvent,
     QModelIndex,
+    QPoint,
     QSize,
     QSortFilterProxyModel,
     Qt,
@@ -92,6 +93,29 @@ class QuickLabelFilterModel(QSortFilterProxyModel):
         return all(needle in haystack for needle in self._needles)
 
 
+def _quick_label_card_style(state: QStyle.StateFlag) -> tuple[QColor, QColor, int]:
+    """按交互状态返回卡片样式，确保悬停、焦点和选中层级一致。"""
+
+    selected = bool(state & QStyle.StateFlag.State_Selected)
+    hovered = bool(state & QStyle.StateFlag.State_MouseOver)
+    focused = bool(state & QStyle.StateFlag.State_HasFocus)
+    background = QColor(
+        THEME.tokens.brand_soft
+        if selected
+        else THEME.tokens.surface_hover
+        if hovered or focused
+        else THEME.tokens.surface
+    )
+    border = QColor(
+        THEME.tokens.brand_primary
+        if selected
+        else THEME.tokens.focus_ring
+        if hovered or focused
+        else THEME.tokens.border
+    )
+    return background, border, 2 if selected or focused else 1
+
+
 class QuickLabelDelegate(QStyledItemDelegate):
     """绘制带颜色、文字和非颜色选中标记的响应式卡片。"""
 
@@ -108,15 +132,13 @@ class QuickLabelDelegate(QStyledItemDelegate):
         selected = bool(option.state & QStyle.StateFlag.State_Selected)
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        background = QColor(THEME.tokens.brand_soft if selected else THEME.tokens.surface)
+        background, border_color, border_width = _quick_label_card_style(option.state)
         painter.setBrush(background)
-        painter.setPen(
-            QPen(
-                QColor(THEME.tokens.brand_primary if selected else THEME.tokens.border),
-                2 if selected else 1,
-            )
-        )
+        painter.setPen(QPen(border_color, border_width))
         painter.drawRoundedRect(rect, 10, 10)
+        if selected:
+            painter.setPen(QPen(QColor(THEME.tokens.brand_primary), 3))
+            painter.drawLine(rect.topLeft() + QPoint(3, 10), rect.bottomLeft() + QPoint(3, -10))
         swatch = rect.adjusted(12, 13, -rect.width() + 34, -rect.height() + 35)
         painter.setBrush(QColor(label.color))
         painter.setPen(Qt.PenStyle.NoPen)
@@ -229,6 +251,7 @@ class QuickLabelSelectorDialog(QDialog):
         self.proxy_model = QuickLabelFilterModel(self)
         self.proxy_model.setSourceModel(self.source_model)
         self.label_view = QListView()
+        self.label_view.setMouseTracking(True)
         self.label_view.setModel(self.proxy_model)
         self.label_view.setItemDelegate(QuickLabelDelegate(self.label_view))
         self.label_view.setViewMode(QListView.ViewMode.IconMode)
