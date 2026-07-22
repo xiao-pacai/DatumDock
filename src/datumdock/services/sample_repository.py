@@ -832,6 +832,32 @@ class DatasetSampleRepository:
             query.limit,
         )
 
+    def sample_ids(self, query: SampleQuery) -> tuple[str, ...]:
+        """为一次性导出范围流式读取稳定 ID，不实例化全部样本或缩略图。"""
+
+        if query.dataset_id != self.dataset_id:
+            raise SampleRepositoryError("样本 ID 查询不属于当前数据集")
+        where, parameters, join = self._query_parts(query)
+        order = {
+            SampleSort.FILENAME_ASC: "samples.filename COLLATE NOCASE ASC, samples.id ASC",
+            SampleSort.FILENAME_DESC: "samples.filename COLLATE NOCASE DESC, samples.id ASC",
+            SampleSort.IMPORTED_NEWEST: "samples.imported_at DESC, samples.id ASC",
+            SampleSort.IMPORTED_OLDEST: "samples.imported_at ASC, samples.id ASC",
+        }[query.sort]
+        identifiers: list[str] = []
+        try:
+            with self._connection() as connection:
+                cursor = connection.execute(
+                    f"SELECT DISTINCT samples.id FROM samples {join} WHERE {where} "
+                    f"ORDER BY {order}",
+                    parameters,
+                )
+                while rows := cursor.fetchmany(500):
+                    identifiers.extend(str(row[0]) for row in rows)
+        except sqlite3.Error as error:
+            raise SampleRepositoryError(f"样本 ID 查询失败: {error}") from error
+        return tuple(identifiers)
+
     def _query_parts(self, query: SampleQuery) -> tuple[str, list[Any], str]:
         clauses = ["samples.dataset_id = ?", "samples.is_trashed = ?"]
         parameters: list[Any] = [self.dataset_id, int(query.include_trashed)]

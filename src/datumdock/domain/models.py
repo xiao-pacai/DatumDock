@@ -503,8 +503,10 @@ class AppSettings(BaseModel):
     def validate_default_split(cls, value: tuple[int, int, int]) -> tuple[int, int, int]:
         """训练、验证、测试比例必须完整覆盖一次导出。"""
 
-        if sum(value) != 100:
+        if any(item < 0 for item in value) or sum(value) != 100:
             raise ValueError("训练、验证、测试比例之和必须为 100")
+        if value[0] <= 0:
+            raise ValueError("训练集比例必须大于 0")
         return value
 
     @field_validator("quick_label_dialog_size")
@@ -596,6 +598,8 @@ class ExportRequest(BaseModel):
     def validate_split(cls, value: tuple[int, int, int]) -> tuple[int, int, int]:
         """避免生成缺失或重复比例的训练目录。"""
 
-        if sum(value) != 100:
+        if any(item < 0 for item in value) or sum(value) != 100:
             raise ValueError("导出比例之和必须为 100")
+        if value[0] <= 0:
+            raise ValueError("训练集比例必须大于 0")
         return value
