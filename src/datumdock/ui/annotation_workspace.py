@@ -185,6 +185,10 @@ class AnnotationWorkspace(QWidget):
             "dataset.export_xany",
             lambda: self.dialog_requested.emit(f"xany_export:{self.snapshot.dataset.id}"),
         )
+        self.action_bindings.bind(
+            "dataset.export_yolo",
+            lambda: self.dialog_requested.emit(f"yolo_export:{self.snapshot.dataset.id}"),
+        )
         self.action_bindings.bind("sample.previous", lambda: self._navigate_sample(-1))
         self.action_bindings.bind("sample.next", lambda: self._navigate_sample(1))
         self.action_bindings.bind(
@@ -682,9 +686,11 @@ class AnnotationWorkspace(QWidget):
         xany_repair.triggered.connect(
             lambda: self.dialog_requested.emit(f"xany_repair:{self.snapshot.dataset.id}")
         )
-        yolo = self.export_menu.addAction("YOLO Detection")
+        yolo = self.export_menu.addAction(tr(self.locale, "dialog.export.title"))
         yolo.setIcon(self.icons.icon("export"))
-        yolo.triggered.connect(lambda: self.dialog_requested.emit("yolo_export"))
+        yolo.triggered.connect(
+            lambda: self.dialog_requested.emit(f"yolo_export:{self.snapshot.dataset.id}")
+        )
         xany = self.export_menu.addAction("X-AnyLabeling / LabelMe")
         xany.setIcon(self.icons.icon("export"))
         xany.triggered.connect(
@@ -945,6 +951,22 @@ class AnnotationWorkspace(QWidget):
             self.image_list.setCurrentIndex(self.sample_model.index(0))
         else:
             self.canvas.clear_preview()
+
+    def yolo_export_scope_ids(self) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """把当前筛选和显式选择固定成 ID，导出向导不读取列表控件内部状态。"""
+
+        if not self.managed_mode or self.sample_model is None:
+            return (), ()
+        filtered = self.gateway.yolo_export_sample_ids(
+            self.snapshot.dataset.id,
+            search=self.sample_model.search,
+            review_status=self.sample_model.review_status,
+            label_id=self.sample_model.label_id,
+            has_annotations=self.sample_model.has_annotations,
+            sort=self.sample_model.sort,
+        )
+        selected = (self.current_image_id,) if self.current_image_id else ()
+        return filtered, selected
 
     def _on_managed_image_selected(
         self,

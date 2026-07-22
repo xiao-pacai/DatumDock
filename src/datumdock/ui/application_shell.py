@@ -28,6 +28,7 @@ from datumdock.ui.managed_media_dialogs import (
     ManagedRenameDialog,
     ManagedTaskCenterDialog,
 )
+from datumdock.ui.managed_yolo_dialog import ManagedYoloExportDialog
 from datumdock.ui.prototype_dialogs import DialogId, DialogRegistry
 from datumdock.ui.prototype_gateway import PreviewGateway, UnavailableGateway
 from datumdock.ui.prototype_models import (
@@ -350,6 +351,7 @@ class ApplicationShell(QMainWindow):
             DialogId.IMAGE_IMPORT,
             DialogId.XANY_IMPORT,
             DialogId.XANY_EXPORT,
+            DialogId.YOLO_EXPORT,
             DialogId.XANY_REPAIR,
             DialogId.RENAME_SAMPLES,
             DialogId.DELETE_CURRENT,
@@ -372,6 +374,9 @@ class ApplicationShell(QMainWindow):
             return
         if not self.gateway.preview_mode and identifier == DialogId.XANY_EXPORT:
             self._open_managed_xany_export(dataset_id)
+            return
+        if not self.gateway.preview_mode and identifier == DialogId.YOLO_EXPORT:
+            self._open_managed_yolo_export(dataset_id)
             return
         if not self.gateway.preview_mode and identifier == DialogId.XANY_REPAIR:
             self._open_managed_rectangle_repair(dataset_id)
@@ -520,6 +525,29 @@ class ApplicationShell(QMainWindow):
             self.locale_service,
             self.gateway,
             dataset_id,
+            parent=self,
+        )
+        dialog.finished.connect(lambda: self._forget_dialog(dialog))
+        self._active_dialogs.append(dialog)
+        dialog.open()
+
+    def _open_managed_yolo_export(self, dataset_id: str) -> None:
+        """从当前工作台提取筛选快照，正式向导只通过 Gateway 执行业务。"""
+
+        if not dataset_id or not isinstance(self.gateway, ManagedDatasetGateway):
+            self.show_message("toast.dataset_unavailable")
+            return
+        filtered_ids: tuple[str, ...] = ()
+        selected_ids: tuple[str, ...] = ()
+        workspace = self.navigation.pages.get(RouteId.ANNOTATION_WORKSPACE)
+        if isinstance(workspace, AnnotationWorkspace):
+            filtered_ids, selected_ids = workspace.yolo_export_scope_ids()
+        dialog = ManagedYoloExportDialog(
+            self.locale_service,
+            self.gateway,
+            dataset_id,
+            filtered_sample_ids=filtered_ids,
+            selected_sample_ids=selected_ids,
             parent=self,
         )
         dialog.finished.connect(lambda: self._forget_dialog(dialog))

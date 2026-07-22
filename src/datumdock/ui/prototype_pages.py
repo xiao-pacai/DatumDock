@@ -1094,8 +1094,22 @@ class SettingsPage(BasePage):
         self.trash_help = QLabel()
         self.trash_help.setObjectName("mutedText")
         self.trash_help.setWordWrap(True)
-        self.split_combo = QComboBox()
-        self.split_combo.addItems(["80 / 10 / 10", "70 / 20 / 10", "60 / 20 / 20"])
+        self.split_train = QSpinBox()
+        self.split_val = QSpinBox()
+        self.split_test = QSpinBox()
+        for field, value in zip(
+            (self.split_train, self.split_val, self.split_test),
+            (80, 10, 10),
+            strict=True,
+        ):
+            field.setRange(0, 100)
+            field.setValue(value)
+        self.split_train.setMinimum(1)
+        self.split_save = QPushButton()
+        self.split_save.clicked.connect(self._save_default_split)
+        self.split_error = QLabel()
+        self.split_error.setObjectName("errorText")
+        self.split_error.hide()
         self.data_form = QFormLayout()
         self.trash_threshold_label = QLabel()
         self.default_split_label = QLabel()
@@ -1107,7 +1121,15 @@ class SettingsPage(BasePage):
         threshold_layout.addStretch()
         self.data_form.addRow(self.trash_threshold_label, threshold_field)
         self.data_form.addRow(self.trash_help)
-        self.data_form.addRow(self.default_split_label, self.split_combo)
+        split_field = QWidget()
+        split_layout = QHBoxLayout(split_field)
+        split_layout.setContentsMargins(0, 0, 0, 0)
+        for field in (self.split_train, self.split_val, self.split_test):
+            split_layout.addWidget(field)
+        split_layout.addWidget(self.split_save)
+        split_layout.addStretch()
+        self.data_form.addRow(self.default_split_label, split_field)
+        self.data_form.addRow(self.split_error)
         self.data_page.body.addLayout(self.data_form)
         self.pages.addWidget(self.data_page)
 
@@ -1143,12 +1165,35 @@ class SettingsPage(BasePage):
         self.trash_threshold.blockSignals(True)
         self.trash_threshold.setValue(settings.trash_sample_threshold)
         self.trash_threshold.blockSignals(False)
+        for field, value in zip(
+            (self.split_train, self.split_val, self.split_test),
+            settings.default_split,
+            strict=True,
+        ):
+            field.blockSignals(True)
+            field.setValue(value)
+            field.blockSignals(False)
         for index in range(self.language_combo.count()):
             if self.language_combo.itemData(index) == settings.ui_locale:
                 self.language_combo.blockSignals(True)
                 self.language_combo.setCurrentIndex(index)
                 self.language_combo.blockSignals(False)
                 break
+
+    def _save_default_split(self) -> None:
+        """三个字段一次提交，避免编辑中间态写入无效设置。"""
+
+        values = (
+            self.split_train.value(),
+            self.split_val.value(),
+            self.split_test.value(),
+        )
+        if sum(values) != 100:
+            self.split_error.setText(tr(self.locale, "settings.split_invalid"))
+            self.split_error.show()
+            return
+        self.split_error.hide()
+        self.settings_change_requested.emit("default_split", values)
 
     @staticmethod
     def _form_card() -> SectionCard:
@@ -1319,6 +1364,10 @@ class SettingsPage(BasePage):
         self.trash_help_button.setAccessibleName(tr(self.locale, "settings.trash_help"))
         self.trash_threshold_label.setText(tr(self.locale, "settings.trash_threshold"))
         self.default_split_label.setText(tr(self.locale, "settings.default_split"))
+        self.split_save.setText(tr(self.locale, "settings.split_save"))
+        self.split_train.setPrefix(tr(self.locale, "settings.split_train_prefix"))
+        self.split_val.setPrefix(tr(self.locale, "settings.split_val_prefix"))
+        self.split_test.setPrefix(tr(self.locale, "settings.split_test_prefix"))
         self.trash_help.setText("ⓘ  " + tr(self.locale, "settings.trash_help"))
         self.preview_check.setText(tr(self.locale, "settings.preview_boxes"))
         self.quick_check.setText(tr(self.locale, "settings.show_quick_start"))

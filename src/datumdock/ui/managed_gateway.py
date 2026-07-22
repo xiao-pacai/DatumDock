@@ -67,6 +67,11 @@ from datumdock.services.managed_labels import (
     ManagedLabelError,
     ManagedLabelMigrationService,
 )
+from datumdock.services.managed_yolo import (
+    YoloExportPreflight,
+    YoloExportRequest,
+    YoloExportService,
+)
 from datumdock.services.recent_labels import RecentLabelTracker
 from datumdock.services.sample_governance import (
     RenamePlan,
@@ -632,6 +637,67 @@ class ManagedDatasetGateway:
             )
 
         return self.tasks.start(dataset_id, "xany_export_commit", work)
+
+    def start_yolo_export_preflight(self, request: YoloExportRequest) -> str:
+        """后台固定候选、建立防泄露分组并生成确定性划分预览。"""
+
+        exporter = YoloExportService(self.service, request.dataset_id)
+
+        def work(context):
+            context.phase("yolo_export_preflight")
+            return exporter.preflight(
+                request,
+                progress=context.progress,
+                cancelled=context.cancelled,
+            )
+
+        return self.tasks.start(request.dataset_id, "yolo_export_preflight", work)
+
+    def start_yolo_export_commit(self, dataset_id: str, preflight_task_id: str) -> str:
+        """只接受本 Gateway 产生的预检任务，避免页面伪造受管路径或计划。"""
+
+        preflight = self.tasks.result(preflight_task_id)
+        if not isinstance(preflight, YoloExportPreflight):
+            raise ImagePoolError("YOLO 导出预检不存在")
+        if preflight.request.dataset_id != dataset_id:
+            raise ImagePoolError("YOLO 导出预检不属于当前数据集")
+        exporter = YoloExportService(self.service, dataset_id).exporter()
+
+        def work(context):
+            context.phase("yolo_export_commit")
+            return exporter.export(
+                preflight,
+                progress=context.progress,
+                cancelled=context.cancelled,
+            )
+
+        return self.tasks.start(dataset_id, "yolo_export_commit", work)
+
+    def yolo_export_sample_ids(
+        self,
+        dataset_id: str,
+        *,
+        search: str = "",
+        review_status: ReviewStatus | None = None,
+        label_id: str | None = None,
+        has_annotations: bool | None = None,
+        sort: SampleSort = SampleSort.FILENAME_ASC,
+    ) -> tuple[str, ...]:
+        """把当前筛选固定成稳定 ID，不向页面暴露 Repository 或 SQLite。"""
+
+        _bundle, _paths, repository = self._media(dataset_id)
+        return repository.sample_ids(
+            SampleQuery(
+                dataset_id=dataset_id,
+                offset=0,
+                limit=1,
+                search=search,
+                review_status=review_status,
+                label_id=label_id,
+                has_annotations=has_annotations,
+                sort=sort,
+            )
+        )
 
     def start_rectangle_repair_preflight(self, dataset_id: str) -> str:
         """后台只读检查当前数据集已导入的 X-AnyLabeling 四点矩形。"""

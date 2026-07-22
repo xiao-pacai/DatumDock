@@ -83,6 +83,12 @@ ACTION_DEFINITIONS: tuple[ActionDefinition, ...] = (
         ActionGroup.DATASET,
     ),
     ActionDefinition(
+        "dataset.export_yolo",
+        "action.dataset.export_yolo",
+        "action.dataset.export_yolo.help",
+        ActionGroup.DATASET,
+    ),
+    ActionDefinition(
         "dataset.switch",
         "action.dataset.switch",
         "action.dataset.switch.help",
