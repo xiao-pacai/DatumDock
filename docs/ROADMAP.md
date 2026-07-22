@@ -26,7 +26,7 @@
 - [x] 实现空数据集与从已有数据集复制配置的真实创建流程；复制标签和配置，不复制图片、标注、模型、缩略图或回收站。
 - [x] 将正式标注工作台上下文收敛为单一当前数据集，并移除用户可见的工作区、项目树和打开目录入口；旧代码保留但不再由正式入口启动。
 - [x] 按 UX 固定标注工作台布局：顶部数据集/导入/导出操作栏、左侧标注与 AI 工具、中央画布、右侧当前标注和带状态图片列表；步骤四已接入真实矩形持久化。
-- [-] 将标签、模型、索引、回收站、备份、导出和跨数据集操作迁移为数据集级边界：标签、索引和回收站已完成；模型、备份、导出和转移仍未接入。
+- [-] 将标签、模型、索引、回收站、备份、导出和跨数据集操作迁移为数据集级边界：标签、索引、回收站、X-AnyLabeling 互操作和 YOLO Detection 导出已完成；模型、备份和转移仍未接入。
 - [ ] 提供旧 `Workspace -> Project -> Dataset` 结构的只读迁移预检、备份、校验、提交与失败回滚。
 - [-] 完成正式入口中英文旧术语清理，以及首次启动、启动对账、双数据集隔离和损坏元数据的 GUI / 自动化回归；旧代码词条、安装升级保留与旧结构迁移仍待后续验证。
 - [x] 步骤二子阶段严格复验达到 97 分，无 P0/P1；阶段 0.5 其余教程、旧迁移和后续业务任务按各自条目继续推进。
@@ -55,12 +55,12 @@
 
 ## 阶段 2：数据集池与图片浏览
 
-> 历史说明：2026-07-19 步骤四尚未接入 X-AnyLabeling 目录互操作；该状态已由下方步骤五实现记录取代。训练数据划分和 YOLO 导出仍属于后续步骤。
+> 历史说明：2026-07-19 步骤四尚未接入 X-AnyLabeling 目录互操作；该状态已由下方步骤五实现记录取代。训练数据划分和 YOLO Detection 导出已在步骤六完成。
 
 - [x] 实现导入文件/递归文件夹到当前数据集受管池、样本索引与去重提示；不跟随符号链接。
 - [x] 实现 JPG/JPEG、PNG、BMP、WebP、TIFF 导入与统一 PNG 转码、EXIF 校正、重复图对比确认、进度、取消和失败报告。
 - [-] 实现 X-AnyLabeling/LabelMe 目录导入：正式受管预检、显式标签映射、重复决策、恢复型提交、未知 shape/字段保留与 100 图自动闭环已完成；等待 X-AnyLabeling v3.3.10 实机打开、编辑和回导后再勾选。
-- [-] 实现近似图片候选扫描、相似组人工确认/忽略，并提供已确认组稳定查询；组内编辑/拆分和导出 `SplitPlanner` 约束待后续实现。
+- [x] 实现近似图片候选扫描、相似组人工确认/忽略和已确认组稳定查询；步骤六 `SplitPlanner` 将已确认相似组及其重叠关系作为不可拆分连通分量。
 - [x] 实现 SQLite v1 数据集索引、虚拟样本列表、按需缩略图和可取消后台任务，10,000 条压力测试不全量实例化。
 - [x] 实现数据集池列表/网格、搜索、基础状态筛选、排序、分页与当前图片后台加载。
 - [x] 实现右侧虚拟图片列表/网格、图片级状态、真实框数、标签筛选和按需标注预览。
@@ -189,11 +189,11 @@
 - [ ] 实现模型类别到当前数据集标签的映射、GPU 优先/CPU 回退与配置指引，以及直接保存为图片级待复核状态并可人工确认已完成的检测框自动标注。
 - [ ] 实现数据集备份压缩包、导入前结构/完整性校验，以及标签集一致的数据集间复制/移动。
 - [ ] 实现标签兼容性检查、重复图预览与兼容数据集的复制/移动合并。
-- [ ] 实现一次性导出请求：全局默认或临时覆盖的 train/val/test 比例、目标模型/格式、候选范围、随机种子与输出位置；不保存方案和记录。
-- [ ] 实现确定性划分器与划分统计预览。
-- [ ] 定义可扩展的模型格式导出器接口。
-- [ ] 实现 YOLO Detection 标签转换、目录导出与 `data.yaml`。
-- [ ] 覆盖比例校验、确定性划分及 YOLO 标签格式的测试。
+- [x] 实现一次性导出请求：全局默认或临时覆盖的 train/val/test 比例、YOLO Detection、候选范围、随机种子与输出位置；不保存方案和记录。
+- [x] 实现版本化 `group-stratified-v1` 确定性划分器、完全重复/已确认相似连通分量约束和划分统计预览。
+- [x] 定义可扩展的 `DatasetExporter` / `ExporterRegistry` 接口。
+- [x] 实现 YOLO Detection 标签转换、显式负样本、目录导出与 `data.yaml`，并在同卷临时目录完整回读后原子发布。
+- [x] 覆盖比例、固定种子、查询顺序、连通分量、类别、坐标、失败/取消、100 图和 10,000 条规划测试；独立 Python 3.11.15 + Ultralytics 8.4.104 实际加载通过。
 - [x] 验证 100 张图片连续保存、加载和重启恢复流程。
 - [ ] 对照 `docs/ACCEPTANCE.md` 完成 MVP 验收。
 - [ ] 完成 X-AnyLabeling 对标基线 L1，并发布支持范围和已知限制。
@@ -209,7 +209,7 @@
 
 - [x] 当前图片矩形标注撤销/重做，并与自动保存、双状态复核和右侧列表同步。
 - [ ] 多边形与实例分割。
-- [ ] YOLO/COCO 格式导入导出。
+- [-] YOLO/COCO 格式导入导出：YOLO Detection 导出已完成；YOLO 导入、COCO 和分割格式仍待实现。
 
 ## 阶段 6：AI 与格式对标（L3）
 
@@ -234,7 +234,7 @@
   - 原问题：离屏 Qt 平台枚举到的系统字体数量为 0，首轮截图文字显示为方框；该结果未被计作视觉通过。
   - 恢复结果：移除离屏平台覆盖后使用同一临时资料库脚本重新生成中文/英文 × 三种分辨率的导入预检、标签映射、导出预检和导出结果截图，文字恢复可读；共 24 张，保存于 Git 忽略的 `build/ui-review/step5-xany/`。
 - [x] 步骤五 Python 3.11 与资料库隔离复验完成。
-  - 验证结果：Ruff、格式、`compileall` 和完整 pytest 已有通过基线；2026-07-23 加入跨样本切图竞态、加载期只读保护、连续三张图片保存和第二行标签改派选择保持回归后，测试清单扩充为 257 项，完整结果为 `256 passed、1 skipped`。Pillow 弃用警告已经清零；普通模式与预览模式继续使用隔离入口。
+  - 验证结果：Ruff、格式、`compileall` 和完整 pytest 已有通过基线；跨样本切图竞态、加载期只读保护、连续三张图片保存和第二行标签改派选择保持继续通过。加入步骤六导出回归后测试清单为 267 项，完整结果为 `266 passed、1 skipped`。Pillow 弃用警告已经清零；普通模式与预览模式继续使用隔离入口。
   - 稳定化补充：双击改派后旧同图加载迟到会回退内存文档版本的竞态已经关闭；确定性回归验证旧版本不能覆盖，且下一框保存与重启后的两个矩形都沿用最近标签。
   - 隔离结果：普通模式只在绝对临时根目录生成 2 个资料库文件；预览模式生成 0 个文件。真实 `%LOCALAPPDATA%\DatumDock` 前后均为 707 个文件，树哈希均为 `A42D4762FF14EDD1AE633B619B3AD83D72F1167D426EEA5FE5A63E591023DF5B`。
 
@@ -269,7 +269,12 @@
   - 影响范围：功能测试、Ruff、格式和 `compileall` 可继续执行，但本机暂时无法生成本轮要求的分支覆盖率百分比，不能伪造 90%/85% 结论。
   - 恢复条件：可信 PyPI 连接恢复，或获得与 Python 3.11 兼容的可信 `coverage` / `pytest-cov` 离线 wheel。
   - 下一步：运行 `python -m pytest --cov=datumdock --cov-branch`，按文件事务、标注保存、互操作核心 90%，其他当前生产模块 85% 的目标补齐缺口。
+- [x] 步骤六 YOLO Detection 确定性导出与外部加载验证完成。
+  - 实现结果：正式工作台接入数据集绑定向导、全局默认/当次比例、候选范围、固定种子、负样本与待复核选项、后台预检/取消/报告；`group-stratified-v1` 将完全重复与已确认近似关系合并为不可拆分连通分量。
+  - 安全结果：输出先在目标父目录同卷临时目录生成，回读图片、TXT、YAML、类别、坐标、划分指纹和组约束后原子发布；失败、取消、快照失效和复制故障均不生成最终目录，受管图片池哈希保持不变。
+  - 外部证据：独立 Python 3.11.15 环境固定 Ultralytics 8.4.104、PyTorch 2.13.0 CPU、torchvision 0.28.0，实际加载 100 张导出图片，train/val/test 为 80/10/10，框数对应 80/10/10，损坏数为 0；显式负样本和零比例集合亦通过加载。
+  - 视觉证据：使用临时资料库在原生 Windows Qt 平台生成中文/英文 × 1366×768、1440×900、1920×1080 的预检与成功页，以及 1440×900 进度页，共 14 张，保存于 Git 忽略的 `build/ui-review/step6-yolo-native/`。
 
 ## English Summary
 
-Whole-dataset deletion, recent-label tracking, immediate label persistence, and subtle label-hover feedback are recorded as completed. Selected and keyboard-focused label states remain stronger than hover, and hover has no persistence, history, or review-state side effects. Pending review is model-only; successful manual edits commit completed status in the same recoverable save.
+Whole-dataset deletion, recent-label tracking, immediate label persistence, and subtle label-hover feedback are recorded as completed. Selected and keyboard-focused label states remain stronger than hover, and hover has no persistence, history, or review-state side effects. Pending review is model-only; successful manual edits commit completed status in the same recoverable save. Step 6 deterministic YOLO Detection export is complete with connected-component leakage protection, atomic publication, and an isolated Python 3.11.15 / Ultralytics 8.4.104 load of the 100-image 80/10/10 fixture.

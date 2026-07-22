@@ -8,16 +8,17 @@
 2. [内部数据集主页与存档式管理方案](DATASET_LIBRARY.md)：最新且优先的入口、术语、内部存储和旧结构迁移决定。
 3. [受管图片池](IMAGE_POOL.md)：步骤三已实现的导入转码、SQLite、重复/近似图、缩略图、重命名、删除与恢复边界。
 4. [标注工作流](ANNOTATION_WORKFLOW.md)：步骤四已实现的标签、矩形、LabelMe、自动保存、复核和恢复边界，以及 A0.5～A0.8 已复验的画布品牌、持续辅助线、鼠标反馈、边缘吸附与 `Ctrl + 滚轮` 缩放。
-5. [产品需求文档](PRD.md)：用户需求、MVP 范围、数据格式、非功能性要求与待确认决策。
-6. [架构说明](ARCHITECTURE.md)：领域对象、服务边界、受管存储、并发任务和数据安全规则。
-7. [交互与界面规范](UX.md)：页面结构、标注操作、控件位置和交互反馈。
-8. [现代视觉设计规范 v2](VISUAL_DESIGN.md)：Scratch/X-AnyLabeling 参考边界、颜色、组件、图标、动效和视觉验收。
-9. [UI 与页面清单](UI_INVENTORY.md) 与 [UI/步骤四交付报告](UI_REVIEW.md)：路由、弹窗、真实资料库/图片池/标注入口、预览边界、截图和评分。
-10. [稳定化审计](STABILIZATION_AUDIT.md)：截至步骤五的缺陷账本、真实证据、外部阻塞和不得越界的完成声明。
-11. [代码规范](CODE_STYLE.md)：Ruff、测试、中文注释和 Python 编码约定。
-12. [路线图](ROADMAP.md)：当前应执行的最小可验证任务。
-13. [验收标准](ACCEPTANCE.md)：功能完成前必须满足的可操作或可自动验证条件。
-14. [X-AnyLabeling 对标基线](X_ANYLABELING_BASELINE.md) 与 [互操作规范](X_ANYLABELING_INTEROP.md)：对外宣称兼容/对标前必须满足的质量与格式边界。
+5. [YOLO Detection 确定性导出](YOLO_EXPORT.md)：步骤六候选、类别映射、组约束划分、原子发布和 Ultralytics 验证边界。
+6. [产品需求文档](PRD.md)：用户需求、MVP 范围、数据格式、非功能性要求与待确认决策。
+7. [架构说明](ARCHITECTURE.md)：领域对象、服务边界、受管存储、并发任务和数据安全规则。
+8. [交互与界面规范](UX.md)：页面结构、标注操作、控件位置和交互反馈。
+9. [现代视觉设计规范 v2](VISUAL_DESIGN.md)：Scratch/X-AnyLabeling 参考边界、颜色、组件、图标、动效和视觉验收。
+10. [UI 与页面清单](UI_INVENTORY.md) 与 [UI/步骤四交付报告](UI_REVIEW.md)：路由、弹窗、真实资料库/图片池/标注入口、预览边界、截图和评分。
+11. [稳定化审计](STABILIZATION_AUDIT.md)：截至步骤五的缺陷账本、真实证据、外部阻塞和不得越界的完成声明。
+12. [代码规范](CODE_STYLE.md)：Ruff、测试、中文注释和 Python 编码约定。
+13. [路线图](ROADMAP.md)：当前应执行的最小可验证任务。
+14. [验收标准](ACCEPTANCE.md)：功能完成前必须满足的可操作或可自动验证条件。
+15. [X-AnyLabeling 对标基线](X_ANYLABELING_BASELINE.md) 与 [互操作规范](X_ANYLABELING_INTEROP.md)：对外宣称兼容/对标前必须满足的质量与格式边界。
 
 ## 文档职责
 
@@ -26,6 +27,7 @@
 | `DATASET_LIBRARY.md` | 定义存档式主页、用户可见层级、软件内部资料库、步骤二完成边界与旧结构迁移方向。 | 底层模块逐行实现细节。 |
 | `IMAGE_POOL.md` | 记录步骤三受管图片池的已实现事实边界和安全规则。 | 标注、模型或导出设计。 |
 | `ANNOTATION_WORKFLOW.md` | 记录步骤四真实标签、LabelMe、自动保存、复核状态和恢复规则。 | 模型推理、目录互操作或导出。 |
+| `YOLO_EXPORT.md` | 记录步骤六真实 YOLO Detection 候选、确定性划分、格式、发布和验证事实。 | 模型推理、训练或其他导出格式。 |
 | `PRD.md` | 定义用户真正需要什么、MVP 边界和待确认产品选择。 | 架构实现细节与任务状态。 |
 | `ARCHITECTURE.md` | 定义数据模型、存储、服务边界和一致性规则。 | 页面视觉和逐项验收。 |
 | `UX.md` | 定义用户操作、布局、控件位置与反馈。 | 数据格式、持久化细节和完整视觉系统。 |
@@ -54,4 +56,4 @@
 
 ## English Summary
 
-This directory is DatumDock's product and engineering source of truth. Managed X-AnyLabeling/LabelMe directory import and validated export are now implemented and covered by automated round-trip and failure tests. Actual X-AnyLabeling v3.3.10 GUI open/edit/re-import verification is still blocked by trusted dependency installation, so Step 5 and complete L2 are not yet claimed. Models, YOLO export, backups, and installer capabilities remain future work. Never describe planned or externally unverified behavior as completed.
+This directory is DatumDock's product and engineering source of truth. Managed X-AnyLabeling/LabelMe directory import and validated export are implemented, while its v3.3.10 external GUI gate remains blocked. Step 6 deterministic YOLO Detection export is implemented and loaded successfully with Ultralytics 8.4.104 in an isolated Python 3.11.15 environment. Models, backups, cross-dataset governance, and installer capabilities remain future work. Never describe planned or externally unverified behavior as completed.

@@ -1,11 +1,11 @@
-# DatumDock UI 与步骤四页面清单
+# DatumDock UI 与步骤六页面清单
 
-> 状态：步骤四及 A0.5～A0.11 已接入。主页整数据集删除、X-AnyLabeling 标签/四点矩形整改、保存诊断和源码界面语义图标已接入正式服务；第三方 X-AnyLabeling 应用实机验证仍受外部依赖安装阻塞。模型、YOLO 导出和备份仍只提供界面或待接入提示。
+> 状态：步骤四及 A0.5～A0.11 已接入。主页整数据集删除、X-AnyLabeling 标签/四点矩形整改、保存诊断、源码界面语义图标和步骤六 YOLO Detection 导出均已接入正式服务；第三方 X-AnyLabeling 应用实机验证仍受外部依赖安装阻塞。模型推理、备份和跨数据集治理仍只提供界面或待接入提示。
 
 ## 0. 本轮实现记录
 
 - 16 / 16 个 `RouteId` 已注册并完成遍历测试；预览专用组件页只在 `--ui-preview` 出现。
-- 30 / 30 个 `DialogId` 已集中注册，包括可缩放的 `QUICK_LABEL_SELECTOR` 与真实 `DELETE_DATASET`；均可发现、切换语言、校验、取消和关闭。
+- 33 / 33 个 `DialogId` 已集中注册，包括可缩放的 `QUICK_LABEL_SELECTOR`、真实 `DELETE_DATASET`、X-AnyLabeling 流程与真实 `YOLO_EXPORT`；均可发现、切换语言、校验、取消和关闭。
 - 普通模式使用 `ManagedDatasetGateway` 和真实内部资料库；仅在初始化失败时降级为 `UnavailableGateway`。预览模式始终使用独立 `PreviewGateway`。
 - `build/ui-review/step4-revision/` 生成 30 张原生 Windows 截图：中英文均覆盖三种分辨率的真实工作台、全量快捷键和快速标签窗，1440×900 额外覆盖 6400%、弹窗尺寸、搜索、恢复默认与保存失败。
 - `build/ui-review/a0.5-a0.7/` 新增 16 张双语三分辨率画布截图和 14 张中英文 Win32 原生系统光标截图；光标清单同时记录真实 HCURSOR 与文件哈希。
@@ -99,7 +99,7 @@
 
 | 标识 | 界面 | 目标交互 | 当前状态 |
 | --- | --- | --- | --- |
-| `quick_label_selector` | 双击矩形后的快速更改标签小窗 | 可调尺寸、即时搜索、响应式标签卡片、快速新建、确认/取消 | 已加入 `DialogId.QUICK_LABEL_SELECTOR`，计入上方 29 个已注册弹窗 |
+| `quick_label_selector` | 双击矩形后的快速更改标签小窗 | 可调尺寸、即时搜索、响应式标签卡片、快速新建、确认/取消 | 已加入 `DialogId.QUICK_LABEL_SELECTOR`，计入上方 33 个已注册弹窗 |
 
 ### 3.2 步骤四整改新增工作台操作
 
@@ -134,11 +134,13 @@
 - 路由注册测试遍历全部页面并验证可创建、进入和返回。
 - 对话框注册测试遍历全部弹窗并验证可打开和关闭。
 - 中英文键集合一致，切换语言不改写演示数据内容。
-- 普通模式的图片池仅在用户明确操作后修改受管文件；标签、标注和 X-AnyLabeling 交换通过真实服务处理。模型、YOLO 导出和备份入口不产生副作用；预览模式不接触资料库。
+- 普通模式的图片池仅在用户明确操作后修改受管文件；标签、标注、X-AnyLabeling 交换和 YOLO Detection 导出通过真实服务处理。模型和备份入口不产生副作用；预览模式不接触资料库或外部目标目录。
+- YOLO 导出使用真实 `ManagedYoloExportDialog`：范围、负样本/待复核策略、比例、种子、目标目录、后台预检、分布统计、取消和结果报告均可从正式工作台访问。
+- `build/ui-review/step6-yolo-native/` 生成 14 张原生 Windows 截图：中文/英文 × 三种分辨率覆盖预检与成功页，1440×900 额外覆盖进度页。
 - 普通模式启动会对账资料库索引与 UUID 目录；恢复、写盘故障和 Gateway 最终异常边界均有正式回归。
 - 1366×768、1440×900、1920×1080 与 100%、125%、150% DPI 完成布局和截图检查。
 - 步骤四核心截图包含真实标注工作台、标签管理、标签检查、迁移编辑和保存失败保护。
 
 ## English Summary
 
-This inventory records whole-dataset deletion, X-AnyLabeling import/export and repair, actionable save diagnostics, and source-GUI semantic icons as connected. Third-party X-AnyLabeling GUI verification remains externally blocked; model inference, YOLO export, backups, cross-dataset governance, and packaging remain future work.
+This inventory records whole-dataset deletion, X-AnyLabeling import/export and repair, actionable save diagnostics, source-GUI semantic icons, and the real managed YOLO Detection export wizard as connected. Third-party X-AnyLabeling GUI verification remains externally blocked; model inference, backups, cross-dataset governance, and packaging remain future work.

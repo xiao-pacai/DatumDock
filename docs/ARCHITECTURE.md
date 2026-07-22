@@ -1,10 +1,10 @@
 # DatumDock 架构说明
 
-## 0. 目标架构覆盖说明（步骤四已接入标签与标注闭环）
+## 0. 目标架构覆盖说明（步骤六已接入 YOLO Detection 导出）
 
 2026-07-19 已将正式入口从用户可见的 `Workspace -> Project -> Dataset` 改为 [内部数据集主页与存档式管理方案](DATASET_LIBRARY.md) 定义的 `AppLibrary -> ManagedDataset`。步骤二已实现资料库初始化、UUID 目录、事务创建、启动对账恢复、打开/切换、重命名、归档/恢复、损坏项隔离和模板配置复制。
 
-本文件中仍出现的 `Workspace`、`Project`、`WorkspaceService` 和“项目级”描述只用于标记旧实现来源；正式入口不再调用它们，新增代码不得继续扩大该层级。步骤三已将图片池、样本索引、缩略图、重命名与回收站迁入 `ManagedDataset`；步骤四已迁入标签、矩形标注、LabelMe、自动保存与图片级复核。模型和导出尚未迁移。
+本文件中仍出现的 `Workspace`、`Project`、`WorkspaceService` 和“项目级”描述只用于标记旧实现来源；正式入口不再调用它们，新增代码不得继续扩大该层级。步骤三已将图片池、样本索引、缩略图、重命名与回收站迁入 `ManagedDataset`；步骤四已迁入标签、矩形标注、LabelMe、自动保存与图片级复核；步骤五已迁入 X-AnyLabeling/LabelMe 目录互操作；步骤六已迁入 YOLO Detection 确定性导出。模型推理、备份和跨数据集治理尚未迁移。
 
 当前模块边界为：`services.sample_repository` 是 SQLite v3 样本、标签反向索引和双状态复核查询事实来源；`services.image_pool` 负责两阶段转码、哈希、缩略图与启动对账；`services.managed_labels` 负责标签和训练名迁移；`services.annotations` 与 `services.labelme` 负责有序 JSON、可恢复提交和自动保存；`services.shortcuts` 负责全量动作注册和原子快捷键偏好；`services.sample_governance` 负责重命名和删除事务；`ui.managed_gateway` 只向页面暴露数据对象或图片字节，不暴露受管路径。详见 [受管图片池](IMAGE_POOL.md) 与 [标注工作流](ANNOTATION_WORKFLOW.md)。
 
@@ -260,11 +260,15 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 
 ## 13. 模型格式导出器
 
-- `DatasetExporter` 是可注册接口；导出向导读取已注册导出器并让用户选择模型类型/格式。
+- `DatasetExporter` 是可注册接口；`ExporterRegistry` 让导出向导按稳定格式 ID 选择实现。当前正式注册 `YoloDetectionExporter`。
 - 每个导出器独立负责：支持的标注类型检查、必要转换、目录结构、配置文件和格式校验。
-- `YoloDetectionExporter` 支持矩形框；未来的分割导出器不得伪造或猜测不存在的分割标注，应明确要求对应标注类型。
+- `YoloExportService` 通过 Repository 批量只读接口生成不可变候选快照，并在提交前复验样本、图片/标注摘要、标注版本、复核状态、标签集修订和相似关系指纹。UI 和 Gateway 不直接访问 SQLite、JSON 或受管路径。
+- `DeterministicSplitPlanner` 当前版本为 `group-stratified-v1`。它以并查集合并内容哈希相同的图片和全部已确认近似组，重叠关系继续传递；形成的连通分量永不跨 train/val/test。稳定 UUID、固定种子、算法版本和 SHA-256 打散键消除 SQLite、集合和文件系统顺序差异。
+- 划分器使用最大余数法计算目标样本数，并在不拆组前提下弱分层样本数、每类图片/框数、负样本和稀有标签。超大组导致的偏差进入统计和警告，不能通过拆组隐藏。
+- `YoloDetectionExporter` 支持可编辑矩形和显式零框负样本。类别 ID 直接来自完整标签集且必须连续覆盖 `0..N-1`；越界、非有限、零面积、未知标签和兼容 shape 会阻断，不做静默钳制或丢弃。未来的分割导出器不得伪造不存在的分割标注。
 - 导出器输出只写入用户当次选择的目标目录，不能在内部资料库或数据集目录内保存方案、日志或历史记录。
-- `SplitPlanner` 读取全局默认比例但接受当次导出覆盖；完全重复图片和已确认近似组均作为不可拆分单元，并在组约束导致比例偏差时说明原因。
+- 导出在目标父目录同卷临时目录生成 PNG、TXT 和 YAML，刷新后由 `YoloExportValidator` 回读验证结构、图片、类别、坐标、stem、划分指纹和组约束。全部通过后才原子发布；失败或取消时最终目录不存在。
+- `SplitRatios` 读取全局默认比例但允许当次覆盖；`YoloExportRequest` 和任务报告只存在于当前进程，不升级 SQLite schema。
 
 ## 14. 视觉系统
 
@@ -323,4 +327,4 @@ Windows 默认受管存储位于 `%LOCALAPPDATA%\DatumDock`，而不是安装目
 
 ## English Summary
 
-The architecture uses two explicit immediate-persistence boundaries: atomic label-set snapshots for valid label-definition submissions, and recoverable LabelMe/SQLite autosaves for effective rectangle edits. Manual edits commit completed review state with annotation content, while pending review is reserved for model-originated changes. Whole-dataset deletion remains protected by impact preflight, revision-bound confirmation, same-volume staging, and deterministic recovery.
+The architecture uses two explicit immediate-persistence boundaries: atomic label-set snapshots for valid label-definition submissions, and recoverable LabelMe/SQLite autosaves for effective rectangle edits. Manual edits commit completed review state with annotation content, while pending review is reserved for model-originated changes. Whole-dataset deletion remains protected by impact preflight, revision-bound confirmation, same-volume staging, and deterministic recovery. Step 6 adds a registered YOLO Detection exporter, immutable candidate snapshots, deterministic group-aware stratification, complete read-back validation, and same-volume atomic publication without export-history persistence.

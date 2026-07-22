@@ -40,7 +40,7 @@
 
 - `python -m datumdock` 使用 `ManagedDatasetGateway` 与 `%LOCALAPPDATA%\DatumDock` 真实资料库；只有初始化无法安全完成时才降级为 `UnavailableGateway`。
 - `python -m datumdock --ui-preview` 始终使用独立 `PreviewGateway`，创建、改名、切换和关闭都不读取或修改真实资料库。
-- 普通模式不使用演示图片、标签、模型或统计。步骤四已将真实标签、矩形编辑、自动保存和复核接入；当时尚未接入的 X-AnyLabeling 目录交换后来由步骤五实现。AI、模型、YOLO 与备份当前仍明确提示后续接入。
+- 普通模式不使用演示图片、标签、模型或统计。步骤四已将真实标签、矩形编辑、自动保存和复核接入；当时尚未接入的 X-AnyLabeling 目录交换后来由步骤五实现，YOLO Detection 导出后来由步骤六实现。AI、模型与备份当前仍明确提示后续接入。
 - 新建和已有空数据集进入同一个真实工作台；顶部切换会重建当前数据集上下文，不会串入另一个数据集的数据。
 
 ## 4. Python 3.11 与自动化证据
@@ -186,7 +186,7 @@ $env:QT_QPA_PLATFORM = "offscreen"
 
 - ONNX/PT 模型导入、CPU/GPU 推理和自动标注；
 - X-AnyLabeling 完整目录导入导出及独立应用实际打开验证；
-- YOLO Detection 导出、备份和跨数据集转移；
+- 备份和跨数据集转移；
 - 离线教程最终校订；
 - PyInstaller/Inno Setup 安装、卸载和无 Python 环境验证。
 
@@ -299,9 +299,21 @@ $env:QT_QPA_PLATFORM = "offscreen"
 - 快速标签窗口关闭后的标签修订同步改为局部控件刷新，不再重建状态筛选与图片模型；第二张图片确认改派后保持当前行，保存请求仍绑定第二张的稳定 UUID。
 - 保存失败状态栏可打开可复制详情，区分版本冲突、外部修改、权限、磁盘空间、SQLite、验证和恢复失败，不再把所有原因误报为权限。
 - A0.11 源码界面使用 42 个自有 SVG；首页、工作台、数据集卡片、标签/图片治理和三种删除语义均有实际绑定。安装快捷方式图标仍待发布阶段。
-- 当前自动化清单为 257 项；标签定义表格提交后立即写盘，快速新建或其他标签集修订后，普通画框和标签改派都会先同步标签候选与修订号；画布矩形、候选卡片和标签列表具备无数据副作用的悬停反馈。连续三个样本的加载、保存和重开、切图加载期旧画布锁定、跨样本保存拒绝及第二行改派选择保持回归已经通过，完整结果为 `256 passed、1 skipped`，Pillow 弃用警告已清零。用户实机日志已经定位并完成代码修复，临时有界日志保留到原数据集复验；覆盖率 TLS 阻塞和外部 X-AnyLabeling v3.3.10 硬门槛详见 `STABILIZATION_AUDIT.md`。
+- 当前自动化清单为 267 项；标签定义表格提交后立即写盘，快速新建或其他标签集修订后，普通画框和标签改派都会先同步标签候选与修订号；画布矩形、候选卡片和标签列表具备无数据副作用的悬停反馈。连续三个样本的加载、保存和重开、切图加载期旧画布锁定、跨样本保存拒绝及第二行改派选择保持回归继续通过；加入步骤六导出回归后的完整结果为 `266 passed、1 skipped`，Pillow 弃用警告已清零。临时有界日志按用户要求继续开启；覆盖率 TLS 阻塞和外部 X-AnyLabeling v3.3.10 硬门槛详见 `STABILIZATION_AUDIT.md`。
 - Windows 原生截图复验额外发现并关闭英文复核动作和排序控件裁切；空复核值现只显示 `—`，`Complete / Delete Box` 与 `A–Z / Z–A` 在工作台右栏完整显示。
+
+## 25. 步骤六 YOLO Detection 导出复验（2026-07-23）
+
+- 正式工作台的“分类导出 → YOLO Detection”已经接入 `ManagedYoloExportDialog`，覆盖范围、负样本/复核选项、比例、种子、尚不存在的目标目录、后台预检、分布统计、取消和报告。
+- `group-stratified-v1` 通过内容哈希和已确认相似关系建立不可拆分连通分量。专项测试验证重叠组传递合并、数据库查询顺序无关、相同输入/种子稳定和 10,000 条规划性能。
+- 首次真实 Ultralytics 加载暴露了分层代价函数只计算目标集合、导致 100 图错误划分为 2/49/49 的缺陷；修正为计算全部正比例集合的投影代价后，固定回归与外部加载均得到 80/10/10。
+- 导出在同卷临时目录生成，回读 PNG、TXT、YAML、类别、坐标、stem、划分指纹和组约束后才原子发布。现有目标、取消、快照失效、复制失败和清理边界均有回归，最终目录不会在失败时伪出现。
+- 独立 Python 3.11.15 环境固定 Ultralytics 8.4.104、PyTorch 2.13.0 CPU 和 torchvision 0.28.0。100 图结果实际加载为 train 80 图/80 框、val 10/10、test 10/10，三个集合均为 0 张损坏；零比例和显式负样本也通过加载。
+- 原生 Windows 截图位于 Git 忽略的 `build/ui-review/step6-yolo-native/`：中文/英文 × 1366×768、1440×900、1920×1080 覆盖预检和成功页，1440×900 额外覆盖进度页，共 14 张。检查结果为文字可读、统计表可滚动、按钮层级清楚且无关键裁切。
+- Ultralytics 仅用于隔离验收，不进入 DatumDock 运行依赖，不下载模型、不训练，也不读取真实用户资料库。
+
+步骤六评分：需求覆盖 25/25、划分与防泄露 25/25、YOLO 格式兼容 20/20、数据安全与原子发布 15/15、GUI/性能/稳定性 9/10、文档与工程质量 5/5，总计 **99/100**。
 
 ## English Summary
 
-Managed X-AnyLabeling import/export and recoverable four-point rectangle repair are implemented, including editable axis-aligned four-corner rectangles and read-only preservation for rotated cases. Duplicate label-change autosaves and generic save errors are fixed. A0.11 source-GUI semantic icon bindings are complete, while installer shortcut icons remain future work. Step 5 remains below its external X-AnyLabeling GUI hard gate; model inference, YOLO export, backups, cross-dataset governance, and packaging remain future work.
+Managed X-AnyLabeling import/export and recoverable four-point rectangle repair are implemented, including editable axis-aligned four-corner rectangles and read-only preservation for rotated cases. Duplicate label-change autosaves and generic save errors are fixed. A0.11 source-GUI semantic icon bindings are complete, while installer shortcut icons remain future work. Step 5 remains below its external X-AnyLabeling GUI hard gate. Step 6 deterministic YOLO Detection export is implemented, visually reviewed, and loaded in an isolated Python 3.11.15 environment with Ultralytics 8.4.104. Model inference, backups, cross-dataset governance, and packaging remain future work.

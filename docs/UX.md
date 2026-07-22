@@ -2,7 +2,7 @@
 
 ## 0. 最新入口规范（步骤二入口已实现）
 
-用户入口以 [内部数据集主页与存档式管理方案](DATASET_LIBRARY.md) 为准：DatumDock 每次启动先显示存档式数据集主页，用户不选择工作区、项目根目录或外部保存位置。步骤四已在真实图片池上接入数据集标签、矩形编辑、立即自动保存、图片级复核和标签检查；模型与导出交互仍按本文规范等待后续接入。
+用户入口以 [内部数据集主页与存档式管理方案](DATASET_LIBRARY.md) 为准：DatumDock 每次启动先显示存档式数据集主页，用户不选择工作区、项目根目录或外部保存位置。步骤四已在真实图片池上接入数据集标签、矩形编辑、立即自动保存、图片级复核和标签检查；步骤五接入 X-AnyLabeling/LabelMe 目录互操作；步骤六接入 YOLO Detection 确定性导出。模型推理、备份和跨数据集治理仍按本文规范等待后续接入。
 
 ## 1. 主窗口布局
 
@@ -147,7 +147,16 @@
 - 导出前预览显示 train/val/test 的样本数、标签框数量和相似组约束造成的比例偏差；存在问题时明确提示，而不是自动忽略。
 - 数据集工具栏提供“相似图片检查”入口，显示高置信度相似组和待确认候选；用户可确认相似组、移出误报图片或忽略候选，图片不会被自动删除。
 
-### 3.1 归档与永久删除数据集
+### 3.1 YOLO Detection 正式导出（步骤六已实现）
+
+- “分类导出 → YOLO Detection”打开真实受管向导，不再使用演示成功结果。向导依次处理范围、负样本与复核状态、比例和种子、目标目录、后台预检、统计确认、进度与报告。
+- 默认只选择已完成且至少有一个有效矩形的图片。已完成零框负样本、复核状态为空的零框图片和待复核图片都需要用户显式加入；后两者显示额外警告或确认。
+- 预检以表格展示样本、框、类别、负样本、完全重复组、已确认相似连通分量、待确认相似风险和比例偏差。阻断问题必须修复或明确排除整张图片后重新预检，不能静默忽略。
+- 比例三个输入项合计必须为 100，train 必须大于零；设置页保存的默认值只用于新向导，当次临时修改不会回写设置。
+- 输出路径必须尚不存在。取消或失败后不出现最终目录；成功页显示实际集合数量、框数和输出路径，并提供打开目录入口。
+- 导出任务绑定启动时的数据集；任务期间切换数据集不会把迟到结果显示到新工作台。`--ui-preview` 只展示内存流程，不打开目录选择器或写文件。
+
+### 3.2 归档与永久删除数据集
 
 - 数据集卡片主体点击只负责打开数据集；“重命名”“归档”和“永久删除数据集”位于卡片右上角“更多”菜单。永久删除使用危险色图标和文字，但不在卡片悬停时成为默认焦点。
 - 用户选择永久删除后先进入影响预览页，显示数据集名称、UUID 摘要、图片、标注、标签、模型、样本回收站、文件数、占用空间和当前后台任务。无法完成统计时只允许取消或打开诊断。
@@ -158,7 +167,7 @@
 - 完全成功后返回主页并移除卡片；其他数据集的排序、筛选和当前内容保持不变。外部来源、导出目录和备份包在影响列表中明确标记为“不会删除”。
 - 首版不提供整数据集回收站；需要可恢复隐藏时使用归档。样本级回收站仍只管理单张/批量图片，不承担整数据集恢复。
 
-### 3.2 首页快速开始与学习中心
+### 3.3 首页快速开始与学习中心
 
 - 首页除数据集卡片外，提供“快速开始”和“学习中心”，让第一次使用数据集工具和 YOLO 的用户不必先阅读仓库文档。
 - 首次启动时，“快速开始”位于数据集区域上方，以五个可点击步骤展示：创建数据集 → 配置标签 → 导入图片 → 标注/审核 → 导出训练数据。每一步显示一句目的说明，并可直接跳到对应页面或打开相关教程。
@@ -375,6 +384,6 @@
 
 ## English Summary
 
-The UX treats every valid label-related submission as an immediate save boundary. Label cards, candidates, annotation rows, and label-table rows also provide subtle hover feedback, while selected and keyboard-focused states remain stronger and accessible. Hover changes only presentation and never updates data, recent labels, history, autosave, or review state.
+The UX treats every valid label-related submission as an immediate save boundary. Label cards, candidates, annotation rows, and label-table rows also provide subtle hover feedback, while selected and keyboard-focused states remain stronger and accessible. Hover changes only presentation and never updates data, recent labels, history, autosave, or review state. Step 6 connects the real YOLO Detection wizard with explicit scope, review/negative options, ratios, seed, a new target directory, background preflight, split statistics, cancellation, and a structured report. Preview mode remains file-system isolated.
 
 The real-machine log identified a cross-sample race during asynchronous switching. A stale canvas is now read-only until the target image and annotation are accepted together, and a bounded temporary log remains available for confirmation. Logging never determines save success and remains disabled in preview mode.

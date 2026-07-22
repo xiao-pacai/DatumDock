@@ -81,7 +81,7 @@
 - [x] 10,000 条合成索引分页、搜索、状态和排序通过，当前页最多 200 个领域对象，不创建 10,000 个 QWidget。
 - [x] Python 3.11 完整回归为 127 passed、1 skipped；20 张原生 Windows 截图覆盖中英文、三种分辨率与图片池核心页面。
 
-步骤三当时未勾选的标签与标注条目已由下方步骤四记录覆盖。X-AnyLabeling 完整目录导入导出后来已由步骤五接入但外部 GUI 硬门槛仍受阻；模型、YOLO 导出、备份和安装包仍未完成。
+步骤三当时未勾选的标签与标注条目已由下方步骤四记录覆盖。X-AnyLabeling 完整目录导入导出后来已由步骤五接入但外部 GUI 硬门槛仍受阻；YOLO Detection 导出已由步骤六完成；模型推理、备份和安装包仍未完成。
 
 ### A0.3 步骤四验收记录（2026-07-19）
 
@@ -104,7 +104,7 @@
 - [x] pytest-qt 使用真实鼠标覆盖画框、移动/八点缩放、换标签、删除、撤销/重做和复核。
 - [x] Python 3.11 完整回归为 153 passed、1 skipped；22 张原生 Windows 截图覆盖双语、三种分辨率、标签管理、标签检查及保存失败保护。
 
-步骤四当时不宣称模型自动标注、YOLO 导出、完整 X-AnyLabeling 目录互操作、备份、跨数据集转移或安装包完成；其中目录互操作后来进入步骤五，其余能力当前仍未完成。
+步骤四当时不宣称模型自动标注、YOLO 导出、完整 X-AnyLabeling 目录互操作、备份、跨数据集转移或安装包完成；其中目录互操作后来进入步骤五，YOLO Detection 导出进入步骤六，模型推理、备份、跨数据集转移和安装包当前仍未完成。
 
 ### A0.4 标注交互整改已验收
 
@@ -360,15 +360,18 @@
 
 ## F. 模型格式导出
 
-- [ ] 用户可在全局设置设定默认 train/val/test 比例，并可在每次导出时选择当前数据集池样本范围、目标模型/格式、临时覆盖比例、随机种子和输出目录。
-- [ ] 用户完成或取消导出后，应用不保存导出方案、导出路径或导出历史。
-- [ ] 软件阻止比例和不为 100% 的导出，并对空划分给出清晰提示。
-- [ ] 在输入样本和种子不变时，重复导出得到相同的样本划分。
-- [ ] 当完全重复图片被划分到不同训练/验证/测试集合时，导出前会显示数据泄露警告。
-- [ ] 已确认近似图片组中的所有样本在导出时被强制分配到同一个 train/val/test 集合；若组约束使比例偏差，导出预览会解释原因。
-- [ ] MVP 的 YOLO Detection 导出目录包含 `images/train`、`images/val`、`images/test`、对应 `labels` 子目录与 `data.yaml`。
-- [ ] 每个 YOLO 标签行符合 `class_id x_center y_center width height`，且后四项处于 `0..1`；`class_id` 与当前数据集标签集映射一致。
-- [ ] 导出不会修改或移动数据集池中的原图与原标注。
+- [x] 用户可在全局设置设定默认 train/val/test 比例，并可在每次导出时选择当前数据集池样本范围、YOLO Detection、临时覆盖比例、随机种子和输出目录。
+- [x] 用户完成或取消导出后，应用不保存导出方案、导出路径或导出历史。
+- [x] 软件阻止比例和不为 100%、train 为零以及正比例集合无法取得连通分量的导出，并给出清晰原因。
+- [x] 在候选快照、比例、种子和算法版本不变时，重复导出得到相同划分和划分指纹；查询顺序变化不会改变结果。
+- [x] 完全重复图片被合并为不可拆分连通分量，绝不会跨训练/验证/测试集合；待确认相似关系只显示数据泄露风险。
+- [x] 已确认近似图片组中的所有样本在导出时被强制分配到同一个 train/val/test 集合；重叠组传递合并，组约束导致的比例偏差在预览中解释。
+- [x] MVP 的 YOLO Detection 导出目录包含 `images/train`、`images/val`、`images/test`、对应 `labels` 子目录与 `data.yaml`；零比例集合保留空目录并在 YAML 中写 `null`。
+- [x] 每个 YOLO 标签行符合 `class_id x_center y_center width height`，且后四项处于 `0..1`、宽高大于零；`class_id` 与当前数据集完整标签集映射一致。
+- [x] 已完成零框负样本生成同名零字节标签文件；复核状态为空的零框图片和待复核图片只能由用户显式加入。
+- [x] 导出使用同卷临时目录并完整回读，验证通过后才原子发布；失败或取消不产生最终目录。
+- [x] 导出不会修改或移动数据集池中的原图、原标注、SQLite、复核状态和标签集。
+- [x] 独立 Python 3.11.15 环境使用 Ultralytics 8.4.104 与 PyTorch 2.13.0 CPU 成功加载 100 张 80/10/10 数据集、显式负样本和零比例集合。
 
 ## F.1 X-AnyLabeling 双向互操作
 
@@ -420,4 +423,4 @@
 
 ## English Summary
 
-Acceptance records immediate label persistence and subtle label-hover feedback as completed. Hover, selection, and keyboard focus are distinct and accessible; hover itself never changes data, history, autosave, recent-label tracking, or review state. Pending review remains reserved for model-generated changes, while successful manual edits persist completed status in the same transaction.
+Acceptance records immediate label persistence and subtle label-hover feedback as completed. Hover, selection, and keyboard focus are distinct and accessible; hover itself never changes data, history, autosave, recent-label tracking, or review state. Pending review remains reserved for model-generated changes, while successful manual edits persist completed status in the same transaction. Step 6 YOLO Detection export is accepted with deterministic connected-component splitting, format validation, atomic publication, explicit negatives, and an external Ultralytics 8.4.104 load in Python 3.11.15.

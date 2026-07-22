@@ -1,6 +1,6 @@
 # X-AnyLabeling 对标完成基线
 
-> 当前状态（2026-07-21）：步骤五已实现正式 X-AnyLabeling/LabelMe 目录双向互操作并通过自动化安全、保真和 100 图闭环；稳定化回归补齐了 v4.0.0-beta.7 轴对齐四点矩形、旋转四点只读保留和已有数据显式修复。固定 v3.3.10 的第三方应用实际打开/编辑/回导仍被可信依赖安装 TLS 问题阻塞。YOLO 导出、备份和跨数据集治理也尚未完成，因此本版本不宣称步骤五硬闸门或整体 L2 已完成。
+> 当前状态（2026-07-23）：步骤五已实现正式 X-AnyLabeling/LabelMe 目录双向互操作并通过自动化安全、保真和 100 图闭环；稳定化回归补齐了 v4.0.0-beta.7 轴对齐四点矩形、旋转四点只读保留和已有数据显式修复。固定 v3.3.10 的第三方应用实际打开/编辑/回导仍被可信依赖安装 TLS 问题阻塞。步骤六 YOLO Detection 确定性导出已通过自动化、原子发布和独立 Ultralytics 8.4.104 加载；备份和跨数据集治理仍未完成，因此本版本仍不宣称步骤五硬闸门、完整 L1 或整体 L2 已完成。
 
 ## 1. 目的
 
@@ -90,4 +90,4 @@ DatumDock 的差异化重点是多项目/多数据集池、项目级标签知识
 
 ## English Summary
 
-DatumDock uses X-AnyLabeling as a workflow benchmark, not as a promise to clone every upstream feature or visual asset. Managed directory interoperability now has automated round-trip and failure evidence, but actual X-AnyLabeling v3.3.10 GUI verification remains blocked by trusted dependency installation. YOLO export, backup, and other lower-level prerequisites also remain incomplete, so the product does not claim complete L2.
+DatumDock uses X-AnyLabeling as a workflow benchmark, not as a promise to clone every upstream feature or visual asset. Managed directory interoperability now has automated round-trip and failure evidence, but actual X-AnyLabeling v3.3.10 GUI verification remains blocked by trusted dependency installation. Deterministic YOLO Detection export is complete and externally loaded with Ultralytics 8.4.104; backup and cross-dataset prerequisites remain incomplete, so the product does not claim complete L1 or L2.

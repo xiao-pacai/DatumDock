@@ -1,6 +1,6 @@
 # DatumDock 内部数据集主页与存档式管理方案
 
-> 步骤四状态（2026-07-19）：内部资料库和受管图片池基础上，SQLite v2、数据集级标签、矩形标注、LabelMe 立即自动保存与图片级复核已经实现。模型、导出、备份和旧结构迁移仍待后续步骤接入。详细边界见 [受管图片池](IMAGE_POOL.md) 与 [标注工作流](ANNOTATION_WORKFLOW.md)。
+> 当前状态（2026-07-23）：内部资料库、受管图片池、数据集级标签、矩形标注、LabelMe 立即自动保存、图片级复核、X-AnyLabeling 目录互操作和 YOLO Detection 确定性导出已经接入。模型推理、备份、跨数据集治理和旧结构迁移仍待后续步骤。详细边界见 [受管图片池](IMAGE_POOL.md)、[标注工作流](ANNOTATION_WORKFLOW.md) 与 [YOLO Detection 确定性导出](YOLO_EXPORT.md)。
 
 > 状态：2026-07-19 已确认产品方向；本文件仅整理需求与实现边界，当前不修改应用代码。
 >
@@ -190,7 +190,7 @@ flowchart LR
 后续规划，当前不得表述为可用：
 
 - ONNX / Ultralytics YOLO 模型管理、待复核自动标注和人工确认已完成。
-- 按比例生成 YOLO 训练集，以及后续可注册的其他格式导出器。
+- [已实现] 按比例和固定种子生成 YOLO Detection 训练集；其他模型格式继续通过注册式导出器在后续扩展。
 - 数据集备份导入导出；模型二进制仍单独分享。
 - 在标签集兼容时复制或移动样本、合并数据集。
 
@@ -215,7 +215,7 @@ flowchart LR
 2. [已完成] 实现资料库服务、数据集创建事务、重启恢复、缺失索引/孤儿目录对账与错误边界；旧结构迁移预检属于后续独立工作。
 3. [已完成] 实现主页、数据集卡片、新建数据集向导和异常卡片状态。
 4. [已完成] 将正式标注工作台上下文收敛为单一当前数据集；旧代码只保留作迁移参考。
-5. [部分完成] 样本索引、图片池、回收站已迁入新边界；标签、模型、备份、导出和跨数据集操作待接入。
+5. [部分完成] 样本索引、图片池、回收站、标签、X-AnyLabeling 互操作和 YOLO Detection 导出已迁入新边界；模型、备份和跨数据集操作待接入。
 6. [部分完成] 移除正式入口中用户可见的工作区、项目树和打开目录文案；旧代码翻译键随迁移继续清理。
 7. [部分完成] 重启恢复、数据隔离、100 图连续标注、10,000 条索引和步骤四 GUI 回归已验收；升级/安装包保留仍待发布阶段。
 
@@ -246,4 +246,4 @@ flowchart LR
 
 ## English Summary
 
-DatumDock's managed library uses isolated UUID dataset directories. Whole-dataset permanent deletion is implemented with impact preflight, exact-name and final confirmation, a recoverable operation manifest, and strict exclusion of external sources, exports, and backups. Archive remains the reversible alternative. Model inference, YOLO export, backups, and cross-dataset governance are still future work.
+DatumDock's managed library uses isolated UUID dataset directories. Whole-dataset permanent deletion is implemented with impact preflight, exact-name and final confirmation, a recoverable operation manifest, and strict exclusion of external sources, exports, and backups. Archive remains the reversible alternative. Deterministic YOLO Detection export is now implemented without persisting plans or mutating the managed dataset. Model inference, backups, and cross-dataset governance are still future work.

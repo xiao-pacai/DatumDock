@@ -69,8 +69,9 @@ def test_current_capability_documents_share_stabilization_facts() -> None:
     visual = (ROOT / "docs" / "VISUAL_DESIGN.md").read_text(encoding="utf-8")
     build = (ROOT / "docs" / "BUILD_WINDOWS.md").read_text(encoding="utf-8")
 
-    assert "257 项" in readme and "257 项" in audit
+    assert "267 项" in readme and "267 项" in audit
     assert "42 个 DatumDock 自有 SVG" in visual
     assert "安装包" in build and "未完成" in build
-    assert "AI、模型、YOLO 与备份仍明确提示后续接入" in readme
+    assert "YOLO Detection 确定性导出已经接入真实受管服务" in readme
+    assert "AI、模型、备份和跨数据集治理仍明确提示后续接入" in readme
     assert "236 passed、1 skipped、14 warnings" not in readme

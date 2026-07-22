@@ -40,4 +40,4 @@ python -m pip install -e ".[dev]"
 
 ## English Summary
 
-DatumDock targets Windows 10/11 x64, but the distributable installer is not yet verified. Source-mode DD icons are complete; PyInstaller/Inno Setup output, clean-machine startup, Start-menu/uninstaller icons, YOLO export, backup, and model inference remain future gates. This document describes the planned validation sequence and must not be cited as evidence of an existing installer.
+DatumDock targets Windows 10/11 x64, but the distributable installer is not yet verified. Source-mode DD icons and deterministic YOLO Detection export are complete; PyInstaller/Inno Setup output, clean-machine startup, Start-menu/uninstaller icons, backup, and model inference remain future gates. This document describes the planned validation sequence and must not be cited as evidence of an existing installer.
